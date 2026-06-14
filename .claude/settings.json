@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(doppler secrets get:*)",
+      "Bash(doppler secrets download:*)"
+    ]
+  }
+}
