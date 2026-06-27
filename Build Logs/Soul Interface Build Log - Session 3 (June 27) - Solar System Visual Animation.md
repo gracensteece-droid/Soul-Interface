@@ -38,7 +38,24 @@
 
 ---
 
+### Three.js / Space Visual Resources (for next session)
+- **GitHub topics**: `github.com/topics/threejs` — filter by stars/recent. Search `three.js space`, `three.js galaxy`, `three.js solar system`
+- **Shadertoy** (`shadertoy.com`) — GLSL fragment shaders, translates directly to Three.js ShaderMaterial. Search `nebula`, `space`, `black hole`, `star field`. Best source for cinematic space visuals
+- **Three.js official examples** (`threejs.org/examples`) — always current version, covers particles, shaders, post-processing
+- **Bruno Simon / Three.js Journey** (`threejs-journey.com`) — galaxy generator chapter is the basis for the GalaxyThreeJS repo we referenced. Code ends up on GitHub
+- **Codrops** (`tympanus.net/codrops`) — high quality art-forward Three.js experiments with full source
+- **r/threejs** on Reddit — community demos with repos, posted regularly
+
+---
+
+### Architecture Note (Important)
+The plan is NOT to keep building on `index.html`. Instead:
+- Build cosmogenesis as its own standalone experience (already started in `Aion/` folder)
+- Once cosmogenesis is complete, **rebuild `index.html` from that** — cosmogenesis becomes the entry point, seer selection flows out of it
+- Today's visual work on `index.html` (orbit shimmer, asteroid belt, camera) serves as a **visual reference and prototype** for what the cosmogenesis build should feel like
+- Don't let changes to `index.html` block or dictate the cosmogenesis standalone build
+
 ### Next Session Starting Points
-- Consider adding atmospheric/haze effects between planet orbits
-- Explore making the sun corona more dynamic
-- Possible: comet or shooting-star effect through the system
+- Pick up the cosmogenesis standalone build (`Aion/` folder) using today's visual language as the target aesthetic
+- Reference Shadertoy for any specific effects (nebula, particle fields, etc.)
+- Sun corona and comet/shooting-star effects are good candidates when ready to push further
