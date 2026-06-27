@@ -59,3 +59,32 @@ The plan is NOT to keep building on `index.html`. Instead:
 - Pick up the cosmogenesis standalone build (`Aion/` folder) using today's visual language as the target aesthetic
 - Reference Shadertoy for any specific effects (nebula, particle fields, etc.)
 - Sun corona and comet/shooting-star effects are good candidates when ready to push further
+
+---
+
+### Longer-Term Architecture Thinking (House Environments + Generative Assets)
+
+#### The Problem
+When the build reaches the 12 house environments, each house needs to feel genuinely different *per user* based on birth data — not just different colors but different geometry, soundscape, and visual texture. Pure Three.js procedural generation probably can't carry that alone at the level of specificity this app needs.
+
+#### The Proposed Shift
+Move toward a **two-layer architecture**:
+- **Three.js = structural/interactive skeleton** — solar system, cosmogenesis, camera, transitions, the frame that holds everything
+- **ElevenLabs + Meshy = personalized generative layer** — assets created per user from birth data, composited into the Three.js skeleton
+
+This is closer to "remixing environments" than traditional app development — each user's house visit generates a unique environment (3D mesh from Meshy, audio texture from ElevenLabs, video environment) that gets pulled in on top of the structural layer.
+
+#### Why This Matters for the App's Identity
+This makes it genuinely AI-native — not a chatbot with a pretty background, but something that feels built specifically for that person. The seer voices were always part of this, but the vision is expanding: the *whole environment* responds to who you are, not just the text output.
+
+#### Key Technical Challenge: Latency + Caching
+Generating Meshy assets and ElevenLabs audio per user per house visit in realtime will be slow. Likely solution:
+- Run a generation pipeline when the user first inputs birth data
+- Pre-generate and cache all 12 house environments before they ever enter one
+- This shapes backend architecture early — worth thinking about before the house build begins
+
+#### To Research Before That Phase
+- What does Meshy's API actually support for programmatic/API-driven generation?
+- ElevenLabs capabilities beyond voice — video, sound design, environmental audio
+- How to structure the caching/generation pipeline (likely a background job queue)
+- Whether Three.js + composited generative assets is the right stack or if something else fits better at that layer
