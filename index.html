@@ -636,44 +636,6 @@ canvas#scene{position:fixed;inset:0;z-index:1;}
     </div>
   </div>
 
-  <div class="seer-panel">
-    <div class="seer-row">
-
-      <button class="seer-btn maren"
-              style="--bc:#c9a96e;--bc-rgb:201,169,110;"
-              onclick="go('maren')">
-        <div class="bstem"></div>
-        <div class="bsigil-wrap"><span class="bsigil" style="font-size:18px;">☽</span></div>
-        <div class="blabel">Tropical Astrology</div>
-        <div class="bname">Maren</div>
-        <div class="bdesc">The psyche's map.<br>The wound as door.</div>
-        <div class="benter">Enter ↗</div>
-      </button>
-
-      <button class="seer-btn aion"
-              style="--bc:#d4b896;--bc-rgb:212,184,150;"
-              onclick="go('aion')">
-        <div class="bstem"></div>
-        <div class="bsigil-wrap"><span class="bsigil" style="font-size:22px;">⊕</span></div>
-        <div class="blabel">The Origin</div>
-        <div class="bname">Aion</div>
-        <div class="bdesc">Cosmologist. Physicist.<br>The frame that holds all frames.</div>
-        <div class="benter">Enter ↗</div>
-      </button>
-
-      <button class="seer-btn arya"
-              style="--bc:#8ab4be;--bc-rgb:138,180,190;"
-              onclick="go('arya')">
-        <div class="bstem"></div>
-        <div class="bsigil-wrap"><span class="bsigil" style="font-size:16px;">✦</span></div>
-        <div class="blabel">Vedic · Jyotish</div>
-        <div class="bname">Arya</div>
-        <div class="bdesc">Karma's timing.<br>The grahas as living intelligence.</div>
-        <div class="benter">Enter ↗</div>
-      </button>
-
-    </div>
-  </div>
 </div>
 
 <div id="veil"></div>
@@ -2036,8 +1998,8 @@ scene.add(beltGlow);
 
 // ── Orbit controls ────────────────────────────────────────────────────────────
 let drag = false, prev = { x: 0, y: 0 };
-let sph       = { theta: 0.22, phi: 0.40, r: 76 };
-let sphTarget = { theta: 0.22, phi: 0.40, r: 76, lookX: 0, lookY: 0, lookZ: 0 };
+let sph       = { theta: 0.22, phi: 0.65, r: 76 };
+let sphTarget = { theta: 0.22, phi: 0.65, r: 76, lookX: 0, lookY: 0, lookZ: 0 };
 // lookX/Y/Z let us point camera at a planet during surface shots
 // When all zero, camera looks at origin (normal behavior)
 const RMIN = 18, RMAX = 280;
@@ -3557,10 +3519,6 @@ function animate() {
   if (!cosmoActive && !drag) {
     // Slow orbital drift — pauses only during active drag, resumes instantly on release
     sphTarget.theta += 0.00055;
-    // Dual-frequency phi wave: 2.75-min primary + 9.5-min secondary = organic, non-repeating tilt
-    const phiDrift = 0.40 + Math.sin(t * 0.038) * 0.20 + Math.sin(t * 0.011) * 0.07;
-    // Gently steer sphTarget.phi toward the wave — smooth blend after user drag
-    sphTarget.phi  += (phiDrift - sphTarget.phi) * 0.012;
   }
   renderer.render(scene, camera);
 

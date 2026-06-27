@@ -30,6 +30,12 @@
 - Orbit shader reads `vUv.x` from `TorusGeometry` UVs which already go 0→1 around the major circumference — no extra attributes needed
 - Both wave pairs have irrational speed ratios so the combined pattern never exactly repeats
 
+#### UI & Camera
+- Removed seer name cards (Maren, Aion, Arya) from bottom of `index.html` — solar system now fills the full screen
+- Removed phi auto-drift that was pulling the camera back to the default top-down angle after every interaction
+- Camera now stays exactly where the user leaves it — only the slow horizontal theta rotation persists to keep the system feeling alive
+- Default starting phi changed from `0.40` → `0.65` for a more oblique, cinematic opening angle
+
 ---
 
 ### Next Session Starting Points
