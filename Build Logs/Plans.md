@@ -1,15 +1,20 @@
 # Soul Interface — Plans / Next Session Reference
 
-### Cosmogenesis Sequence — Standalone Build
-*Planned June 14, 2026*
+### Origin Scene — Next Steps
+*Updated June 28, 2026*
 
-**Context**: The cosmogenesis sequence (8 phases, narrated by Aion) currently shares space in `index.html` with the interactive solar system, and per the progress doc its early phases still show "hints of solar system" — it needs a distinct visual identity before the solar system is revealed at the end.
+**Context**: `Aion/Frontend/Code/origin.html` is the active build — a continuous void → nebula → collapse scene. The transition approach is now solid: a single morphing particle system rather than cross-fading two separate systems.
 
-**Plan**:
-1. Generate additional reference images to round out `Aion/Frontend/Build Log/Cosmogenesis photo references/` (currently covers Phases 2–8).
-2. Build the cosmogenesis sequence as its **own standalone file** (e.g. `cosmogenesis.html` in `Aion/Frontend/`) rather than editing `index.html` directly — avoids risking the existing working solar system while prototyping.
-3. Prototype each phase **in isolation** using the reference images as visual targets for the Three.js/particle work. Get each phase looking right on its own before stitching into a timeline.
-4. Once phases are built, wire them into a timeline/sequence controller (durations per phase are documented in `Aion/Frontend/Build Log/soul_interface_progress.md`, e.g. Phase 1 — THE VOID ~22s).
-5. **Integration step** (later): hand off from the new cosmogenesis scene into `index.html`'s solar system at the end of Phase 8 — shared camera/renderer state, smooth transition.
+**Current State (working):**
+- Void (T=0-12s): quantum foam, camera drifts in
+- Nebula formation (T=12-56s): cloud-first, arms condense via `formT` radial reveal
+- Morph to collapse (T=56-90s): `collapseT` uniform 0→1 drives same particles from nebula drift → inward spiral collapse math in-shader. No second particle system.
+- Core glow builds as `coreVisibility = cCurve²`
 
-**Next session starting point**: Review the current cosmogenesis-related code in `index.html` (the "hints of solar system" issue) to identify what can be extracted/reused (e.g. existing particle system code) vs. built fresh in the new standalone file.
+**Potential next steps:**
+1. **Sun ignition** — after collapseT=1, trigger a bright flash moment using `bigFlash = sin(t*0.28)^8 * 1.4` pattern from collapse-prototype. Solar wind / shockwave ring expansion.
+2. **Jets** — add jetTopMat / jetBotMat back in after collapse is fully established (T>90s) as a bonus layer on top of morphed particles
+3. **Integration** — connect origin.html as the entry point before the solar system scene
+
+**Key file**: `Aion/Frontend/Code/origin.html`
+**References**: `nebula-prototype.html`, `collapse-prototype.html` (both untouched, reference only)

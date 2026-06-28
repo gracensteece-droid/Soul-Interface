@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Soul Interface — The Origin</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{position:fixed;inset:0}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+window.onerror = function(msg,src,line){
+  document.body.innerHTML += `<div style="position:fixed;bottom:20px;left:20px;right:20px;background:#1a0000;color:#ff8080;font-family:monospace;font-size:12px;padding:16px;z-index:9999;border:1px solid #660000;">JS Error (line ${line}): ${msg}</div>`;
+};
+
+const canvas   = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000004, 1);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 2000);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+const clamp    = (v,a,b) => Math.max(a,Math.min(b,v));
+const easeOut  = t => 1-Math.pow(1-t,3);
+const easeIn   = t => t*t*t;
+const slowForm = t => Math.pow(t, 2.4); // very slow start — feels like matter condensing
+
+// ── Spherical camera ──────────────────────────────────────────────────────────
+const sph       = { r:380, theta:0.30, phi:0.46 };
+const sphTarget = { r:380, theta:0.30, phi:0.46 };
+
+function applyCamera(){
+  camera.position.set(
+    sph.r*Math.sin(sph.phi)*Math.sin(sph.theta),
+    sph.r*Math.cos(sph.phi),
+    sph.r*Math.sin(sph.phi)*Math.cos(sph.theta)
+  );
+  camera.lookAt(0,0,0);
+}
+
+let drag=false, prev={x:0,y:0};
+canvas.addEventListener('mousedown', e=>{ drag=true; prev={x:e.clientX,y:e.clientY}; });
+window.addEventListener('mouseup', ()=>drag=false);
+window.addEventListener('mousemove', e=>{
+  if(!drag) return;
+  sphTarget.theta -= (e.clientX-prev.x)*0.004;
+  sphTarget.phi    = clamp(sphTarget.phi+(e.clientY-prev.y)*0.004, 0.05, Math.PI*0.88);
+  prev={x:e.clientX,y:e.clientY};
+  sph.theta=sphTarget.theta; sph.phi=sphTarget.phi;
+});
+window.addEventListener('wheel', e=>{
+  sphTarget.r = clamp(sphTarget.r+e.deltaY*0.20, 50, 700);
+  // don't snap sph.r — let it lerp for smoothness
+},{passive:true});
+
+// ── Shared GLSL ───────────────────────────────────────────────────────────────
+const HSL_GLSL = `
+  vec3 hsl2rgb(float h,float s,float l){
+    vec3 rgb=clamp(abs(mod(h*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
+    return l+s*(rgb-0.5)*(1.0-abs(2.0*l-1.0));
+  }
+`;
+const HUE_REMAP_GLSL = `
+  float remapHue(float h){
+    if     (h<0.20) return h*0.30;
+    else if(h<0.45) return 0.55+(h-0.20)*0.60;
+    else if(h<0.65) return 0.48+(h-0.45)*0.35;
+    else if(h<0.82) return 0.75+(h-0.65)*0.59;
+    else            return 0.08+(h-0.82)*0.67;
+  }
+`;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VOID — quantum foam field
+// Faint violet-purple specks that feel like pre-matter seething energy.
+// Visible only during the void phase, fade out as the nebula arrives.
+// ═══════════════════════════════════════════════════════════════════════════════
+const VOID_N = 3200;
+const voidGeo = new THREE.BufferGeometry();
+{
+  const p = new Float32Array(VOID_N*3);
+  const c = new Float32Array(VOID_N*3);
+  for(let i=0;i<VOID_N;i++){
+    const a=Math.random()*Math.PI*2, b=Math.acos(2*Math.random()-1);
+    const r=30+Math.random()*280;
+    p[i*3]=r*Math.sin(b)*Math.cos(a); p[i*3+1]=r*Math.sin(b)*Math.sin(a); p[i*3+2]=r*Math.cos(b);
+    // Blue-violet palette
+    const t=Math.random();
+    c[i*3]=0.18+t*0.22; c[i*3+1]=0.04+t*0.08; c[i*3+2]=0.45+t*0.35;
+  }
+  voidGeo.setAttribute('position',new THREE.BufferAttribute(p,3));
+  voidGeo.setAttribute('color',  new THREE.BufferAttribute(c,3));
+}
+const voidMat = new THREE.PointsMaterial({
+  size:1.8, sizeAttenuation:true, vertexColors:true,
+  transparent:true, opacity:0, depthWrite:false,
+  blending:THREE.AdditiveBlending
+});
+scene.add(new THREE.Points(voidGeo, voidMat));
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYER 1 — FINE SPIRAL PARTICLES
+// From nebula-prototype: 14k particles in 3 logarithmic arms.
+// gAlpha uniform fades them in from the void.
+// ═══════════════════════════════════════════════════════════════════════════════
+const NUM_ARMS = 3;
+const FINE_N   = 14000;
+let fineMat;
+{
+  const geo  = new THREE.BufferGeometry();
+  const pos  = new Float32Array(FINE_N*3);
+  const seed = new Float32Array(FINE_N);
+  for(let i=0;i<FINE_N;i++){
+    const arm  = i % NUM_ARMS;
+    const t    = Math.random();
+    const r    = 5 + t*130;
+    const spin = r * 0.022;
+    const base = (arm/NUM_ARMS)*Math.PI*2;
+    const u    = Math.random()*0.999+0.0005;
+    const g    = Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*Math.random());
+    const angle  = base + spin + g*0.16;
+    const rFinal = r + g*r*0.07;
+    pos[i*3]   = rFinal*Math.cos(angle);
+    pos[i*3+1] = g*r*0.022;
+    pos[i*3+2] = rFinal*Math.sin(angle);
+    seed[i]    = Math.random();
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
+
+  fineMat = new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0}, gAlpha:{value:0}, formT:{value:0}, rotSpeed:{value:0.058}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
+      attribute float nSeed;
+      uniform float time;
+      uniform float formT;
+      uniform float rotSpeed;
+      uniform float warmBias;
+      uniform float collapseT;
+      varying vec3  vColor;
+      varying float vAlpha;
+      void main(){
+        float s=nSeed;
+
+        // ── NEBULA ──────────────────────────────────────────────────────────
+        float formFactor=0.5+0.5*sin(time*0.028+s*2.1);
+        float amp=2.0+formFactor*11.0;
+        float t1=time*(0.052+s*0.038)+s*6.2832;
+        float t2=time*(0.079+s*0.026)+s*4.1888;
+        float t3=time*(0.065+s*0.044)+s*2.0944;
+        vec3 drift=vec3(
+          sin(t1)*amp+cos(t2*0.67)*amp*0.36,
+          (cos(t2)*0.12+sin(t3)*0.08)*amp,
+          cos(t3)*amp+sin(t1*0.73)*amp*0.36
+        );
+        float breathe=1.0+0.05*sin(time*0.14+s*4.0);
+        vec3 basePos=vec3(position.x*breathe,position.y,position.z*breathe);
+        float rotA=time*rotSpeed;
+        float cr=cos(rotA),sr=sin(rotA);
+        basePos=vec3(basePos.x*cr-basePos.z*sr,basePos.y,basePos.x*sr+basePos.z*cr);
+        float cloudiness=1.0-smoothstep(0.18,0.92,formT);
+        vec3 cloudScatter=vec3(
+          sin(s*71.9+time*0.042)*88.0+cos(s*43.1+time*0.031)*42.0,
+          sin(s*53.7+time*0.038)*58.0+cos(s*29.3+time*0.055)*32.0,
+          cos(s*83.5+time*0.036)*88.0+sin(s*37.7+time*0.043)*42.0
+        )*cloudiness;
+        vec3 nebulaPos=basePos+drift+cloudScatter;
+        float normR=length(position.xz)/130.0;
+        float reveal=smoothstep(0.0,0.22,formT*1.30-normR);
+        float radHue;
+        if     (normR<0.10) radHue=0.60;
+        else if(normR<0.38) radHue=0.58;
+        else if(normR<0.58) radHue=0.50;
+        else if(normR<0.78) radHue=0.04;
+        else                radHue=0.80;
+        float sh=remapHue(fract(s*1.618+time*0.008));
+        float nebulaHue=mix(mix(radHue,sh,0.36),0.08+s*0.07,warmBias);
+        float nebulaLum=0.28+s*0.20+(1.0-normR)*0.10;
+        float formed=1.0-formFactor;
+        float nebulaAlpha=0.75*(0.38+formed*0.68)*reveal*(1.0-cloudiness*0.42);
+        float coreFactor=1.0+(1.0-normR)*0.9;
+        float nebulaPtSz=2.4*(0.50+s*1.55)*coreFactor*(0.62+formed*0.48)*(1.0+cloudiness*1.1)*640.0;
+
+        // ── COLLAPSE (inward spiral — same math as drain particles) ─────────
+        float cycleSpeed=0.095+s*0.042;
+        float loopT=fract(time*cycleSpeed+s);
+        float tc=pow(loopT,0.80);
+        float initR=length(position.xz);
+        float rc=initR*(1.0-pow(tc,1.70));
+        float winds=2.8+initR*0.060;
+        float anglec=atan(position.z,position.x)+tc*winds*6.2832;
+        float hc=position.y*(1.0-tc*0.88);
+        float turbAmp=(0.4+tc*3.2)*(0.8+s*0.4);
+        float tv1=time*(1.8+s*1.2)+s*6.2832;
+        float tv2=time*(2.5+s*0.8)+s*4.1888;
+        vec3 turb=vec3(sin(tv1)*turbAmp,cos(tv2)*0.22*turbAmp,cos(tv1)*turbAmp);
+        vec3 collapsePos=vec3(rc*cos(anglec),hc,rc*sin(anglec))+turb*tc;
+        float heat=pow(tc,1.80);
+        float collapseHue=mix(remapHue(fract(s*1.618+time*0.012)),0.07+s*0.06,heat);
+        float collapseLum=mix(0.28+s*0.18,0.72,pow(heat,1.5));
+        float brightFlare=1.0+pow(tc,4.0)*5.0;
+        float pulse=0.55+0.45*sin(time*(3.0+s*2.0)+s*6.28);
+        float cFadeIn=smoothstep(0.0,0.06,loopT);
+        float cFadeOut=smoothstep(1.0,0.90,loopT);
+        float collapseAlpha=cFadeIn*cFadeOut*(0.55+heat*0.55);
+        float collapsePtSz=(1.4+(1.0-heat)*s*1.2)*640.0;
+
+        // ── BLEND ────────────────────────────────────────────────────────────
+        float ct=collapseT;
+        vec3 pos=mix(nebulaPos,collapsePos,ct);
+        float hue=mix(nebulaHue,collapseHue,ct);
+        float lum=mix(nebulaLum,collapseLum,ct);
+        float sat=mix(0.86,mix(0.84,0.96,heat),ct);
+        float brt=mix((0.22+formed*0.78)*0.90,brightFlare*(0.55+pulse*0.55),ct);
+        vColor=hsl2rgb(hue,sat,lum)*brt;
+        vAlpha=mix(nebulaAlpha,collapseAlpha,ct);
+
+        vec4 mvPos=modelViewMatrix*vec4(pos,1.0);
+        float ptSz=mix(nebulaPtSz,collapsePtSz,ct)/-mvPos.z;
+        gl_PointSize=clamp(ptSz,0.8,13.0);
+        gl_Position=projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader:`
+      uniform float gAlpha;
+      uniform float brightMult;
+      varying vec3  vColor;
+      varying float vAlpha;
+      void main(){
+        if(gAlpha<0.004) discard;
+        vec2  c=gl_PointCoord-0.5;
+        float d=length(c)*2.0;
+        if(d>1.0) discard;
+        float crisp=smoothstep(0.42,0.0,d);
+        float core=max(0.0,1.0-d*9.0)*0.65;
+        float alpha=(crisp*0.40+core)*(0.50+vAlpha*0.60)*gAlpha;
+        if(alpha<0.003) discard;
+        gl_FragColor=vec4(vColor*brightMult,alpha);
+      }
+    `,
+  });
+  scene.add(new THREE.Points(geo, fineMat));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYER 2 — VOLUMETRIC CLOUD PUFFS
+// Large FBM-shaped blobs. Fade in slightly after fine particles.
+// ═══════════════════════════════════════════════════════════════════════════════
+const CLOUD_N = 2800;
+let cloudMat;
+{
+  const geo  = new THREE.BufferGeometry();
+  const pos  = new Float32Array(CLOUD_N*3);
+  const seed = new Float32Array(CLOUD_N);
+  for(let i=0;i<CLOUD_N;i++){
+    const arm  = i % NUM_ARMS;
+    const t    = Math.random();
+    const r    = 8 + t*125;
+    const spin = r * 0.022;
+    const base = (arm/NUM_ARMS)*Math.PI*2;
+    const scatter = (Math.random()-0.5)*r*0.55;
+    const angle   = base + spin + scatter/Math.max(r,1);
+    const rFinal  = r + (Math.random()-0.5)*r*0.35;
+    pos[i*3]   = rFinal*Math.cos(angle);
+    pos[i*3+1] = (Math.random()-0.5)*r*0.12;
+    pos[i*3+2] = rFinal*Math.sin(angle);
+    seed[i]    = Math.random();
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
+
+  cloudMat = new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0}, gAlpha:{value:0}, rotSpeed:{value:0.026}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
+      attribute float nSeed;
+      uniform float time;
+      uniform float rotSpeed;
+      uniform float warmBias;
+      uniform float collapseT;
+      varying vec3  vColor;
+      varying float vAlpha;
+      varying vec2  vSeedOff;
+      void main(){
+        float s=nSeed;
+        // ── NEBULA CLOUD ────────────────────────────────────────────────────
+        float formFactor=0.5+0.5*sin(time*0.012+s*1.5);
+        float amp=4.0+formFactor*10.0;
+        float t1=time*(0.018+s*0.010)+s*6.2832;
+        float t2=time*(0.024+s*0.008)+s*4.1888;
+        float t3=time*(0.020+s*0.013)+s*2.0944;
+        vec3 drift=vec3(
+          sin(t1)*amp+cos(t2*0.55)*amp*0.40,
+          (cos(t2)*0.10+sin(t3)*0.07)*amp,
+          cos(t3)*amp+sin(t1*0.68)*amp*0.40
+        );
+        float rotA=time*rotSpeed;
+        float cr=cos(rotA),sr=sin(rotA);
+        vec3 basePos=vec3(position.x*cr-position.z*sr,position.y,position.x*sr+position.z*cr);
+        vec3 nebulaPos=basePos+drift;
+        // ── COLLAPSE VORTEX ─────────────────────────────────────────────────
+        float loopT=fract(time*0.040+s);
+        float tc=pow(loopT,0.70);
+        float rCC=length(position.xz)*(1.0-pow(tc,2.0));
+        float angleCC=atan(position.z,position.x)+tc*4.5*6.2832;
+        float hCC=position.y*(1.0-tc*0.70);
+        float ampCC=3.0+tc*8.0;
+        float tv1=time*(0.12+s*0.08)+s*6.2832;
+        float tv2=time*(0.18+s*0.06)+s*4.1888;
+        vec3 driftCC=vec3(sin(tv1)*ampCC+cos(tv2*0.6)*ampCC*0.4,
+                          (cos(tv2)*0.09+sin(tv1)*0.07)*ampCC,
+                          cos(tv1)*ampCC+sin(tv2*0.7)*ampCC*0.4);
+        vec3 collapsePos=vec3(rCC*cos(angleCC),hCC,rCC*sin(angleCC))+driftCC*tc;
+        // ── BLEND ────────────────────────────────────────────────────────────
+        vec3 pos=mix(nebulaPos,collapsePos,collapseT);
+        float globalHue=fract(time*0.0048);
+        float nebulaHue=mix(remapHue(fract(globalHue+s*0.42)),0.08+s*0.06,warmBias);
+        float heatCC=pow(tc,1.6);
+        float collapseHue=mix(remapHue(fract(s*0.618+time*0.004)),0.07+s*0.04,heatCC);
+        float hue=mix(nebulaHue,collapseHue,collapseT);
+        float sat=mix(0.80,mix(0.78,0.94,heatCC),collapseT);
+        float lum=mix(0.22+s*0.14,mix(0.14+s*0.10,0.55,heatCC),collapseT);
+        float fadeCC=0.5+0.5*sin(time*0.055+s*3.14);
+        float pulseCC=0.40+0.60*sin(time*(0.55+s*0.45)+s*8.37);
+        float brt=mix(0.62,(0.25+fadeCC*0.55+pulseCC*0.28)*(1.0+heatCC*1.5),collapseT);
+        vColor=hsl2rgb(hue,sat,lum)*brt;
+        float cAlphaCC=fadeCC*fadeCC*(0.40+pulseCC*0.30)*smoothstep(1.0,0.85,loopT)*smoothstep(0.0,0.08,loopT);
+        vAlpha=mix(0.55,cAlphaCC,collapseT);
+        vSeedOff=vec2(s*17.31+time*0.030, s*11.73+time*0.020);
+        vec4 mvPos=modelViewMatrix*vec4(pos,1.0);
+        float ptSz=(22.0+s*38.0)*0.92*640.0/-mvPos.z;
+        gl_PointSize=clamp(ptSz,4.0,400.0);
+        gl_Position=projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader: HSL_GLSL + HUE_REMAP_GLSL + `
+      uniform float gAlpha;
+      uniform float brightMult;
+      varying vec3  vColor;
+      varying float vAlpha;
+      varying vec2  vSeedOff;
+      float h2(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+      float n2(vec2 p){
+        vec2 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+        return mix(mix(h2(i),h2(i+vec2(1,0)),u.x),
+                   mix(h2(i+vec2(0,1)),h2(i+vec2(1,1)),u.x),u.y);
+      }
+      float fbm(vec2 p){
+        float v=0.0,a=0.5;
+        for(int i=0;i<4;i++){v+=a*n2(p);p=p*2.1+vec2(1.3,7.9);a*=0.5;}
+        return v;
+      }
+      void main(){
+        if(gAlpha<0.004) discard;
+        vec2  c=gl_PointCoord-0.5;
+        float d=length(c);
+        if(d>0.52) discard;
+        float n=fbm(c*4.5+vSeedOff);
+        float edge=d - n*0.32 + 0.04;
+        float shape=smoothstep(0.48,0.06,edge);
+        float detail=fbm(c*9.0+vSeedOff*1.8)*0.45+0.55;
+        float alpha=shape*detail*vAlpha*0.48*gAlpha;
+        if(alpha<0.002) discard;
+        gl_FragColor=vec4(vColor*detail*brightMult, alpha);
+      }
+    `,
+  });
+  scene.add(new THREE.Points(geo, cloudMat));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYER 3 — EJECTION SPARKS
+// Last to appear — granular life activates once the nebula is established.
+// ═══════════════════════════════════════════════════════════════════════════════
+const SPARK_N = 9000;
+let sparkMat;
+{
+  const geo   = new THREE.BufferGeometry();
+  const pos   = new Float32Array(SPARK_N*3);
+  const seed  = new Float32Array(SPARK_N);
+  for(let i=0;i<SPARK_N;i++){
+    const arm   = i % NUM_ARMS;
+    const t     = Math.random();
+    const r     = 5 + t*130;
+    const spin  = r*0.022;
+    const base  = (arm/NUM_ARMS)*Math.PI*2;
+    const angle = base + spin + (Math.random()-0.5)*0.08;
+    const rF    = r + (Math.random()-0.5)*r*0.03;
+    pos[i*3]   = rF*Math.cos(angle);
+    pos[i*3+1] = (Math.random()-0.5)*1.5;
+    pos[i*3+2] = rF*Math.sin(angle);
+    seed[i]    = Math.random();
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
+
+  sparkMat = new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0}, gAlpha:{value:0}, rotSpeed:{value:0.058} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
+      attribute float nSeed;
+      uniform float time;
+      uniform float rotSpeed;
+      varying vec3  vColor;
+      varying float vAlpha;
+      void main(){
+        float s=nSeed;
+        float cycleLen=5.0+s*9.0;
+        float phase=fract((time+s*cycleLen)/cycleLen);
+        float activeWin=0.22;
+        float t=clamp(phase/activeWin,0.0,1.0);
+        float isActive=step(phase,activeWin);
+        vec2 radDir=normalize(position.xz+vec2(0.0002,0.0002));
+        vec2 tangDir=normalize(vec2(-position.z, position.x));
+        vec2 ejectDir=normalize(radDir*0.25+tangDir*0.75);
+        float reach=t*(24.0+s*44.0);
+        vec3 ejPos=vec3(
+          position.x+ejectDir.x*reach,
+          position.y+(s-0.5)*reach*0.04,
+          position.z+ejectDir.y*reach
+        );
+        float rotA=time*rotSpeed;
+        float cr=cos(rotA),sr=sin(rotA);
+        ejPos=vec3(ejPos.x*cr-ejPos.z*sr,ejPos.y,ejPos.x*sr+ejPos.z*cr);
+        float normR=length(position.xz)/130.0;
+        float tipHue=0.60;
+        float armHue=mix(0.58,0.04,normR);
+        float hue=mix(tipHue,remapHue(armHue),t);
+        float lum=0.70-t*0.32;
+        vColor=hsl2rgb(hue,0.80,lum)*(1.2-t*0.65)*isActive;
+        vAlpha=isActive*(1.0-t)*(1.0-t)*0.48;
+        vec4 mvPos=modelViewMatrix*vec4(ejPos,1.0);
+        float ptSz=(0.7+s*0.6)*isActive*640.0/-mvPos.z;
+        gl_PointSize=clamp(ptSz,0.6,5.0);
+        gl_Position=projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader:`
+      uniform float gAlpha;
+      varying vec3  vColor;
+      varying float vAlpha;
+      void main(){
+        if(gAlpha<0.004||vAlpha<0.004) discard;
+        vec2  c=gl_PointCoord-0.5;
+        float d=length(c)*2.0;
+        if(d>1.0) discard;
+        float alpha=vAlpha*smoothstep(0.5,0.05,d)*gAlpha;
+        gl_FragColor=vec4(vColor,alpha);
+      }
+    `,
+  });
+  scene.add(new THREE.Points(geo, sparkMat));
+}
+
+// ── Atmospheric hazes ─────────────────────────────────────────────────────────
+const hazeRed  = new THREE.Mesh(new THREE.SphereGeometry(145,24,24),
+  new THREE.MeshBasicMaterial({color:0x5a0015,transparent:true,opacity:0,
+    side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
+const hazeBlue = new THREE.Mesh(new THREE.SphereGeometry(125,24,24),
+  new THREE.MeshBasicMaterial({color:0x001866,transparent:true,opacity:0,
+    side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
+const hazeGold = new THREE.Mesh(new THREE.SphereGeometry(110,24,24),
+  new THREE.MeshBasicMaterial({color:0x3a1800,transparent:true,opacity:0,
+    side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
+scene.add(hazeRed); scene.add(hazeBlue); scene.add(hazeGold);
+
+// ── Star field ────────────────────────────────────────────────────────────────
+const starMat = new THREE.PointsMaterial({
+  size:2.0, sizeAttenuation:true, vertexColors:true,
+  transparent:true, opacity:0, depthWrite:false,
+  blending:THREE.AdditiveBlending
+});
+{
+  const N=3500, geo=new THREE.BufferGeometry();
+  const p=new Float32Array(N*3), c=new Float32Array(N*3);
+  const pal=[[0.88,0.94,1],[1,1,0.88],[0.68,0.80,1],[1,0.82,0.62]];
+  for(let i=0;i<N;i++){
+    const a=Math.random()*Math.PI*2, b=Math.acos(2*Math.random()-1), r=700+Math.random()*300;
+    p[i*3]=r*Math.sin(b)*Math.cos(a); p[i*3+1]=r*Math.sin(b)*Math.sin(a); p[i*3+2]=r*Math.cos(b);
+    const sc=pal[Math.floor(Math.random()*pal.length)];
+    c[i*3]=sc[0]; c[i*3+1]=sc[1]; c[i*3+2]=sc[2];
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+  geo.setAttribute('color',  new THREE.BufferAttribute(c,3));
+  scene.add(new THREE.Points(geo, starMat));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COLLAPSE ELEMENTS — all start invisible (gAlpha/opacity=0), cross-faded in
+// during the spin-up transition after the nebula is fully formed.
+// ═══════════════════════════════════════════════════════════════════════════════
+const HSL_C   = HSL_GLSL;
+const REMAP_C = HUE_REMAP_GLSL;
+
+// ── Collapse Layer 1: Spiral Drain (20k particles) ───────────────────────────
+let drainMat;
+{
+  const N=20000, geo=new THREE.BufferGeometry();
+  const pos=new Float32Array(N*3), seed=new Float32Array(N);
+  for(let i=0;i<N;i++){
+    const arm=i%3, t=Math.random(), r=4+t*125, spin=r*0.022;
+    const base=(arm/3)*Math.PI*2;
+    const u=Math.random()*0.999+0.0005;
+    const g=Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*Math.random());
+    const angle=base+spin+g*0.14, rF=r+g*r*0.06;
+    pos[i*3]=rF*Math.cos(angle); pos[i*3+1]=g*r*0.018; pos[i*3+2]=rF*Math.sin(angle);
+    seed[i]=Math.random();
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
+  drainMat=new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0}, gAlpha:{value:0} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader: HSL_C+REMAP_C+`
+      attribute float nSeed;
+      uniform float time;
+      varying vec3  vColor;
+      varying float vAlpha;
+      void main(){
+        float s=nSeed;
+        float initR=length(position.xz);
+        float initAngle=atan(position.z,position.x);
+        float initY=position.y;
+        float cycleSpeed=0.095+s*0.042;
+        float loopT=fract(time*cycleSpeed+s);
+        float t=pow(loopT,0.80);
+        float r=initR*(1.0-pow(t,1.70));
+        float winds=2.8+initR*0.060;
+        float angle=initAngle+t*winds*6.2832;
+        float h=initY*(1.0-t*0.88);
+        float turbAmp=(0.4+t*3.2)*(0.8+s*0.4);
+        float tv1=time*(1.8+s*1.2)+s*6.2832;
+        float tv2=time*(2.5+s*0.8)+s*4.1888;
+        vec3 turb=vec3(sin(tv1)*turbAmp,(cos(tv2)*0.22)*turbAmp,cos(tv1)*turbAmp);
+        vec3 pos=vec3(r*cos(angle),h,r*sin(angle))+turb*t;
+        float heat=pow(t,1.80);
+        float coldHue=remapHue(fract(s*1.618+time*0.012));
+        float hotHue=0.07+s*0.06;
+        float hue=mix(coldHue,hotHue,heat);
+        float sat=mix(0.84,0.96,heat);
+        float lum=mix(0.28+s*0.18,0.72,pow(heat,1.5));
+        float brightFlare=1.0+pow(t,4.0)*5.0;
+        float pulse=0.55+0.45*sin(time*(3.0+s*2.0)+s*6.28);
+        float fadeIn=smoothstep(0.0,0.06,loopT);
+        float fadeOut=smoothstep(1.0,0.90,loopT);
+        vColor=hsl2rgb(hue,sat,lum)*brightFlare*(0.55+pulse*0.55);
+        vAlpha=fadeIn*fadeOut*(0.55+heat*0.55);
+        vec4 mvPos=modelViewMatrix*vec4(pos,1.0);
+        float ptSz=(1.4+(1.0-heat)*s*1.2)*640.0/-mvPos.z;
+        gl_PointSize=clamp(ptSz,0.8,10.0);
+        gl_Position=projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader:`
+      uniform float gAlpha;
+      varying vec3  vColor;
+      varying float vAlpha;
+      void main(){
+        if(gAlpha<0.004||vAlpha<0.004) discard;
+        vec2  c=gl_PointCoord-0.5;
+        float d=length(c)*2.0;
+        if(d>1.0) discard;
+        float crisp=smoothstep(0.44,0.0,d);
+        float core=max(0.0,1.0-d*9.0)*0.6;
+        float alpha=(crisp*0.38+core)*(0.50+vAlpha*0.60)*gAlpha;
+        if(alpha<0.003) discard;
+        gl_FragColor=vec4(vColor,alpha);
+      }
+    `,
+  });
+  scene.add(new THREE.Points(geo,drainMat));
+}
+
+// ── Collapse Layer 2: Cloud Vortex ────────────────────────────────────────────
+let cvortMat;
+{
+  const N=1600, geo=new THREE.BufferGeometry();
+  const pos=new Float32Array(N*3), seed=new Float32Array(N);
+  for(let i=0;i<N;i++){
+    const arm=i%3, t=Math.random(), r=6+t*110, spin=r*0.022;
+    const base=(arm/3)*Math.PI*2;
+    const scatter=(Math.random()-0.5)*r*0.50;
+    const angle=base+spin+scatter/Math.max(r,1), rF=r+(Math.random()-0.5)*r*0.30;
+    pos[i*3]=rF*Math.cos(angle); pos[i*3+1]=(Math.random()-0.5)*r*0.10; pos[i*3+2]=rF*Math.sin(angle);
+    seed[i]=Math.random();
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
+  cvortMat=new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0}, gAlpha:{value:0} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader: HSL_C+REMAP_C+`
+      attribute float nSeed;
+      uniform float time;
+      varying vec3  vColor;
+      varying float vAlpha;
+      varying vec2  vSeedOff;
+      void main(){
+        float s=nSeed;
+        float loopT=fract(time*0.040+s);
+        float t=pow(loopT,0.70);
+        float r=length(position.xz)*(1.0-pow(t,2.0));
+        float angle=atan(position.z,position.x)+t*4.5*6.2832;
+        float h=position.y*(1.0-t*0.70);
+        float amp=3.0+t*8.0;
+        float tv1=time*(0.12+s*0.08)+s*6.2832;
+        float tv2=time*(0.18+s*0.06)+s*4.1888;
+        vec3 drift=vec3(sin(tv1)*amp+cos(tv2*0.6)*amp*0.4,
+                        (cos(tv2)*0.09+sin(tv1)*0.07)*amp,
+                        cos(tv1)*amp+sin(tv2*0.7)*amp*0.4);
+        float rotA=time*0.32;
+        float cr=cos(rotA),sr=sin(rotA);
+        vec3 basePos=vec3(r*cos(angle),h,r*sin(angle));
+        basePos=vec3(basePos.x*cr-basePos.z*sr,basePos.y,basePos.x*sr+basePos.z*cr);
+        vec3 finalPos=basePos+drift*t;
+        float heat=pow(t,1.6);
+        float hue=mix(remapHue(fract(s*0.618+time*0.004)), 0.07+s*0.04, heat);
+        float sat=mix(0.78,0.94,heat);
+        float lum=mix(0.14+s*0.10,0.55,heat);
+        float fade=0.5+0.5*sin(time*0.055+s*3.14);
+        float pulse=0.40+0.60*sin(time*(0.55+s*0.45)+s*8.37);
+        vColor=hsl2rgb(hue,sat,lum)*(0.25+fade*0.55+pulse*0.28)*(1.0+heat*1.5);
+        vAlpha=fade*fade*(0.40+pulse*0.30)*smoothstep(1.0,0.85,loopT)*smoothstep(0.0,0.08,loopT);
+        vSeedOff=vec2(s*17.31+time*0.045, s*11.73+time*0.030);
+        vec4 mvPos=modelViewMatrix*vec4(finalPos,1.0);
+        gl_PointSize=clamp((18.0+s*32.0)*(0.70+fade*0.40)*640.0/-mvPos.z,3.0,350.0);
+        gl_Position=projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader: HSL_C+REMAP_C+`
+      uniform float gAlpha;
+      varying vec3  vColor;
+      varying float vAlpha;
+      varying vec2  vSeedOff;
+      float h2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+      float n2(vec2 p){vec2 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+        return mix(mix(h2(i),h2(i+vec2(1,0)),u.x),mix(h2(i+vec2(0,1)),h2(i+vec2(1,1)),u.x),u.y);}
+      float fbm(vec2 p){float v=0.0,a=0.5;for(int i=0;i<4;i++){v+=a*n2(p);p=p*2.1+vec2(1.3,7.9);a*=0.5;}return v;}
+      void main(){
+        if(gAlpha<0.004||vAlpha<0.004) discard;
+        vec2  c=gl_PointCoord-0.5;
+        float d=length(c);
+        if(d>0.52) discard;
+        float n=fbm(c*4.2+vSeedOff);
+        float shape=smoothstep(0.48,0.06,d-n*0.30+0.04);
+        float detail=fbm(c*8.5+vSeedOff*1.9)*0.42+0.58;
+        float alpha=shape*detail*vAlpha*0.60*gAlpha;
+        if(alpha<0.002) discard;
+        gl_FragColor=vec4(vColor*detail,alpha);
+      }
+    `,
+  });
+  scene.add(new THREE.Points(geo,cvortMat));
+}
+
+// ── Collapse Layer 3: Bipolar Jets ────────────────────────────────────────────
+let jetTopMat, jetBotMat;
+{
+  const makeJet=(side,colA,colB)=>{
+    const N=4000, geo=new THREE.BufferGeometry();
+    const pos=new Float32Array(N*3), seed=new Float32Array(N);
+    for(let i=0;i<N;i++){
+      const t=Math.pow(Math.random(),0.65), yR=t*58, spread=t*t*0.30, a=Math.random()*Math.PI*2;
+      pos[i*3]=Math.cos(a)*yR*spread; pos[i*3+1]=side*yR; pos[i*3+2]=Math.sin(a)*yR*spread;
+      seed[i]=Math.random();
+    }
+    geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+    geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
+    const mat=new THREE.ShaderMaterial({
+      uniforms:{ time:{value:0}, gAlpha:{value:0} },
+      transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+      vertexShader: HSL_C+`
+        attribute float nSeed;
+        uniform float time;
+        varying vec3  vColor;
+        varying float vAlpha;
+        void main(){
+          float s=nSeed;
+          float phase=fract(time*(0.32+s*0.40)+s*7.3);
+          vec3 pos=position*phase;
+          float tv=time*(2.2+s*1.4)+s*6.28;
+          float turbR=length(position.xz)*phase*0.14;
+          pos.x+=sin(tv)*turbR; pos.z+=cos(tv)*turbR;
+          vec3 cA=vec3(${colA}), cB=vec3(${colB});
+          float pulse=0.50+0.50*sin(time*(3.5+s*2.0)+s*6.28);
+          vColor=mix(cA,cB,phase)*(1.8-phase*1.0)*(0.6+pulse*0.5);
+          vAlpha=(1.0-phase)*(1.0-phase)*0.88*smoothstep(0.0,0.05,phase);
+          vec4 mvPos=modelViewMatrix*vec4(pos,1.0);
+          gl_PointSize=clamp((1.2+s*0.8)*640.0/-mvPos.z,0.8,8.0);
+          gl_Position=projectionMatrix*mvPos;
+        }
+      `,
+      fragmentShader:`
+        uniform float gAlpha;
+        varying vec3  vColor;
+        varying float vAlpha;
+        void main(){
+          if(gAlpha<0.004||vAlpha<0.004) discard;
+          vec2 c=gl_PointCoord-0.5;
+          float d=length(c)*2.0;
+          if(d>1.0) discard;
+          float alpha=vAlpha*smoothstep(0.5,0.02,d)*gAlpha;
+          gl_FragColor=vec4(vColor,alpha);
+        }
+      `,
+    });
+    scene.add(new THREE.Points(geo,mat));
+    return mat;
+  };
+  jetTopMat=makeJet( 1,'1.0,0.95,0.80','1.0,0.28,0.06');
+  jetBotMat=makeJet(-1,'0.85,0.95,1.0','0.10,0.45,1.0');
+}
+
+// ── Collapse Core Glow ────────────────────────────────────────────────────────
+function coreGlow(r,col){
+  const m=new THREE.Mesh(new THREE.SphereGeometry(r,20,20),
+    new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0,
+      blending:THREE.AdditiveBlending,depthWrite:false}));
+  scene.add(m); return m;
+}
+const coreWhite  = coreGlow(1.2, 0xffffff);
+const coreAmber  = coreGlow(2.8, 0xff8800);
+const coreOrange = coreGlow(5.5, 0xff3300);
+const coreDark   = coreGlow(8.0, 0x220800);
+const coreLight  = new THREE.PointLight(0xffaa40, 0, 400);
+scene.add(coreLight);
+let collapseTime = 0;
+let coreVisibility = 0; // driven by cross-fade sub
+
+// ── Background color ──────────────────────────────────────────────────────────
+const bg = { r:0, g:0, b:0.016 };
+const bgTarget = { r:0, g:0, b:0.016 };
+function lerpBg(spd){
+  bg.r+=(bgTarget.r-bg.r)*spd; bg.g+=(bgTarget.g-bg.g)*spd; bg.b+=(bgTarget.b-bg.b)*spd;
+  renderer.setClearColor(new THREE.Color(bg.r,bg.g,bg.b),1);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TIMELINE — void (0-12s) → nebula condenses (12-54s) → full nebula (54s+)
+// Fine particles use formT for radial inside-out reveal (core first, arms last).
+// Camera r only guided during void phase — user controls it freely after.
+// ═══════════════════════════════════════════════════════════════════════════════
+const T_VOID_END   = 12;  // void phase
+const T_FINE_END   = 44;  // fine particles fully formed
+const T_CLOUD_END  = 50;  // clouds fully in
+const T_SPARK_END  = 56;  // sparks last
+const T_FULL       = 56;  // nebula fully settled
+const T_COLL_START = 56;  // nebula full — same particles begin morphing to collapse
+const T_COLL_END   = 90;  // 34s morph window, particles are now pure collapse behavior
+
+let T = 0;
+
+function timeline(dt){
+  T += dt;
+
+  const voidBreath = 0.5 + 0.5*Math.sin(T*0.55);
+
+  // ── VOID (T=0-12s) ────────────────────────────────────────────────────────
+  if(T < T_VOID_END) {
+    const sub = T / T_VOID_END;
+    starMat.opacity = easeOut(sub) * 0.16;
+    voidMat.opacity = easeOut(sub) * (0.12 + voidBreath * 0.07);
+    bgTarget.r = 0.004; bgTarget.g = 0; bgTarget.b = 0.022;
+    // Gently drift camera from 380 → 320 during void only
+    sphTarget.r = 380 - easeOut(sub) * 60;
+  }
+
+  // ── NEBULA CONDENSES (T=12-56s) ───────────────────────────────────────────
+  if(T >= T_VOID_END) {
+    const bloomSub = clamp((T - T_VOID_END) / (T_FULL - T_VOID_END), 0, 1);
+
+    // Stars settle
+    starMat.opacity = 0.16 + easeOut(bloomSub) * 0.32;
+
+    // Void foam dissolves as nebula arrives
+    voidMat.opacity = Math.max(0, 0.12 - easeOut(bloomSub) * 0.12);
+
+    // Background warms slowly toward nebula's deep crimson-blue
+    bgTarget.r = easeOut(bloomSub) * 0.011;
+    bgTarget.g = 0;
+    bgTarget.b = 0.022 - bloomSub * 0.006;
+
+    // Clouds lead the formation — appear right as void ends, fast and prominent.
+    // These FBM blobs ARE the primordial cloud mass arriving first.
+    const cloudSub = clamp((T - T_VOID_END) / (T_CLOUD_END - T_VOID_END), 0, 1);
+    cloudMat.uniforms.gAlpha.value = easeOut(cloudSub) * 0.92;
+
+    // Hazes bloom with clouds — ambient glow of the cloud mass
+    hazeRed.material.opacity  = easeOut(cloudSub) * 0.10;
+    hazeBlue.material.opacity = easeOut(cloudSub) * 0.08;
+    hazeGold.material.opacity = easeOut(cloudSub) * 0.06;
+
+    // Fine particles emerge 2s after clouds, initially scattered via cloudScatter in
+    // vertex shader — they look like part of the same cloud mass at first.
+    // As formT rises the scatter collapses and arms condense out of the cloud.
+    const fineSub = clamp((T - (T_VOID_END+2)) / (T_FINE_END - (T_VOID_END+2)), 0, 1);
+    fineMat.uniforms.formT.value  = fineSub;
+    fineMat.uniforms.gAlpha.value = slowForm(fineSub);
+
+    // Sparks — last, activate only once nebula is mostly solid
+    const sparkSub = clamp((T - (T_VOID_END+16)) / (T_SPARK_END - (T_VOID_END+16)), 0, 1);
+    sparkMat.uniforms.gAlpha.value = slowForm(sparkSub);
+  }
+
+  // ── MORPH TO COLLAPSE (T=56-90s) ─────────────────────────────────────────
+  // collapseT drives the same particles from nebula → collapse behavior in-shader.
+  // No second particle system. No cross-fade. The particles themselves change.
+  if(T >= T_COLL_START) {
+    const cSub   = clamp((T - T_COLL_START) / (T_COLL_END - T_COLL_START), 0, 1);
+    const cCurve = cSub*cSub*(3.0-2.0*cSub); // smoothstep
+
+    fineMat.uniforms.collapseT.value  = cCurve;
+    cloudMat.uniforms.collapseT.value = cCurve;
+
+    // Nebula component of the blend spins up proportionally
+    fineMat.uniforms.rotSpeed.value  = 0.058 + cCurve * (0.32 - 0.058);
+    cloudMat.uniforms.rotSpeed.value = 0.026 + cCurve * (0.32 - 0.026);
+    sparkMat.uniforms.rotSpeed.value = 0.058 + cCurve * (0.32 - 0.058);
+
+    // Hue warms toward amber ahead of collapse color takeover
+    fineMat.uniforms.warmBias.value  = easeOut(cSub) * 0.55;
+    cloudMat.uniforms.warmBias.value = easeOut(cSub) * 0.55;
+
+    // Sparks fade quickly as collapse takes over
+    sparkMat.uniforms.gAlpha.value = Math.max(0, 1.0 - cSub * 3.0);
+
+    // Core glow builds as collapse behavior dominates
+    coreVisibility = cCurve * cCurve;
+
+    // Background and hazes shift warm
+    bgTarget.r = 0.011 + cCurve * 0.014;
+    bgTarget.g = cCurve * 0.004;
+    bgTarget.b = Math.max(0, 0.016 - cCurve * 0.013);
+    hazeRed.material.opacity  = 0.10 + cCurve * 0.08;
+    hazeBlue.material.opacity = Math.max(0, 0.08 - cCurve * 0.08);
+    hazeGold.material.opacity = 0.06 + cCurve * 0.07;
+  }
+}
+
+// ── Render loop ───────────────────────────────────────────────────────────────
+let last = performance.now();
+function tick(){
+  requestAnimationFrame(tick);
+  const now = performance.now();
+  const dt  = Math.min((now-last)/1000, 0.05); last=now;
+
+  fineMat.uniforms.time.value  += dt;
+  cloudMat.uniforms.time.value += dt;
+  sparkMat.uniforms.time.value += dt;
+
+  if(coreVisibility > 0) {
+    collapseTime += dt;
+    const pulse    = Math.pow(Math.max(0, Math.sin(collapseTime*0.9)),  2.5);
+    const bigFlash = Math.pow(Math.max(0, Math.sin(collapseTime*0.28)), 8.0) * 1.4;
+    const core     = (pulse + bigFlash) * coreVisibility;
+    coreWhite.material.opacity  = core * 1.10;
+    coreAmber.material.opacity  = core * 0.88;
+    coreOrange.material.opacity = core * 0.58;
+    coreDark.material.opacity   = coreVisibility * 0.65 + core * 0.30;
+    coreLight.intensity         = core * 24;
+  }
+
+  timeline(dt);
+  lerpBg(0.022);
+
+  const rotNorm = clamp((fineMat.uniforms.rotSpeed.value - 0.058) / (0.32 - 0.058), 0, 1);
+  const autoRotate = 0.00038 + rotNorm * (0.00055 - 0.00038);
+  if(!drag) sphTarget.theta += autoRotate;
+  sph.r     += (sphTarget.r-sph.r)*0.040; // responsive zoom
+  sph.theta += (sphTarget.theta-sph.theta)*0.08;
+  sph.phi   += (sphTarget.phi-sph.phi)*0.08;
+  applyCamera();
+  renderer.render(scene, camera);
+}
+tick();
+</script>
+</body>
+</html>
