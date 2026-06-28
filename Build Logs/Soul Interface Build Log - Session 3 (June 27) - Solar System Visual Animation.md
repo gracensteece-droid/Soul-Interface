@@ -38,6 +38,17 @@
 
 ---
 
+### How to Search GitHub for Visual Three.js Repos
+Go to `github.com` and use the search bar with these tips:
+- Search terms that work well: `three.js nebula`, `three.js space shader`, `threejs galaxy`, `webgl nebula`, `glsl space`
+- After searching, click **Repositories** tab, then sort by **Most stars** or **Recently updated**
+- Filter by language: **JavaScript** or **TypeScript**
+- Browse topics directly: `github.com/topics/threejs` or `github.com/topics/webgl`
+- On any repo you like, scroll down to the **Topics** tags and click them to find similar repos
+- Look for repos that have a live demo link in the description — if it has a demo, you can feel it before reading the code
+
+---
+
 ### Three.js / Space Visual Resources (for next session)
 - **GitHub topics**: `github.com/topics/threejs` — filter by stars/recent. Search `three.js space`, `three.js galaxy`, `three.js solar system`
 - **Shadertoy** (`shadertoy.com`) — GLSL fragment shaders, translates directly to Three.js ShaderMaterial. Search `nebula`, `space`, `black hole`, `star field`. Best source for cinematic space visuals
