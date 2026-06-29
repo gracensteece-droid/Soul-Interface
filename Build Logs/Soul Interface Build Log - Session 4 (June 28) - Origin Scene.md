@@ -119,9 +119,155 @@ gl_PointSize = mix(nebulaPtSz, collapsePtSz, ct) / -mvPos.z;
 
 ---
 
+---
+
+### Sun Ignition — Added This Session
+
+After the morph completes (`collapseT=1`), the scene bursts into the sun. All still in `origin.html`.
+
+#### Sun elements added
+- **`sunMat`** — SphereGeometry(2.4, 64, 64) with FBM lava shader. Uniforms: `time`, `hueMode`, `emergence`, `distort`.
+- **`coronaGroup`** — 5 billboard PlaneGeometry planes (18, 34, 56, 85, 28 units) with additive blending, `globalAlpha` uniform fades them in. SDO palette color cycling post-ignition.
+- **`flashMesh`** — large SphereGeometry(55) BackSide additive sphere for the initial white burst.
+- **Solar prominence loops** — 10 bezier arc emission loops (`loopMat`), `bezP()` helper, world-space radius aware.
+
+#### Key shader features
+
+**Vertex ripple** — sphere geometry physically undulates:
+```glsl
+float ripple = (r1*0.5 + r2*0.35 + r3*0.15) * distort * 0.09;
+vec3 displaced = position + normalize(position) * ripple;
+```
+Three overlapping sin/cos waves at different frequencies and speeds. Amplitude tuned to 0.09 (was 0.22 — dialed back so it flows rather than shatters).
+
+**Fragment domain warp** — FBM domain distorted with low-frequency waves (amplitude 0.65) when `distort > 0`. Combined with vertex ripple this creates a full melting/flowing look at max distort.
+
+**`emergence` uniform** — blends between pure white-hot (`vec3(1.8,1.5,1.0)`) and the full FBM palette. At 0 the sun looks like part of the flash. At 1 it has full surface detail.
+
+#### Ignition trigger fix
+The original `bigFlash > 0.80` trigger fired only at narrow peaks every ~22s and was timing-dependent — sun never appeared reliably. Replaced with immediate trigger: fires as soon as `collapseT >= 1.0`. The flash moment itself creates the visual peak.
+
+#### Continuous ignition sequence (IGNITE_DUR = 4s)
+
+Replaced 5-phase if/else (which had value discontinuities at boundaries causing cartoonish feel) with a single `pct` variable driving continuous mathematical curves:
+
+| What | Curve |
+|---|---|
+| Sun scale | `1.0 + 21.0 * exp(-pct * 5.2)` — exponential decay from 22→1 |
+| Distort | `max(0, sin(π * min(1, pct/0.78)))^0.75` — bell curve, peaks at pct=0.39 |
+| Emergence | `smoothstep(0.68, 1.0, pct)` — late fast ramp |
+| Flash | Arc function peaking at pct=0.14, gone by 0.50 |
+| Particle dissolve | `max(0, 1 - pct*7)` — soft fade (not pop) |
+| Corona/loops | Rise from pct=0.80 via `easeOut((pct-0.80)/0.20)` |
+
+**Cloud-scale start**: when ignition fires, `sunMesh.scale.setScalar(22.0)` — the sun appears at the same apparent size as the departing nebula clouds. The sequence is the cloud *becoming* the sun (shrinking into itself), not a small sun appearing from nowhere.
+
+#### Glitchiness polish
+- **Vertex ripple amplitude**: `distort * 0.22` → `distort * 0.09` — surface flows, doesn't spike
+- **Fragment warp amplitude**: `distort * 1.4` → `distort * 0.65` — texture shifts, doesn't shatter
+- **Particle dissolve**: `pct * 11` → `pct * 7` — particles melt into the flash over ~0.57s instead of popping at 0.36s
+
+#### Other fixes this session
+- **Ring silhouettes removed** — `hazeRed`, `hazeBlue`, `hazeGold` were sphere meshes rendering as filled dark discs. Replaced with JS stub objects `{ material:{ opacity:0 } }`. Same property shape so timeline writes don't error, nothing renders.
+- **Green collapse particles fixed** — `collapseHue` at low `heat` was bleeding green. Added warm bias: `collapseHueBiased = mix(collapseHue, 0.07+s*0.06, (1.0-heat)*warmBias)` in the fine particle vertex shader.
+- **Camera pull-in reduced** — collapse phase now goes 320→135 (was 320→75). Ignition phases stay around 95–135.
+- **Morph window tightened** — `T_COLL_END` reduced 90→74. Faster pacing to ignition.
+
+---
+
+### Galaxy Spiral — Added This Session
+
+After ignition completes, particles fly outward from the sun and self-organise into a two-arm logarithmic spiral galaxy over `GALAXY_DUR = 12` seconds. All in `origin.html`.
+
+#### Galaxy particle system (`galaxyT` uniform)
+
+The existing 14,000 fine particles morph from their collapse-inward positions into galaxy star positions via `galaxyT` (0→1 easeIn, 12 seconds):
+
+```glsl
+// Logarithmic spiral arm math in fine particle vertex shader
+float armIdx   = step(0.5, fract(s*3.71));
+float armOff   = armIdx * 3.14159265;         // two arms 180° apart
+float gR       = 25.0 + fract(s*7.31)*230.0; // radius 25–255 units
+float gTheta   = armOff + (gR/75.0)*2.8 + (fract(s*5.19)-0.5)*0.55;
+float gX       = gR*cos(gTheta) + spread*cos(gTheta+1.5708);
+float gZ       = gR*sin(gTheta) + spread*sin(gTheta+1.5708);
+vec3 galaxyPos = vec3(gX, gY, gZ);
+pos = mix(pos, galaxyPos, galaxyT);
+```
+
+Star colors: warm gold/amber (`0.06-0.11` hue) or blue-white (`0.57-0.65`) mixed 78/22%.
+
+#### Dense galaxy disc (`galaxyDiscMat`, 28,000 particles)
+
+Separate system adds density independent of the morph:
+- 12% core (tight clustering), 60% tight spiral arms, 28% halo
+- **Differential rotation vertex shader**: `rotT = time * max(0.003, 0.014 - radius*0.000042)` — inner particles orbit faster than outer, simulating gravitational rotation
+- Fades in via `gAlpha = min(1.0, gtCurve * 1.5)`
+
+#### Post-ignition camera
+- Camera pulls back from r=95 → r=305 over 12 seconds as galaxy expands outward
+- After `gt >= 0.96` the timeline stops touching camera — full user scroll control
+- Slow theta drift `+= 0.00042/frame` gives gentle rotation of the view
+
+---
+
+### Solar Flarage — Upgraded This Session
+
+**Previous state:** 4 billboard corona planes (6.5, 10, 16, 26 units), simple single-layer noise, max flareStrength ≈ 2.4.
+
+**Problems:** Planes too small (at sun scale=4.5 the smallest plane was inside the sphere), noise too uniform, flarage not visible at distance.
+
+**New setup (5 layers):**
+
+| Layer | Color | Size | Role |
+|---|---|---|---|
+| Inner white | `#fffde8` | 18 | Tight bright bloom, flareStr=5.5 |
+| Gold rays | `#ffcc44` | 34 | Medium arms, flareStr=7.0 |
+| Orange | `#ff7700` | 56 | Outer diffuse glow, flareStr=5.0 |
+| Deep red halo | `#ff3300` | 85 | Wide soft halo, flareStr=3.0 |
+| Spike layer | `#ff8822` | 28 | High-frequency spikes, flareStr=8.5 |
+
+**Fragment shader upgrade:** Two noise layers at different frequencies (`38.0` and `52.0`) multiplied together — creates rich layered spike texture. Flares use linear falloff (`1.0 - dist*1.5`) instead of hard smoothstep cutoff, so spikes reach the edge of each plane rather than being masked out at mid-radius.
+
+---
+
+### Solar Prominence Loops — Upgraded This Session
+
+**Problem:** Loops used fixed `SUN_R=2.4` for arc anchor positions. After ignition, sunMesh grows to scale=4.5 (world radius=10.8 units), but loops remained at radius 2.4 — completely inside the sphere, invisible.
+
+**Fix — `updateLoops(t, worldR)`:**
+```js
+const R = worldR || SUN_R;       // e.g. SUN_R * sunMesh.scale.x
+const hScale = R / SUN_R;        // heights scale proportionally
+const h = lp.h * hScale;
+const p0 = { x: R*cos(a1), z: R*sin(a1) };   // anchors on actual surface
+const p1 = { x: ...(R + h)... };              // apex above surface
+```
+
+At sun scale=4.5: loop arcs from radius 10.8, heights of 13–38 units above the surface — dramatic solar flares that frame the sun.
+
+**Other loop changes:**
+- 10 loops (was 5), spread evenly around the sun from init
+- Base heights: 3.0–8.5 units (was 1.8–5.3)
+- Loops start during ignition at `pct > 0.80` (same as corona), not just post-ignition
+- Point sprite size: `max(2.0, 6.0*90.0/-mv.z)` (was `max(1.5, 4.0*90.0/...`)
+- Band alpha multiplier: 1.1 (was 0.9), spread factor: 12 (was 14) — wider, brighter traveling band
+
+---
+
+### Final State — End of Session 4
+
+Full sequence plays continuously with no buttons:
+1. **Void** (0–12s) — quantum foam, camera drifts from r=380→320
+2. **Nebula** (12–56s) — cloud-first formation, arms condense, rotation builds 0.012→0.058
+3. **Collapse** (56–74s) — single morphing particle system, easeIn acceleration, rotation → 0.32
+4. **Ignition** (~4s) — continuous curves, cloud → sun flash → sun emerges with corona and loops
+5. **Galaxy** (12s) — particles fly to spiral arms, dense disc rotates differentially, camera pulls back
+6. **Living sun** — FBM lava surface, ripple, warp, 5-layer corona flarage, 10 prominence loops, SDO color cycling
+
 ### Next Session Starting Point
 
-The morph transition is working well. Potential next steps:
-- Sun ignition — the `bigFlash = sin(t*0.28)^8 * 1.4` core moment, build out the bright flash and solar wind after collapseT=1
-- Extend sequence: after collapse completes, transition to the solar system scene
-- Consider adding jets (jetTopMat / jetBotMat) back in after collapseT=1 as a bonus visual layer on top of the morphed particles
+Potential next steps:
+- **Integration** — connect origin.html as entry point before the solar system scene
+- **Shockwave ring** — expanding ring after ignition (solar wind effect)
+- **Jets** — add bipolar jets after collapseT=1 as a visual bonus layer

@@ -142,7 +142,7 @@ let fineMat;
   geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
 
   fineMat = new THREE.ShaderMaterial({
-    uniforms:{ time:{value:0}, gAlpha:{value:0}, formT:{value:0}, rotSpeed:{value:0.058}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0} },
+    uniforms:{ time:{value:0}, gAlpha:{value:0}, formT:{value:0}, rotSpeed:{value:0.058}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0}, galaxyT:{value:0} },
     transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
     vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
       attribute float nSeed;
@@ -151,6 +151,7 @@ let fineMat;
       uniform float rotSpeed;
       uniform float warmBias;
       uniform float collapseT;
+      uniform float galaxyT;
       varying vec3  vColor;
       varying float vAlpha;
       void main(){
@@ -222,16 +223,40 @@ let fineMat;
         // ── BLEND ────────────────────────────────────────────────────────────
         float ct=collapseT;
         vec3 pos=mix(nebulaPos,collapsePos,ct);
-        float hue=mix(nebulaHue,collapseHue,ct);
+        // Shift cold collapse particles toward amber — prevents green bleed at low heat
+        float collapseHueBiased=mix(collapseHue,0.07+s*0.06,(1.0-heat)*warmBias);
+        float hue=mix(nebulaHue,collapseHueBiased,ct);
         float lum=mix(nebulaLum,collapseLum,ct);
         float sat=mix(0.86,mix(0.84,0.96,heat),ct);
         float brt=mix((0.22+formed*0.78)*0.90,brightFlare*(0.55+pulse*0.55),ct);
         vColor=hsl2rgb(hue,sat,lum)*brt;
         vAlpha=mix(nebulaAlpha,collapseAlpha,ct);
 
+        // ── GALAXY (spiral arms materialize from sun outward after ignition) ──
+        // Two-arm logarithmic spiral using GalaxyThreeJS math, seeded per particle
+        float armIdx=step(0.5,fract(s*3.71));           // 50/50 into arm 0 or arm 1
+        float armOff=armIdx*3.14159265;
+        float gR=25.0+fract(s*7.31)*230.0;              // radius 25-255 units
+        float gTheta=armOff+(gR/75.0)*2.8              // logarithmic spiral twist
+                    +(fract(s*5.19)-0.5)*0.55;          // ±scatter within arm
+        float gSpread=(fract(s*11.3)-0.5)*50.0;         // lateral arm width
+        float gX=gR*cos(gTheta)+gSpread*cos(gTheta+1.5708);
+        float gZ=gR*sin(gTheta)+gSpread*sin(gTheta+1.5708);
+        float gY=(fract(s*13.7)-0.5)*8.0;               // thin galactic disc
+        vec3 galaxyPos=vec3(gX,gY,gZ);
+        pos=mix(pos,galaxyPos,galaxyT);
+        // Star color palette (warm majority, cool-blue minority — stellar distribution)
+        float coolStar=step(0.78,fract(s*8.11));
+        float starHue=mix(mix(0.06,0.11,fract(s*4.3)),mix(0.57,0.65,fract(s*6.1)),coolStar);
+        float starSat=0.45+fract(s*3.1)*0.30;
+        float starLum=0.65+fract(s*7.9)*0.30;
+        vColor=mix(vColor,hsl2rgb(starHue,starSat,starLum)*(1.2+fract(s*2.7)*0.8),galaxyT);
+        vAlpha=mix(vAlpha,0.92,galaxyT);
+
         vec4 mvPos=modelViewMatrix*vec4(pos,1.0);
         float ptSz=mix(nebulaPtSz,collapsePtSz,ct)/-mvPos.z;
-        gl_PointSize=clamp(ptSz,0.8,13.0);
+        float starPtSz=clamp((0.8+fract(s*5.2)*1.4)*640.0/-mvPos.z,1.0,6.0);
+        gl_PointSize=clamp(mix(ptSz,starPtSz,galaxyT),0.5,13.0);
         gl_Position=projectionMatrix*mvPos;
       }
     `,
@@ -466,17 +491,11 @@ let sparkMat;
   scene.add(new THREE.Points(geo, sparkMat));
 }
 
-// ── Atmospheric hazes ─────────────────────────────────────────────────────────
-const hazeRed  = new THREE.Mesh(new THREE.SphereGeometry(145,24,24),
-  new THREE.MeshBasicMaterial({color:0x5a0015,transparent:true,opacity:0,
-    side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
-const hazeBlue = new THREE.Mesh(new THREE.SphereGeometry(125,24,24),
-  new THREE.MeshBasicMaterial({color:0x001866,transparent:true,opacity:0,
-    side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
-const hazeGold = new THREE.Mesh(new THREE.SphereGeometry(110,24,24),
-  new THREE.MeshBasicMaterial({color:0x3a1800,transparent:true,opacity:0,
-    side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
-scene.add(hazeRed); scene.add(hazeBlue); scene.add(hazeGold);
+// Atmospheric hazes removed — solid sphere geometry renders as visible disc rings.
+// Background color lerp (bgTarget) handles ambient warmth instead.
+const hazeRed  = { material:{ opacity:0 } };
+const hazeBlue = { material:{ opacity:0 } };
+const hazeGold = { material:{ opacity:0 } };
 
 // ── Star field ────────────────────────────────────────────────────────────────
 const starMat = new THREE.PointsMaterial({
@@ -739,7 +758,293 @@ const coreDark   = coreGlow(8.0, 0x220800);
 const coreLight  = new THREE.PointLight(0xffaa40, 0, 400);
 scene.add(coreLight);
 let collapseTime = 0;
-let coreVisibility = 0; // driven by cross-fade sub
+let coreVisibility = 0;
+
+// ── Galaxy disc — dense spiral arm particle system (fades in post-ignition) ──
+const GALAXY_DISC_N = 28000;
+const galaxyDiscGeo = new THREE.BufferGeometry();
+{
+  const pos   = new Float32Array(GALAXY_DISC_N * 3);
+  const seeds = new Float32Array(GALAXY_DISC_N);
+  for(let i = 0; i < GALAXY_DISC_N; i++){
+    const s = Math.random(); seeds[i] = s;
+    const r = Math.random();
+    let gR, tightness;
+    if(r < 0.12){
+      // Central bulge — dense core
+      gR = Math.random() * 28; tightness = 12;
+    } else if(r < 0.72){
+      // Arm core — tight concentration
+      gR = 18 + Math.random() * 220; tightness = 16;
+    } else {
+      // Arm halo — slightly looser scatter
+      gR = 12 + Math.random() * 240; tightness = 48;
+    }
+    const armOff = Math.floor(Math.random() * 2) * Math.PI;
+    const gTheta = armOff + (gR / 75.0) * 2.8 + (Math.random() - 0.5) * 0.38;
+    const gPerp  = gTheta + Math.PI * 0.5;
+    const gSpread = (Math.random() - 0.5) * tightness;
+    pos[i*3]   = gR * Math.cos(gTheta) + gSpread * Math.cos(gPerp);
+    pos[i*3+1] = (Math.random() - 0.5) * 7;
+    pos[i*3+2] = gR * Math.sin(gTheta) + gSpread * Math.sin(gPerp);
+  }
+  galaxyDiscGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  galaxyDiscGeo.setAttribute('nSeed',    new THREE.BufferAttribute(seeds, 1));
+}
+const galaxyDiscMat = new THREE.ShaderMaterial({
+  uniforms:{ time:{value:0}, gAlpha:{value:0} },
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  vertexShader: HSL_GLSL + `
+    attribute float nSeed;
+    uniform float time, gAlpha;
+    varying vec3  vColor;
+    varying float vAlpha;
+    void main(){
+      float s = nSeed;
+      // Differential rotation — inner orbits faster (real disc kinematics)
+      float radius = length(position.xz);
+      float rotT = time * max(0.003, 0.014 - radius * 0.000042);
+      float cr = cos(rotT), sr = sin(rotT);
+      vec3 rotPos = vec3(
+        position.x*cr - position.z*sr,
+        position.y,
+        position.x*sr + position.z*cr
+      );
+      // Star color — warm majority, cool blue-white minority (stellar distribution)
+      float cool = step(0.78, fract(s*8.11));
+      float hue = mix(mix(0.06,0.11,fract(s*4.3)), mix(0.57,0.65,fract(s*6.1)), cool);
+      float lum = 0.62 + fract(s*7.9)*0.36;
+      float sat = 0.42 + fract(s*3.1)*0.35;
+      vColor = hsl2rgb(hue, sat, lum) * (1.1 + fract(s*2.3)*0.9);
+      vAlpha = 0.65 + fract(s*5.7)*0.35;
+      vec4 mvPos = modelViewMatrix * vec4(rotPos, 1.0);
+      gl_PointSize = clamp((0.7+fract(s*4.2)*1.5)*640.0/-mvPos.z, 0.8, 7.0);
+      gl_Position  = projectionMatrix * mvPos;
+    }
+  `,
+  fragmentShader:`
+    uniform float gAlpha;
+    varying vec3  vColor;
+    varying float vAlpha;
+    void main(){
+      if(gAlpha < 0.004) discard;
+      vec2  c = gl_PointCoord - 0.5;
+      float d = length(c) * 2.0;
+      if(d > 1.0) discard;
+      float crisp = smoothstep(0.55, 0.0, d);
+      float core  = max(0.0, 1.0 - d*8.0) * 0.72;
+      float alpha = (crisp*0.42 + core) * vAlpha * gAlpha;
+      if(alpha < 0.003) discard;
+      gl_FragColor = vec4(vColor, alpha);
+    }
+  `
+});
+scene.add(new THREE.Points(galaxyDiscGeo, galaxyDiscMat));
+
+// ── Sun ───────────────────────────────────────────────────────────────────────
+const SUN_R = 2.4;
+const sunMat = new THREE.ShaderMaterial({
+  uniforms:{ time:{value:0}, hueMode:{value:0.0}, emergence:{value:0}, distort:{value:0} },
+  vertexShader:`
+    varying vec3 vPos; varying vec3 vNormal;
+    uniform float time, distort;
+    void main(){
+      // Ripple displacement — geometry physically undulates along surface normal
+      float rAmp = distort * 0.09;
+      float r1 = sin(position.y*7.0+time*5.2)*sin(position.x*5.5+time*4.1);
+      float r2 = cos(position.z*6.5+time*4.7)*cos(position.y*4.8+time*3.8);
+      float r3 = sin(position.x*8.0+time*3.5)*cos(position.z*5.0+time*5.0);
+      float ripple = (r1*0.5+r2*0.35+r3*0.15) * rAmp;
+      vec3 displaced = position + normalize(position) * ripple;
+      vPos = displaced;
+      vNormal = normalize(normalMatrix * normal);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
+    }
+  `,
+  fragmentShader:`
+    varying vec3 vPos; varying vec3 vNormal;
+    uniform float time,hueMode,emergence,distort;
+    float hash(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
+    float noise(vec3 p){
+      vec3 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+      return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),u.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),u.x),u.y),
+                 mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),u.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),u.x),u.y),u.z);
+    }
+    float fbm(vec3 p){float v=0.,a=0.5;for(int i=0;i<7;i++){v+=a*noise(p);p*=2.1;a*=0.48;}return v;}
+    vec3 getDeep(float m){
+      if(m<1.0)return mix(vec3(0.22,0.04,0.0),vec3(0.18,0.01,0.0),m);
+      if(m<2.0)return mix(vec3(0.18,0.01,0.0),vec3(0.0,0.06,0.10),m-1.0);
+      if(m<3.0)return mix(vec3(0.0,0.06,0.10),vec3(0.0,0.01,0.16),m-2.0);
+      if(m<4.0)return mix(vec3(0.0,0.01,0.16),vec3(0.06,0.0,0.16),m-3.0);
+      return mix(vec3(0.06,0.0,0.16),vec3(0.22,0.04,0.0),m-4.0);
+    }
+    vec3 getHot(float m){
+      if(m<1.0)return mix(vec3(1.0,0.88,0.08),vec3(1.0,0.15,0.03),m);
+      if(m<2.0)return mix(vec3(1.0,0.15,0.03),vec3(0.06,0.95,0.88),m-1.0);
+      if(m<3.0)return mix(vec3(0.06,0.95,0.88),vec3(0.14,0.52,1.0),m-2.0);
+      if(m<4.0)return mix(vec3(0.14,0.52,1.0),vec3(0.68,0.14,1.0),m-3.0);
+      return mix(vec3(0.68,0.14,1.0),vec3(1.0,0.88,0.08),m-4.0);
+    }
+    vec3 getBright(float m){
+      if(m<1.0)return mix(vec3(1.6,0.90,0.28),vec3(1.8,0.30,0.05),m);
+      if(m<2.0)return mix(vec3(1.8,0.30,0.05),vec3(0.1,1.8,1.6),m-1.0);
+      if(m<3.0)return mix(vec3(0.1,1.8,1.6),vec3(0.2,0.7,2.0),m-2.0);
+      if(m<4.0)return mix(vec3(0.2,0.7,2.0),vec3(1.1,0.2,2.0),m-3.0);
+      return mix(vec3(1.1,0.2,2.0),vec3(1.6,0.90,0.28),m-4.0);
+    }
+    void main(){
+      // Spacetime distortion — moderate amplitude, fluid melting not chaotic
+      float dAmp=distort*0.65;
+      float dx=sin(vPos.y*2.2+time*2.0)*sin(vPos.z*2.8+time*1.7)*dAmp;
+      float dy=cos(vPos.x*2.0+time*2.3)*cos(vPos.z*2.5+time*1.5)*dAmp;
+      float dz=sin(vPos.x*3.0+time*1.8)*cos(vPos.y*2.4+time*2.1)*dAmp;
+      vec3 dp=vPos+vec3(dx,dy,dz);
+      vec3 p=dp*4.5+vec3(time*0.10,time*0.07,time*0.13);
+      vec3 q=vec3(fbm(p),fbm(p+vec3(5.2,1.3,2.8)),fbm(p+vec3(1.7,9.2,3.1)));
+      float n=fbm(p+0.5*q); n=pow(n,1.5); n=clamp(n*1.8+0.2,0.0,1.0);
+      float spot=fbm(vPos*2.8+vec3(time*0.018)); spot=smoothstep(0.62,0.45,spot); n*=0.70+spot*0.30;
+      float limb=abs(dot(normalize(vNormal),vec3(0.0,0.0,1.0))); n*=0.55+0.45*limb;
+      float m=mod(hueMode,5.0);
+      vec3 col=mix(getDeep(m),getHot(m),n);
+      col+=smoothstep(0.68,1.0,n)*1.5*getBright(m);
+      // emergence=0: warm white (indistinguishable from flash); emergence=1: full texture
+      vec3 whiteHot=vec3(1.8,1.5,1.0);
+      gl_FragColor=vec4(mix(whiteHot,col,emergence),1.0);
+    }
+  `,
+  transparent:false,
+});
+const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(SUN_R,64,64), sunMat);
+sunMesh.scale.setScalar(0.001);
+sunMesh.visible = false;
+scene.add(sunMesh);
+
+// ── Corona (billboard planes) ─────────────────────────────────────────────────
+const coronaGroup = new THREE.Group();
+coronaGroup.visible = false;
+scene.add(coronaGroup);
+const coronaMats = [];
+const CORONA_HUES = [
+  [0xfffde8,0xffcc44,0xff7700,0xff3300,0xff8822],
+  [0xffeeaa,0xffaa22,0xff5500,0xdd1100,0xff7700],
+  [0xaaffee,0x44ddcc,0x009988,0x004455,0x22bbaa],
+  [0xaabbff,0x5577ff,0x2244dd,0x111166,0x4466ee],
+  [0xffddff,0xcc55ff,0x8811cc,0x440066,0xaa44dd],
+];
+{
+  function makeCoronaMat(color,flareStr,glowStr,falloff,fFalloff,sz){
+    const mat=new THREE.ShaderMaterial({
+      uniforms:{ time:{value:0}, glowColor:{value:new THREE.Color(color)},
+        flareStrength:{value:flareStr}, baseGlowStrength:{value:glowStr},
+        radialFalloff:{value:falloff}, flareFalloff:{value:fFalloff}, globalAlpha:{value:0} },
+      transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,
+      vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+      fragmentShader:`
+        varying vec2 vUv;
+        uniform float time,flareStrength,baseGlowStrength,radialFalloff,flareFalloff,globalAlpha;
+        uniform vec3 glowColor;
+        float hash(float n){return fract(sin(n)*43758.5453);}
+        float noise(float x){float i=floor(x),f=fract(x),u=f*f*(3.0-2.0*f);return mix(hash(i),hash(i+1.0),u);}
+        void main(){
+          vec2 uv=vUv-0.5; float dist=length(uv); if(dist>0.5)discard;
+          float angle=atan(uv.y,uv.x); float aN=(angle+3.14159)/6.28318;
+          // Two noise layers at different frequencies — layered spike texture
+          float fN=noise(aN*38.0+time*0.22)*noise(aN*19.0+time*0.14);
+          float fA=noise(aN*52.0-time*0.18)*noise(aN*11.0+time*0.10);
+          float flare=pow(max(0.0,fN*0.6+fA*0.4),flareFalloff);
+          // Flares extend to the very edge — no hard cutoff
+          float radFade=pow(max(0.0,1.0-dist*1.8),radialFalloff);
+          float flareFade=max(0.0,1.0-dist*1.5);        // linear, reaches edge
+          float baseG=smoothstep(0.42,0.0,dist)*(0.85+0.15*sin(time*0.4));
+          float intensity=(baseGlowStrength*baseG + flareStrength*flare*flareFade)*radFade*globalAlpha;
+          if(intensity<0.005)discard;
+          gl_FragColor=vec4(glowColor*intensity,intensity*0.92);
+        }
+      `,
+    });
+    coronaGroup.add(new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat));
+    coronaMats.push(mat); return mat;
+  }
+  // 5 layers: tight white bloom → gold rays → orange → deep red → wide outer halo
+  makeCoronaMat(0xfffde8, 5.5, 3.0, 2.0, 1.4, 18);
+  makeCoronaMat(0xffcc44, 7.0, 1.2, 1.6, 1.8, 34);
+  makeCoronaMat(0xff7700, 5.0, 0.6, 1.3, 2.2, 56);
+  makeCoronaMat(0xff3300, 3.0, 0.3, 1.1, 2.6, 85);
+  makeCoronaMat(0xff8822, 8.5, 0.2, 1.5, 1.2, 28);
+}
+
+// ── Solar emission loops ──────────────────────────────────────────────────────
+const FLARE_COLORS = [
+  new THREE.Color(1.0,0.55,0.10), new THREE.Color(1.0,0.92,0.28),
+  new THREE.Color(0.28,0.82,1.0), new THREE.Color(1.0,0.28,0.62),
+  new THREE.Color(0.68,0.28,1.0), new THREE.Color(0.18,1.0,0.78),
+  new THREE.Color(1.0,1.0,1.0),
+];
+const N_LOOPS=10, LOOP_PTS=90;
+const loopGeo=new THREE.BufferGeometry();
+const loopPos=new Float32Array(N_LOOPS*LOOP_PTS*3);
+const loopCol=new Float32Array(N_LOOPS*LOOP_PTS*3);
+const loopAlp=new Float32Array(N_LOOPS*LOOP_PTS);
+loopGeo.setAttribute('position',new THREE.BufferAttribute(loopPos,3));
+loopGeo.setAttribute('color',   new THREE.BufferAttribute(loopCol,3));
+loopGeo.setAttribute('alpha',   new THREE.BufferAttribute(loopAlp,1));
+const loopMat=new THREE.ShaderMaterial({
+  transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+  vertexShader:`attribute float alpha;attribute vec3 color;varying vec3 vC;varying float vA;
+    void main(){vC=color;vA=alpha;vec4 mv=modelViewMatrix*vec4(position,1.0);
+      gl_PointSize=max(2.0,6.0*90.0/-mv.z);gl_Position=projectionMatrix*mv;}`,
+  fragmentShader:`varying vec3 vC;varying float vA;
+    void main(){vec2 c=gl_PointCoord-0.5;if(length(c)>0.5||vA<0.01)discard;
+      float a=vA*(1.0-length(c)*2.0);gl_FragColor=vec4(vC*a,a);}`,
+});
+scene.add(new THREE.Points(loopGeo,loopMat));
+const loopStates=Array.from({length:N_LOOPS},(_,i)=>({
+  a1:(i/N_LOOPS)*Math.PI*2, a2:(i/N_LOOPS)*Math.PI*2+0.5+Math.random()*0.7,
+  h:3.0+Math.random()*5.5, spd:0.14+Math.random()*0.12, phase:i/N_LOOPS,
+  col:FLARE_COLORS[i%FLARE_COLORS.length].clone(),
+}));
+function bezP(t,p0,p1,p2){const m=1-t;return{x:m*m*p0.x+2*m*t*p1.x+t*t*p2.x,y:m*m*p0.y+2*m*t*p1.y+t*t*p2.y,z:m*m*p0.z+2*m*t*p1.z+t*t*p2.z};}
+// worldR: actual world-space radius of sun surface (SUN_R * scale)
+function updateLoops(t, worldR){
+  const R=worldR||SUN_R;
+  const hScale=R/SUN_R;  // heights grow with the sun
+  loopStates.forEach((lp,li)=>{
+    const ph=(t*lp.spd+lp.phase)%1.0;
+    if(ph<0.015&&Math.random()<0.08){lp.a1=Math.random()*Math.PI*2;lp.a2=lp.a1+0.4+Math.random()*1.0;lp.h=3.0+Math.random()*6.0;lp.spd=0.12+Math.random()*0.14;lp.col=FLARE_COLORS[Math.floor(Math.random()*FLARE_COLORS.length)].clone();}
+    const h=lp.h*hScale;
+    const p0={x:R*Math.cos(lp.a1),y:0,z:R*Math.sin(lp.a1)};
+    const p2={x:R*Math.cos(lp.a2),y:0,z:R*Math.sin(lp.a2)};
+    const mx=(p0.x+p2.x)*0.5,mz=(p0.z+p2.z)*0.5,ml=Math.sqrt(mx*mx+mz*mz)||1;
+    const p1={x:mx/ml*(R+h),y:h*0.42,z:mz/ml*(R+h)};
+    const base=li*LOOP_PTS;
+    for(let j=0;j<LOOP_PTS;j++){
+      const u=j/(LOOP_PTS-1),bp=bezP(u,p0,p1,p2);
+      loopPos[(base+j)*3]=bp.x;loopPos[(base+j)*3+1]=bp.y;loopPos[(base+j)*3+2]=bp.z;
+      loopCol[(base+j)*3]=lp.col.r;loopCol[(base+j)*3+1]=lp.col.g;loopCol[(base+j)*3+2]=lp.col.b;
+      const dist=Math.abs(u-ph),wrap=Math.min(dist,1.0-dist);
+      loopAlp[base+j]=Math.max(0,1.0-wrap*12.0)*1.1;
+    }
+  });
+  loopGeo.attributes.position.needsUpdate=true;
+  loopGeo.attributes.color.needsUpdate=true;
+  loopGeo.attributes.alpha.needsUpdate=true;
+}
+
+// ── Ignition flash ────────────────────────────────────────────────────────────
+const flashMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(55,32,32),
+  new THREE.MeshBasicMaterial({color:0xfffef8,transparent:true,opacity:0,
+    side:THREE.BackSide,blending:THREE.AdditiveBlending,depthWrite:false})
+);
+flashMesh.visible = false;
+scene.add(flashMesh);
+
+let ignitionTriggered = false, ignitionT = 0, ignitionDone = false;
+let galaxyTimeElapsed = 0;
+const GALAXY_DUR = 12;  // seconds to fully form spiral arms
+const IGNITE_DUR = 4;
+let colorCycleT = 0;
+const COLOR_PERIOD = 45;
 
 // ── Background color ──────────────────────────────────────────────────────────
 const bg = { r:0, g:0, b:0.016 };
@@ -760,7 +1065,7 @@ const T_CLOUD_END  = 50;  // clouds fully in
 const T_SPARK_END  = 56;  // sparks last
 const T_FULL       = 56;  // nebula fully settled
 const T_COLL_START = 56;  // nebula full — same particles begin morphing to collapse
-const T_COLL_END   = 90;  // 34s morph window, particles are now pure collapse behavior
+const T_COLL_END   = 74;  // 18s morph window, tighter pacing
 
 let T = 0;
 
@@ -777,6 +1082,10 @@ function timeline(dt){
     bgTarget.r = 0.004; bgTarget.g = 0; bgTarget.b = 0.022;
     // Gently drift camera from 380 → 320 during void only
     sphTarget.r = 380 - easeOut(sub) * 60;
+    // Rotation starts near zero — particles emerge from stillness, not mid-spin
+    fineMat.uniforms.rotSpeed.value  = easeOut(sub) * 0.012;
+    cloudMat.uniforms.rotSpeed.value = easeOut(sub) * 0.005;
+    sparkMat.uniforms.rotSpeed.value = easeOut(sub) * 0.012;
   }
 
   // ── NEBULA CONDENSES (T=12-56s) ───────────────────────────────────────────
@@ -814,6 +1123,13 @@ function timeline(dt){
     // Sparks — last, activate only once nebula is mostly solid
     const sparkSub = clamp((T - (T_VOID_END+16)) / (T_SPARK_END - (T_VOID_END+16)), 0, 1);
     sparkMat.uniforms.gAlpha.value = slowForm(sparkSub);
+
+    // Rotation builds gradually throughout nebula formation — reaches base speed by T=44
+    // Collapse block overrides these at T=56+ with the full spin-up ramp
+    const rotSub = clamp((T - T_VOID_END) / (T_FINE_END - T_VOID_END), 0, 1);
+    fineMat.uniforms.rotSpeed.value  = 0.012 + easeOut(rotSub) * 0.046;  // 0.012 → 0.058
+    cloudMat.uniforms.rotSpeed.value = 0.005 + easeOut(rotSub) * 0.021;  // 0.005 → 0.026
+    sparkMat.uniforms.rotSpeed.value = 0.012 + easeOut(rotSub) * 0.046;
   }
 
   // ── MORPH TO COLLAPSE (T=56-90s) ─────────────────────────────────────────
@@ -821,7 +1137,7 @@ function timeline(dt){
   // No second particle system. No cross-fade. The particles themselves change.
   if(T >= T_COLL_START) {
     const cSub   = clamp((T - T_COLL_START) / (T_COLL_END - T_COLL_START), 0, 1);
-    const cCurve = cSub*cSub*(3.0-2.0*cSub); // smoothstep
+    const cCurve = cSub * cSub * cSub;  // easeIn — accelerates all the way, never decelerates
 
     fineMat.uniforms.collapseT.value  = cCurve;
     cloudMat.uniforms.collapseT.value = cCurve;
@@ -840,6 +1156,9 @@ function timeline(dt){
 
     // Core glow builds as collapse behavior dominates
     coreVisibility = cCurve * cCurve;
+
+    // Cinematic pull-in during collapse — camera arrives close before ignition
+    sphTarget.r = 320 - cCurve * 185;  // 320 → 135
 
     // Background and hazes shift warm
     bgTarget.r = 0.011 + cCurve * 0.014;
@@ -862,11 +1181,12 @@ function tick(){
   cloudMat.uniforms.time.value += dt;
   sparkMat.uniforms.time.value += dt;
 
-  if(coreVisibility > 0) {
+  let bigFlash = 0;
+  if(coreVisibility > 0 && !ignitionTriggered) {
     collapseTime += dt;
-    const pulse    = Math.pow(Math.max(0, Math.sin(collapseTime*0.9)),  2.5);
-    const bigFlash = Math.pow(Math.max(0, Math.sin(collapseTime*0.28)), 8.0) * 1.4;
-    const core     = (pulse + bigFlash) * coreVisibility;
+    const pulse = Math.pow(Math.max(0, Math.sin(collapseTime*0.9)),  2.5);
+    bigFlash    = Math.pow(Math.max(0, Math.sin(collapseTime*0.28)), 8.0) * 1.4;
+    const core  = (pulse + bigFlash) * coreVisibility;
     coreWhite.material.opacity  = core * 1.10;
     coreAmber.material.opacity  = core * 0.88;
     coreOrange.material.opacity = core * 0.58;
@@ -875,10 +1195,117 @@ function tick(){
   }
 
   timeline(dt);
+
+  // ── Ignition trigger: fires as soon as morph is complete ─────────────────
+  if(!ignitionTriggered && fineMat.uniforms.collapseT.value >= 1.0) {
+    ignitionTriggered = true;
+    sunMesh.visible   = true;
+    flashMesh.visible = true;
+    sunMesh.scale.setScalar(22.0);  // starts at nebula cloud scale, shrinks to sun
+    sunMat.uniforms.emergence.value = 0;
+    sunMat.uniforms.distort.value   = 0;
+    // Core spheres hand off to coreLight + sun
+    coreWhite.material.opacity = 0; coreAmber.material.opacity  = 0;
+    coreOrange.material.opacity= 0; coreDark.material.opacity   = 0;
+  }
+
+  // ── Ignition sequence ──────────────────────────────────────────────────────
+  if(ignitionTriggered) {
+    const eO = t => 1 - Math.pow(1-t, 3);
+    sunMat.uniforms.time.value += dt;
+    coronaMats.forEach(m => m.uniforms.time.value += dt);
+
+    if(!ignitionDone) {
+      ignitionT = Math.min(ignitionT + dt, IGNITE_DUR);
+      const pct = ignitionT / IGNITE_DUR;
+
+      // ── Continuous curves — no phase breaks, no direction-change artifacts ──
+      // Scale: exponential decay, 22→1, feels like natural condensing
+      sunMesh.scale.setScalar(1.0 + 21.0 * Math.exp(-pct * 5.2));
+
+      // Distort: smooth bell arc peaking at pct≈0.38, fully gone before emergence
+      const distBell = Math.max(0, Math.sin(Math.PI * Math.min(1.0, pct / 0.78)));
+      sunMat.uniforms.distort.value = Math.pow(distBell, 0.75);
+
+      // Emergence: zero through most of sequence, rises naturally after pct=0.68
+      const ePct = Math.max(0, (pct - 0.68) / 0.32);
+      sunMat.uniforms.emergence.value = ePct * ePct * (3.0 - 2.0 * ePct);
+
+      // Flash: gaussian burst peaking at pct≈0.14, fully faded by pct≈0.50
+      const fArc = pct < 0.14 ? pct / 0.14 : Math.max(0, 1.0 - (pct - 0.14) / 0.36);
+      flashMesh.material.opacity = fArc * fArc * 0.44;
+
+      // Core light: big bright arc at start, decays naturally, small uplift as sun emerges
+      const coreBright  = 50.0 * Math.exp(-pct * 3.8);
+      const preBurst    = 20.0 * Math.max(0, (pct - 0.62) / 0.20) * Math.exp(-Math.pow((pct - 0.84) / 0.09, 2));
+      coreLight.intensity = 8 + coreBright + preBurst;
+
+      // Particles: soft dissolve into the light
+      fineMat.uniforms.gAlpha.value  = Math.max(0, 1.0 - pct * 7);
+      cloudMat.uniforms.gAlpha.value = Math.max(0, 1.0 - pct * 7);
+
+      // Camera: smooth continuous pull-in, arrives at 95 well before emergence
+      sphTarget.r = 95 + 42 * Math.exp(-pct * 4.0);
+
+      // Background: warm surge then settles to black
+      const bgWarm = Math.max(0, Math.sin(pct * Math.PI * 0.65) * 0.065);
+      bgTarget.r = 0.003 + bgWarm;
+      bgTarget.g = 0.001 + bgWarm * 0.28;
+      bgTarget.b = 0.001;
+
+      // Corona and loops: rise together with emergence
+      const cSub = Math.max(0, (pct - 0.80) / 0.20);
+      coronaMats.forEach(m => m.uniforms.globalAlpha.value = eO(cSub));
+      if(pct > 0.80){
+        coronaGroup.visible = true;
+        // Loops start as the sun ignites — use current world-space radius
+        updateLoops(sunMat.uniforms.time.value, SUN_R * sunMesh.scale.x);
+      }
+
+      if(pct >= 1.0) { ignitionDone = true; flashMesh.visible = false; }
+
+    } else {
+      // Post-ignition: color cycles, loops run, sun is alive, galaxy forms
+      colorCycleT += dt;
+      sunMat.uniforms.hueMode.value = (colorCycleT / COLOR_PERIOD) * 5.0;
+      const mode = sunMat.uniforms.hueMode.value % 5;
+      const mi = Math.floor(mode), mf = mode - mi;
+      coronaMats.forEach((mat, ci) => {
+        const c1 = new THREE.Color(CORONA_HUES[mi % 5][ci]);
+        const c2 = new THREE.Color(CORONA_HUES[(mi+1) % 5][ci]);
+        mat.uniforms.glowColor.value.lerpColors(c1, c2, mf);
+        mat.uniforms.globalAlpha.value = 1.0;
+      });
+      coreLight.intensity = 8 + 4 * Math.sin(colorCycleT * 0.3);
+      if(!drag) sphTarget.theta += 0.00042;
+      updateLoops(sunMat.uniforms.time.value, SUN_R * sunMesh.scale.x);
+
+      // ── Galaxy formation: particles fly from sun outward into spiral arms ───
+      galaxyTimeElapsed += dt;
+      const gt = Math.min(1.0, galaxyTimeElapsed / GALAXY_DUR);
+      const gtCurve = gt * gt;  // easeIn — slow start so particles seem to hesitate, then accelerate outward
+      fineMat.uniforms.galaxyT.value = gtCurve;
+      // Dense galaxy disc fades in and keeps rotating
+      galaxyDiscMat.uniforms.gAlpha.value = Math.min(1.0, gtCurve * 1.5);
+      galaxyDiscMat.uniforms.time.value += dt;
+      // Cloud puffs fade out as the disc clears — stars take over the field
+      cloudMat.uniforms.gAlpha.value = Math.max(0, 1.0 - gtCurve * 2.5);
+      // Sun grows larger as the galaxy disc forms around it
+      sunMesh.scale.setScalar(1.0 + gtCurve * 3.5);     // 1 → 4.5 — prominent star
+      // Camera pulls back only while galaxy is forming — stop fighting scroll when done
+      if(gt < 0.96) {
+        sphTarget.r = 95 + gtCurve * 210;               // 95 → 305, spiral fills frame
+        sphTarget.phi += (1.10 - sphTarget.phi) * 0.006; // tilt gently above disc plane
+      }
+    }
+
+    if(coronaGroup.visible) coronaGroup.quaternion.copy(camera.quaternion);
+  }
+
   lerpBg(0.022);
 
   const rotNorm = clamp((fineMat.uniforms.rotSpeed.value - 0.058) / (0.32 - 0.058), 0, 1);
-  const autoRotate = 0.00038 + rotNorm * (0.00055 - 0.00038);
+  const autoRotate = ignitionDone ? 0 : (0.00038 + rotNorm * (0.00055 - 0.00038));
   if(!drag) sphTarget.theta += autoRotate;
   sph.r     += (sphTarget.r-sph.r)*0.040; // responsive zoom
   sph.theta += (sphTarget.theta-sph.theta)*0.08;
