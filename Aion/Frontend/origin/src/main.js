@@ -101,6 +101,19 @@ const slowForm = t => Math.pow(t, 2.4);
 // emission-loop reseeding below plays out identically every run instead of
 // drifting with wall-clock Math.random().
 const detRand = seed => { const x = Math.sin(seed*127.1+311.7)*43758.5453; return x-Math.floor(x); };
+// Seeded PRNG for one-time particle-geometry generation at module load — with a fixed
+// seed, every reload builds the exact same nebula/spiral/collapse layout instead of a
+// fresh random one, so the scene's look no longer depends on reload luck.
+function mulberry32(seed){
+  return function(){
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const SCENE_SEED = 20260704;
+const rand = mulberry32(SCENE_SEED);
 
 // ── Spherical camera ──────────────────────────────────────────────────────────
 const sph       = { r:380, theta:0.30, phi:0.46 };
@@ -157,6 +170,45 @@ document.body.appendChild(clockEl);
 // Answers "which Theatre.js panel actually does something right now" — computed
 // from real uniform/state values every frame, not guessed from a fixed time range,
 // so it stays true even if a stage's timing or a control's wiring changes later.
+// ── On-canvas transport (play/pause/reset) — no separate window needed ────────
+const transportEl = document.createElement('div');
+transportEl.style.cssText = [
+  'position:fixed', 'bottom:80px', 'left:50%', 'transform:translateX(calc(-50% - 160px))',
+  'display:flex', 'gap:6px', 'z-index:9999',
+].join(';');
+const localPlayBtn = document.createElement('button');
+const localResetBtn = document.createElement('button');
+[localPlayBtn, localResetBtn].forEach(b => {
+  b.style.cssText = [
+    'font:13px monospace', 'padding:8px 12px', 'border-radius:8px',
+    'background:rgba(0,0,0,0.65)', 'color:#fff', 'border:1px solid rgba(255,255,255,0.2)',
+    'cursor:pointer',
+  ].join(';');
+});
+localResetBtn.textContent = '⟲';
+localResetBtn.title = 'Reset (R)';
+localResetBtn.addEventListener('click', () => resetScene());
+localPlayBtn.addEventListener('click', () => { paused = !paused; });
+transportEl.appendChild(localPlayBtn); transportEl.appendChild(localResetBtn);
+document.body.appendChild(transportEl);
+
+// ── Live-controls status panel ────────────────────────────────────────────────
+// Answers "which Theatre.js panel actually does something right now" — computed
+// from real uniform/state values every frame, not guessed from a fixed time range,
+// so it stays true even if a stage's timing or a control's wiring changes later.
+// Each row's 🔁 loops playback within that group's own window — same loopGroupName
+// state as the Controls popout, so toggling it here or there stays in sync.
+const STATUS_ROWS = [
+  { name:'Playback',      flag:'true',           text:()=>`0–90s      — always on` },
+  { name:'Nebula',        flag:'fine',           text:f=>`~14–74s    — fine-spiral particles${f.fine?'':'  (inert now)'}` },
+  { name:'Collapse',      flag:'cloud',          text:f=>`~12–74s    — cloud-puff warmBias only${f.cloud?'':'  (inert now)'}; brightMult ⚠ unwired` },
+  { name:'CollapseCloud', flag:'collapseShape',  text:f=>`56–74s     — shape/color during collapse${f.collapseShape?'':'  (inert now)'}` },
+  { name:'Ignition',      flag:'ignite',         text:f=>`74–${(74+tVals.igniteDuration).toFixed(1)}s  — flash + sun emergence${f.ignite?'':'  (inert now)'}` },
+  { name:'ExplosionBall', flag:'ignite',         text:f=>`74–${(74+tVals.igniteDuration).toFixed(1)}s  — flash/sun ripple shape${f.ignite?'':'  (inert now)'}` },
+  { name:'Sun',           flag:'sun',            text:f=>`74–90s     — hueMode + corona${f.sun?'':'  (inert now)'}` },
+  { name:'Galaxy disc',   flag:'galaxy',         text:f=>`${(74+tVals.igniteDuration).toFixed(1)}–90s — disc formation${f.galaxy?'':'  (inert now)'}`, noLoop:true },
+];
+
 const statusEl = document.createElement('div');
 statusEl.style.cssText = [
   'position:fixed', 'bottom:130px', 'left:50%', 'transform:translateX(-50%)',
@@ -165,12 +217,13 @@ statusEl.style.cssText = [
   'padding:10px 16px', 'border-radius:10px',
   'border:1px solid rgba(255,255,255,0.15)',
   'cursor:grab', 'z-index:9999',
-  'white-space:pre', 'user-select:none'
+  'user-select:none'
 ].join(';');
 document.body.appendChild(statusEl);
 {
   let dragging = false, ox = 0, oy = 0;
   statusEl.addEventListener('mousedown', e => {
+    if (e.target.tagName === 'BUTTON') return;
     dragging = true;
     const r = statusEl.getBoundingClientRect();
     ox = e.clientX - r.left; oy = e.clientY - r.top;
@@ -186,19 +239,49 @@ document.body.appendChild(statusEl);
   });
   window.addEventListener('mouseup', () => { dragging = false; statusEl.style.cursor = 'grab'; });
 }
+const statusRowEls = STATUS_ROWS.map(row => {
+  const rowEl = document.createElement('div');
+  rowEl.style.cssText = 'display:flex;align-items:center;gap:6px;white-space:pre;';
+  const dotEl = document.createElement('span');
+  const nameEl = document.createElement('span');
+  nameEl.style.cssText = 'display:inline-block;width:118px;';
+  const textEl = document.createElement('span');
+  rowEl.appendChild(dotEl); rowEl.appendChild(nameEl); rowEl.appendChild(textEl);
+  if (!row.noLoop) {
+    const loopBtn = document.createElement('button');
+    loopBtn.textContent = '🔁';
+    loopBtn.title = `Loop playback within ${row.name}'s own window`;
+    loopBtn.style.cssText = 'margin-left:6px;font-size:10px;padding:0px 5px;border-radius:4px;background:rgba(255,255,255,0.08);color:#aaa;border:1px solid rgba(255,255,255,0.15);cursor:pointer;';
+    loopBtn.addEventListener('click', () => {
+      if (loopGroupName === row.name) {
+        loopGroupName = null;
+      } else {
+        loopGroupName = row.name;
+        const g = CONTROL_GROUPS.find(cg => cg.name === row.name);
+        if (g) T = g.window()[0];
+      }
+    });
+    rowEl.appendChild(loopBtn);
+    row._loopBtn = loopBtn;
+  }
+  row._dotEl = dotEl; row._nameEl = nameEl; row._textEl = textEl;
+  statusEl.appendChild(rowEl);
+  return row;
+});
 function updateStatusPanel(f){
-  const dot = on => on ? '●' : '○';
-  const ignEnd = (74 + tVals.igniteDuration).toFixed(1);
-  statusEl.textContent = [
-    `${dot(true)}  Playback       0–90s      — always on`,
-    `${dot(f.fine)}  Nebula         ~14–74s    — fine-spiral particles${f.fine?'':'  (inert now)'}`,
-    `${dot(f.cloud)}  Collapse       ~12–74s    — cloud-puff warmBias only${f.cloud?'':'  (inert now)'}; brightMult ⚠ unwired`,
-    `${dot(f.collapseShape)}  CollapseCloud  56–74s     — shape/color during collapse${f.collapseShape?'':'  (inert now)'}`,
-    `${dot(f.ignite)}  Ignition       74–${ignEnd}s  — flash + sun emergence${f.ignite?'':'  (inert now)'}`,
-    `${dot(f.ignite)}  ExplosionBall  74–${ignEnd}s  — flash/sun ripple shape${f.ignite?'':'  (inert now)'}`,
-    `${dot(f.sun)}  Sun            74–90s     — hueMode + corona${f.sun?'':'  (inert now)'}`,
-    `${dot(f.galaxy)}  Galaxy disc    ${ignEnd}–90s — disc formation${f.galaxy?'':'  (inert now)'}`,
-  ].join('\n');
+  localPlayBtn.textContent = paused ? '▶' : '⏸';
+  localPlayBtn.title = paused ? 'Play (Space)' : 'Pause (Space)';
+  STATUS_ROWS.forEach(row => {
+    const on = row.flag === 'true' ? true : f[row.flag];
+    row._dotEl.textContent = on ? '●' : '○';
+    row._nameEl.textContent = row.name;
+    row._textEl.textContent = row.text(f);
+    if (row._loopBtn) {
+      const looping = loopGroupName === row.name;
+      row._loopBtn.style.background = looping ? '#2a5a3a' : 'rgba(255,255,255,0.08)';
+      row._loopBtn.style.color = looping ? '#9fe6b0' : '#aaa';
+    }
+  });
 }
 
 // ── Pop-out controls window ────────────────────────────────────────────────────
@@ -206,34 +289,34 @@ function updateStatusPanel(f){
 // grouped by scene stage, each labeled with the exact second-range it affects.
 // Opens in a real separate browser window so it can live on a second monitor.
 const CONTROL_GROUPS = [
-  { name:'Playback', range: () => `0–90s (always)`, props:[
+  { name:'Playback', window: () => [0,90], range: () => `0–90s (always)`, props:[
     { key:'speed', label:'speed', min:0, max:4, step:0.01 },
   ]},
-  { name:'Nebula', range: () => `~14–74s (fine-spiral particles; fades fast once ignition starts)`, props:[
+  { name:'Nebula', window: () => [14,74], range: () => `~14–74s (fine-spiral particles; fades fast once ignition starts)`, props:[
     { key:'nebulaBright', label:'brightMult', min:0, max:3, step:0.01 },
     { key:'nebulaWarm',   label:'warmBias',   min:0, max:1, step:0.01 },
     { key:'formLock',     label:'formLock',   min:-1, max:1, step:0.01 },
   ]},
-  { name:'Collapse', range: () => `~12–74s (cloud puffs — warmBias only; brightMult ⚠ unwired)`, props:[
+  { name:'Collapse', window: () => [12,74], range: () => `~12–74s (cloud puffs — warmBias only; brightMult ⚠ unwired)`, props:[
     { key:'collapseBright', label:'brightMult ⚠', min:0, max:3, step:0.01 },
     { key:'collapseWarm',   label:'warmBias',      min:0, max:1, step:0.01 },
     { key:'collapseLock',   label:'collapseLock',  min:-1, max:1, step:0.01 },
   ]},
-  { name:'CollapseCloud', range: () => `56–74s`, props:[
+  { name:'CollapseCloud', window: () => [56,74], range: () => `56–74s`, props:[
     { key:'cloudTurb',   label:'turbulence',  min:0,   max:3, step:0.01 },
     { key:'cloudSpiral', label:'spiralTight', min:0.3, max:3, step:0.01 },
     { key:'cloudCore',   label:'coreSize',    min:0.2, max:3, step:0.01 },
     { key:'cloudHotHue', label:'hotHue',      min:0,   max:1, step:0.01 },
     { key:'cloudSat',    label:'satMult',     min:0,   max:2, step:0.01 },
   ]},
-  { name:'Ignition', range: () => `74–${(74+tVals.igniteDuration).toFixed(1)}s`, props:[
+  { name:'Ignition', window: () => [74, 74+tVals.igniteDuration], range: () => `74–${(74+tVals.igniteDuration).toFixed(1)}s`, props:[
     { key:'igniteDuration', label:'duration',       min:1, max:30,   step:0.1 },
     { key:'flashIntensity', label:'flashIntensity', min:0, max:3,    step:0.01 },
     { key:'distortAmt',     label:'distortAmt',     min:0, max:3,    step:0.01 },
     { key:'emergenceStart', label:'emergenceStart', min:0, max:0.99, step:0.01 },
     { key:'coreGlow',       label:'coreGlow',       min:0, max:4,    step:0.01 },
   ]},
-  { name:'ExplosionBall', range: () => `74–${(74+tVals.igniteDuration).toFixed(1)}s (same window as Ignition)`, props:[
+  { name:'ExplosionBall', window: () => [74, 74+tVals.igniteDuration], range: () => `74–${(74+tVals.igniteDuration).toFixed(1)}s (same window as Ignition)`, props:[
     { key:'ballRadius',      label:'radius',      min:0.3,  max:3,    step:0.01 },
     { key:'ballFreq',        label:'distortFreq', min:0.2,  max:4,    step:0.01 },
     { key:'ballAmp',         label:'distortAmp',  min:0,    max:3,    step:0.01 },
@@ -242,53 +325,386 @@ const CONTROL_GROUPS = [
     { key:'ballCoronaStart', label:'coronaStart', min:0.3,  max:0.95, step:0.01 },
     { key:'igniteLock',      label:'igniteLock',  min:-1,   max:1,    step:0.01 },
   ]},
-  { name:'Sun', range: () => `74–90s (post-ignition)`, props:[
+  { name:'Sun', window: () => [74,90], range: () => `74–90s (post-ignition)`, props:[
     { key:'sunHue',     label:'hueMode',    min:0, max:5, step:0.01 },
     { key:'coronaGlow', label:'coronaGlow', min:0, max:3, step:0.01 },
   ]},
 ];
 
+// ── Per-property keyframe sequencers ───────────────────────────────────────────
+// Each control-group property can be keyframed on its own local timeline (that
+// group's own active window mapped to 0–1) — a home-grown stand-in for Theatre.js
+// sequencing, scoped per group so a 56–74s window isn't a sliver of one shared
+// global timeline. Persisted to localStorage so keyframes survive reloads.
+const SEQ_STORAGE_KEY = 'originSceneSequencers_v1';
+let seqData = {};
+try { seqData = JSON.parse(localStorage.getItem(SEQ_STORAGE_KEY)) || {}; } catch(e) { seqData = {}; }
+function saveSeqData(){
+  try { localStorage.setItem(SEQ_STORAGE_KEY, JSON.stringify(seqData)); } catch(e) {}
+}
+
+// Per-property "default" values — separate from keyframes. Each group gets a
+// Reset button (snap every prop in that group back to its stored default) and
+// a Set button (capture the current values as the new default going forward).
+// Defaults start out equal to the code's built-in tVals values and persist once changed.
+const DEFAULTS_STORAGE_KEY = 'originSceneParamDefaults_v1';
+let paramDefaults = {};
+try { paramDefaults = JSON.parse(localStorage.getItem(DEFAULTS_STORAGE_KEY)) || {}; } catch(e) { paramDefaults = {}; }
+function saveParamDefaults(){
+  try { localStorage.setItem(DEFAULTS_STORAGE_KEY, JSON.stringify(paramDefaults)); } catch(e) {}
+}
+function getKeyframes(groupName, key){
+  if (!seqData[groupName]) seqData[groupName] = {};
+  if (!seqData[groupName][key]) seqData[groupName][key] = [];
+  return seqData[groupName][key];
+}
+// Easing shapes a segment's 0-1 progress before it's used to blend two keyframe
+// values — "linear" is a flat rate of change, the others accelerate/decelerate.
+// Stored per-keyframe as the curve used for the segment going OUT of it; missing
+// or unrecognized values fall back to linear, so every keyframe saved before this
+// feature existed keeps behaving exactly as it did.
+// Each non-linear shape takes a "strength" exponent — 3 matches the original
+// fixed cubic curve, so every keyframe saved before this existed looks identical.
+// Lower = closer to linear, higher = a sharper hook (holds flat, then rockets).
+const DEFAULT_EASE_STRENGTH = 3;
+const EASE_FNS = {
+  linear:    (t) => t,
+  easeIn:    (t,k) => Math.pow(t, k),
+  easeOut:   (t,k) => 1-Math.pow(1-t, k),
+  easeInOut: (t,k) => t<0.5 ? 0.5*Math.pow(2*t, k) : 1-0.5*Math.pow(2-2*t, k),
+};
+const EASE_ORDER = ['linear','easeIn','easeOut','easeInOut'];
+const EASE_LABEL = { linear:'', easeIn:'in', easeOut:'out', easeInOut:'in-out' };
+
+function evalKeyframes(kfs, t){
+  if (kfs.length === 0) return null;
+  if (kfs.length === 1) return kfs[0].v;
+  if (t <= kfs[0].t) return kfs[0].v;
+  if (t >= kfs[kfs.length-1].t) return kfs[kfs.length-1].v;
+  for (let i=0;i<kfs.length-1;i++){
+    if (t >= kfs[i].t && t <= kfs[i+1].t){
+      const span = kfs[i+1].t - kfs[i].t;
+      const lt = span<=0 ? 0 : (t-kfs[i].t)/span;
+      const ease = EASE_FNS[kfs[i].curve] || EASE_FNS.linear;
+      const strength = kfs[i].strength || DEFAULT_EASE_STRENGTH;
+      return kfs[i].v + (kfs[i+1].v - kfs[i].v)*ease(lt, strength);
+    }
+  }
+  return kfs[kfs.length-1].v;
+}
+function applySequencers(){
+  CONTROL_GROUPS.forEach(group => {
+    const [start,end] = group.window();
+    const span = end-start;
+    const localT = span<=0 ? 0 : clamp((T-start)/span, 0, 1);
+    group.props.forEach(p => {
+      const kfs = getKeyframes(group.name, p.key);
+      if (kfs.length >= 1) tVals[p.key] = evalKeyframes(kfs, localT);
+    });
+  });
+}
+
+const PANEL_FONT = "'JetBrains Mono','SF Mono',Consolas,monospace";
+const panelStyleTag = document.createElement('style');
+panelStyleTag.textContent = `
+  .osc-panel input[type=range] { accent-color: #5cf; height:4px; }
+  .osc-panel input[type=range]:hover { accent-color: #7de; }
+  .osc-panel * { box-sizing: border-box; }
+`;
+document.head.appendChild(panelStyleTag);
+
 const panelEl = document.createElement('div');
-panelEl.style.cssText = 'display:none;font:12px/1.4 monospace;color:#eee;background:#0b0b10;padding:10px;';
+panelEl.className = 'osc-panel';
+panelEl.style.cssText = `display:none;font:12px/1.4 ${PANEL_FONT};color:#e4e4ea;background:#0d0d13;padding:0;`;
+
+const panelHeader = document.createElement('div');
+panelHeader.style.cssText = `padding:12px 14px;border-bottom:1px solid #23232e;background:#111118;`;
+const panelTitleRow = document.createElement('div');
+panelTitleRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
+panelTitleRow.innerHTML = `<div style="font-size:12px;font-weight:700;letter-spacing:.12em;color:#8fd6ff;">ORIGIN SCENE — SEQUENCER</div>`;
+const transportRow = document.createElement('div');
+transportRow.style.cssText = 'display:flex;gap:6px;';
+const playBtn = document.createElement('button');
+const resetBtn = document.createElement('button');
+const collapseAllBtn = document.createElement('button');
+[playBtn, resetBtn, collapseAllBtn].forEach(b => {
+  b.style.cssText = 'font:11px monospace;padding:4px 10px;border-radius:5px;background:#1c1c26;color:#cfe6ff;border:1px solid #33333f;cursor:pointer;';
+});
+resetBtn.textContent = '⟲ Reset';
+resetBtn.addEventListener('click', () => resetScene());
+playBtn.addEventListener('click', () => { paused = !paused; });
+let allCollapsed = false;
+collapseAllBtn.textContent = '▾ Collapse All';
+collapseAllBtn.addEventListener('click', () => {
+  allCollapsed = !allCollapsed;
+  collapsibleGroups.forEach(({ groupBody, collapseBtn }) => {
+    groupBody.style.display = allCollapsed ? 'none' : '';
+    collapseBtn.textContent = allCollapsed ? '▸' : '▾';
+  });
+  collapseAllBtn.textContent = allCollapsed ? '▸ Expand All' : '▾ Collapse All';
+});
+transportRow.appendChild(playBtn); transportRow.appendChild(resetBtn); transportRow.appendChild(collapseAllBtn);
+panelTitleRow.appendChild(transportRow);
+panelHeader.appendChild(panelTitleRow);
+const panelHint = document.createElement('div');
+panelHint.style.cssText = 'font-size:10px;color:#5a5a68;margin-top:2px;';
+panelHint.textContent = 'click strip: add keyframe at that time/value · drag diamond: move in time + value · right-click: delete · shift+click: cycle ease curve · scroll over diamond: adjust ease strength';
+panelHeader.appendChild(panelHint);
+panelEl.appendChild(panelHeader);
+
+const panelBody = document.createElement('div');
+panelBody.style.cssText = 'padding:12px;';
+panelEl.appendChild(panelBody);
+
 const groupEls = []; // { dotEl, rangeEl, group, inputs:[{el,numEl,key}] }
+const seqStrips = []; // { canvas, groupName, key, window: ()=>[start,end] }
+
+// Canvas is drawn at native device-pixel resolution (not a fixed 260px) so text
+// and ticks stay sharp at any popup/panel width and on HiDPI screens — a canvas
+// stretched via CSS alone blurs badly, which was the "fuzzy numbers" complaint.
+function syncCanvasRes(canvas){
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = Math.max(1, canvas.clientWidth || 260);
+  const cssH = Math.max(1, canvas.clientHeight || 32);
+  const needW = Math.round(cssW*dpr), needH = Math.round(cssH*dpr);
+  if (canvas.width !== needW || canvas.height !== needH) {
+    canvas.width = needW; canvas.height = needH;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w: cssW, h: cssH };
+}
+
+const collapsibleGroups = []; // { groupBody, collapseBtn } — for the panel-wide Collapse All toggle
 CONTROL_GROUPS.forEach(group => {
   const box = document.createElement('div');
-  box.style.cssText = 'margin-bottom:14px;padding:8px 10px;border:1px solid #333;border-radius:8px;background:#14141c;';
+  box.style.cssText = 'margin-bottom:12px;padding:10px 12px;border:1px solid #26262f;border-left:3px solid #3a7ca8;border-radius:6px;background:#16161f;box-shadow:0 1px 3px rgba(0,0,0,0.3);';
   const head = document.createElement('div');
-  head.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;';
+  head.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;';
   const dotEl = document.createElement('span');
   dotEl.textContent = '○';
-  dotEl.style.cssText = 'margin-right:6px;';
+  dotEl.style.cssText = 'margin-right:7px;font-size:11px;';
   const title = document.createElement('span');
-  title.style.cssText = 'font-weight:bold;color:#9cf;';
+  title.style.cssText = 'font-weight:700;color:#bfe6ff;letter-spacing:.06em;font-size:12px;text-transform:uppercase;';
   title.textContent = group.name;
   const rangeEl = document.createElement('span');
-  rangeEl.style.cssText = 'color:#888;font-size:11px;';
-  const left = document.createElement('span'); left.appendChild(dotEl); left.appendChild(title);
+  rangeEl.style.cssText = 'color:#7a7a8a;font-size:10px;';
+  // Capture each prop's code default the first time it's ever seen — later
+  // overwritten only by an explicit "Set" click, and persisted from then on.
+  group.props.forEach(p => {
+    if (!(p.key in paramDefaults)) paramDefaults[p.key] = tVals[p.key];
+  });
+  const groupPlayBtn = document.createElement('button');
+  groupPlayBtn.style.cssText = 'margin-left:8px;font-size:10px;padding:1px 6px;border-radius:4px;background:#1c1c26;color:#cfe6ff;border:1px solid #33333f;cursor:pointer;';
+  groupPlayBtn.addEventListener('click', () => { paused = !paused; });
+  const loopBtn = document.createElement('button');
+  loopBtn.textContent = '🔁';
+  loopBtn.title = `Loop playback within ${group.name}'s own window`;
+  loopBtn.style.cssText = 'margin-left:4px;font-size:10px;padding:1px 6px;border-radius:4px;background:#1c1c26;color:#7a7a8a;border:1px solid #33333f;cursor:pointer;';
+  loopBtn.addEventListener('click', () => {
+    if (loopGroupName === group.name) {
+      loopGroupName = null;
+    } else {
+      loopGroupName = group.name;
+      const [ls] = group.window();
+      T = ls;
+    }
+  });
+  const resetDefaultsBtn = document.createElement('button');
+  resetDefaultsBtn.textContent = '⟲';
+  resetDefaultsBtn.title = `Reset all ${group.name} sliders to their stored default`;
+  resetDefaultsBtn.style.cssText = 'margin-left:4px;font-size:10px;padding:1px 6px;border-radius:4px;background:#1c1c26;color:#cfa65c;border:1px solid #33333f;cursor:pointer;';
+  resetDefaultsBtn.addEventListener('click', () => {
+    group.props.forEach(p => { tVals[p.key] = paramDefaults[p.key]; });
+  });
+  const setDefaultsBtn = document.createElement('button');
+  setDefaultsBtn.textContent = '💾';
+  setDefaultsBtn.title = `Save ${group.name}'s current values as the new default`;
+  setDefaultsBtn.style.cssText = 'margin-left:4px;font-size:10px;padding:1px 6px;border-radius:4px;background:#1c1c26;color:#8fd6ff;border:1px solid #33333f;cursor:pointer;';
+  setDefaultsBtn.addEventListener('click', () => {
+    group.props.forEach(p => { paramDefaults[p.key] = tVals[p.key]; });
+    saveParamDefaults();
+    setDefaultsBtn.style.background = '#2a5a3a';
+    setTimeout(() => { setDefaultsBtn.style.background = '#1c1c26'; }, 300);
+  });
+  const collapseBtn = document.createElement('button');
+  collapseBtn.textContent = '▾';
+  collapseBtn.title = `Collapse ${group.name} down to just its name`;
+  collapseBtn.style.cssText = 'margin-left:4px;font-size:10px;padding:1px 6px;border-radius:4px;background:#1c1c26;color:#7a7a8a;border:1px solid #33333f;cursor:pointer;';
+  const left = document.createElement('span');
+  left.appendChild(dotEl); left.appendChild(title); left.appendChild(groupPlayBtn);
+  left.appendChild(loopBtn); left.appendChild(resetDefaultsBtn); left.appendChild(setDefaultsBtn); left.appendChild(collapseBtn);
   head.appendChild(left); head.appendChild(rangeEl);
   box.appendChild(head);
+  const groupBody = document.createElement('div');
+  box.appendChild(groupBody);
+  collapseBtn.addEventListener('click', () => {
+    const collapsed = groupBody.style.display === 'none';
+    groupBody.style.display = collapsed ? '' : 'none';
+    collapseBtn.textContent = collapsed ? '▾' : '▸';
+  });
+  collapsibleGroups.push({ groupBody, collapseBtn });
   const inputs = [];
   group.props.forEach(p => {
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:6px;margin:3px 0;';
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin:4px 0;';
     const lab = document.createElement('span');
-    lab.textContent = p.label; lab.style.cssText = 'width:110px;color:#ccc;';
+    lab.textContent = p.label; lab.style.cssText = 'width:112px;color:#c8c8d4;font-size:11px;flex-shrink:0;';
     const input = document.createElement('input');
     input.type = 'range'; input.min = p.min; input.max = p.max; input.step = p.step;
     input.value = tVals[p.key]; input.style.cssText = 'flex:1;';
     const num = document.createElement('span');
-    num.style.cssText = 'width:48px;text-align:right;color:#9cf;';
+    num.style.cssText = 'width:50px;text-align:right;color:#8fd6ff;font-variant-numeric:tabular-nums;font-size:11px;';
     num.textContent = Number(tVals[p.key]).toFixed(2);
+    let held = false; // tracked locally — never touch controlsWin.document (cross-window
+                       // access can throw SecurityError depending on browser COOP policy)
+    input.addEventListener('mousedown', () => {
+      held = true;
+      // Same cross-window issue as the keyframe drag below: if this slider lives
+      // in the popped-out Controls window, a listener on this script's original
+      // `window` would never see the mouseup that happens over that window.
+      const releaseDoc = input.ownerDocument;
+      function onRelease(){ held = false; releaseDoc.removeEventListener('mouseup', onRelease); }
+      releaseDoc.addEventListener('mouseup', onRelease);
+    });
     input.addEventListener('input', () => {
       tVals[p.key] = parseFloat(input.value);
       num.textContent = tVals[p.key].toFixed(2);
     });
     row.appendChild(lab); row.appendChild(input); row.appendChild(num);
-    box.appendChild(row);
-    inputs.push({ el: input, numEl: num, key: p.key });
+    groupBody.appendChild(row);
+
+    // Keyframe strip — click empty space to add/update a keyframe at that time
+    // using the slider's current value, drag a diamond to retime it, right-click
+    // a diamond to delete it. The blue line is the live playhead within this
+    // group's own local window. The top ruler shows real scene-seconds (major
+    // ticks) subdivided into tenths (minor ticks) for millisecond-level placement.
+    const stripWrap = document.createElement('div');
+    stripWrap.style.cssText = 'margin:0 0 2px 120px;';
+    const canvas = document.createElement('canvas');
+    canvas.style.cssText = 'width:100%;height:96px;background:#0a0a10;border:1px solid #262632;border-radius:4px;cursor:crosshair;display:block;user-select:none;-webkit-user-drag:none;touch-action:none;';
+    canvas.draggable = false;
+    stripWrap.appendChild(canvas);
+    groupBody.appendChild(stripWrap);
+    const readout = document.createElement('div');
+    readout.style.cssText = 'margin:0 0 6px 120px;color:#8fd6ff;font-size:10px;height:12px;font-variant-numeric:tabular-nums;';
+    groupBody.appendChild(readout);
+
+    const timeAt = (xCss, wCss) => {
+      const [start,end] = group.window();
+      const t = Math.max(0, Math.min(1, xCss/wCss));
+      return start + t*(end-start);
+    };
+    // Value axis: top of the track = p.max, bottom = p.min — so a keyframe's
+    // vertical position on the strip directly shows its value, same range as its
+    // slider. Dragging a diamond moves it in time (x) AND value (y) at once.
+    const valueAt = (yCss, hCss) => {
+      const f = Math.max(0, Math.min(1, yCss/hCss));
+      return p.max - f*(p.max-p.min);
+    };
+    const yForValue = (v, hCss) => {
+      const f = (v-p.min)/(p.max-p.min || 1);
+      return Math.max(0, Math.min(1, 1-f)) * hCss;
+    };
+    let dragIdx = -1;
+    let dragStartX = 0, dragStartY = 0, dragMoved = false, dragShiftHeld = false;
+    const hitTest = (xCss, yCss, wCss, hCss) => {
+      const kfs = getKeyframes(group.name, p.key);
+      for (let i=0;i<kfs.length;i++){
+        const dx = kfs[i].t*wCss - xCss, dy = yForValue(kfs[i].v, hCss) - yCss;
+        if (Math.sqrt(dx*dx+dy*dy) < 11) return i;
+      }
+      return -1;
+    };
+    canvas.addEventListener('mousedown', e => {
+      e.preventDefault(); // stop native drag-ghost/text-select from hijacking the gesture
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX-rect.left, y = e.clientY-rect.top, wCss = rect.width, hCss = rect.height;
+      const idx = hitTest(x, y, wCss, hCss);
+      if (idx >= 0) {
+        dragIdx = idx;
+        dragShiftHeld = e.shiftKey;
+      } else {
+        const kfs = getKeyframes(group.name, p.key);
+        const t = Math.max(0, Math.min(1, x/wCss));
+        const v = valueAt(y, hCss);
+        const kf = { t, v, curve: 'linear' };
+        kfs.push(kf);
+        kfs.sort((a,b) => a.t - b.t);
+        dragIdx = kfs.indexOf(kf);
+        dragShiftHeld = false;
+        saveSeqData();
+      }
+      dragStartX = x; dragStartY = y; dragMoved = false;
+
+      // The Controls panel can live in a popped-out window, which is a genuinely
+      // separate `Window` object — mouse events over its canvas never reach a
+      // listener registered on this script's original global `window`. Attach
+      // the drag tracking to whichever window/document actually owns the canvas
+      // right now, and tear it down when the drag ends instead of leaving it live.
+      const dragDoc = canvas.ownerDocument;
+      function onDragMove(ev){
+        const r = canvas.getBoundingClientRect();
+        const xx = ev.clientX-r.left, yy = ev.clientY-r.top, ww = r.width, hh = r.height;
+        if (Math.abs(xx-dragStartX) > 2 || Math.abs(yy-dragStartY) > 2) dragMoved = true;
+        const tt = Math.max(0, Math.min(1, xx/ww));
+        const vv = valueAt(yy, hh);
+        const kfs2 = getKeyframes(group.name, p.key);
+        if (kfs2[dragIdx]) { kfs2[dragIdx].t = tt; kfs2[dragIdx].v = vv; }
+        readout.textContent = `t = ${timeAt(xx, ww).toFixed(3)}s   v = ${vv.toFixed(2)}`;
+      }
+      function onDragUp(){
+        const kfs2 = getKeyframes(group.name, p.key);
+        if (!dragMoved && dragShiftHeld && kfs2[dragIdx]) {
+          // A real click (no drag) with shift held — cycle the ease curve instead.
+          const cur = kfs2[dragIdx].curve || 'linear';
+          const next = EASE_ORDER[(EASE_ORDER.indexOf(cur)+1) % EASE_ORDER.length];
+          kfs2[dragIdx].curve = next;
+          readout.textContent = `curve → ${next}`;
+        }
+        kfs2.sort((a,b) => a.t - b.t);
+        dragIdx = -1;
+        saveSeqData();
+        dragDoc.removeEventListener('mousemove', onDragMove);
+        dragDoc.removeEventListener('mouseup', onDragUp);
+      }
+      dragDoc.addEventListener('mousemove', onDragMove);
+      dragDoc.addEventListener('mouseup', onDragUp);
+    });
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX-rect.left, y = e.clientY-rect.top;
+      readout.textContent = `t = ${timeAt(x, rect.width).toFixed(3)}s   v = ${valueAt(y, rect.height).toFixed(2)}`;
+    });
+    canvas.addEventListener('mouseleave', () => { if (dragIdx < 0) readout.textContent = ''; });
+    canvas.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const idx = hitTest(e.clientX-rect.left, e.clientY-rect.top, rect.width, rect.height);
+      if (idx >= 0) {
+        getKeyframes(group.name, p.key).splice(idx, 1);
+        saveSeqData();
+      }
+    });
+    // Scroll wheel over a keyframe adjusts its ease strength — how sharply that
+    // segment's curve bends, not just which shape it uses (shift+click for that).
+    canvas.addEventListener('wheel', e => {
+      const rect = canvas.getBoundingClientRect();
+      const idx = hitTest(e.clientX-rect.left, e.clientY-rect.top, rect.width, rect.height);
+      if (idx < 0) return;
+      e.preventDefault();
+      const kfs = getKeyframes(group.name, p.key);
+      const kf = kfs[idx];
+      const cur = kf.strength || DEFAULT_EASE_STRENGTH;
+      kf.strength = Math.max(1, Math.min(8, cur + (e.deltaY < 0 ? 1 : -1)));
+      saveSeqData();
+      readout.textContent = `${kf.curve||'linear'} strength: ${kf.strength}`;
+    }, { passive:false });
+    seqStrips.push({ canvas, groupName: group.name, key: p.key, yForValue });
+    inputs.push({ el: input, numEl: num, key: p.key, isHeld: () => held });
   });
-  panelEl.appendChild(box);
-  groupEls.push({ dotEl, rangeEl, group, inputs });
+  panelBody.appendChild(box);
+  groupEls.push({ dotEl, rangeEl, group, inputs, loopBtn, groupPlayBtn });
 });
 document.body.appendChild(panelEl);
 
@@ -301,36 +717,171 @@ controlsBtn.style.cssText = [
   'background:rgba(0,0,0,0.65)', 'color:#fff', 'border:1px solid rgba(255,255,255,0.2)',
   'cursor:pointer', 'z-index:9999',
 ].join(';');
+function showPanelInline(){
+  // Fallback when a real popup window isn't usable (browser COOP isolation can
+  // block cross-window document access even for same-origin popups) — dock the
+  // panel as a floating, scrollable box in the main page instead.
+  controlsWin = null;
+  panelEl.style.cssText = `display:block;position:fixed;top:20px;right:20px;width:360px;max-height:85vh;overflow:auto;font:12px/1.4 ${PANEL_FONT};color:#e4e4ea;background:#0d0d13;border:1px solid #262632;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,0.5);z-index:9998;`;
+  document.body.appendChild(panelEl);
+}
 controlsBtn.addEventListener('click', () => {
   if (controlsWin && !controlsWin.closed) { controlsWin.focus(); return; }
-  controlsWin = window.open('', 'OriginControls', 'width=420,height=920');
-  controlsWin.document.title = 'Origin Scene — Controls';
-  controlsWin.document.body.style.margin = '0';
-  controlsWin.document.body.style.background = '#0b0b10';
-  panelEl.style.display = 'block';
-  controlsWin.document.body.appendChild(panelEl);
-  controlsWin.addEventListener('beforeunload', () => {
-    document.body.appendChild(panelEl);
-    panelEl.style.display = 'none';
-    controlsWin = null;
-  });
+  if (panelEl.parentElement === document.body && panelEl.style.display === 'block') {
+    // already docked inline from a previous fallback — nothing more to do
+    return;
+  }
+  try {
+    const win = window.open('', 'OriginControls', 'width=420,height=920');
+    if (!win) throw new Error('popup blocked');
+    win.document.title = 'Origin Scene — Controls';
+    win.document.body.style.margin = '0';
+    win.document.body.style.background = '#0b0b10';
+    panelEl.style.cssText = `display:block;font:12px/1.4 ${PANEL_FONT};color:#e4e4ea;background:#0d0d13;`;
+    win.document.body.appendChild(panelEl);
+    win.addEventListener('beforeunload', () => {
+      document.body.appendChild(panelEl);
+      panelEl.style.display = 'none';
+      controlsWin = null;
+    });
+    controlsWin = win;
+  } catch (e) {
+    console.warn('Popup controls window unavailable, docking inline instead:', e);
+    showPanelInline();
+  }
 });
 document.body.appendChild(controlsBtn);
 
-function updateControlsPanel(f){
-  if (!controlsWin || controlsWin.closed) return;
-  const liveMap = { Playback:true, Nebula:f.fine, Collapse:f.cloud, CollapseCloud:f.collapseShape,
-    Ignition:f.ignite, ExplosionBall:f.ignite, Sun:f.sun };
-  groupEls.forEach(({ dotEl, rangeEl, group, inputs }) => {
-    dotEl.textContent = liveMap[group.name] ? '●' : '○';
-    rangeEl.textContent = group.range();
-    inputs.forEach(({ el, numEl, key }) => {
-      if (controlsWin.document.activeElement !== el) {
-        el.value = tVals[key];
-        numEl.textContent = Number(tVals[key]).toFixed(2);
+// Picks a "nice" major-tick interval (in seconds) so a strip shows roughly 4-10
+// labeled ticks regardless of whether its window is 4s (Ignition) or 90s (Playback).
+function niceTickStep(span){
+  const candidates = [0.05,0.1,0.2,0.25,0.5,1,2,5,10,15,30,60];
+  for (const c of candidates) if (span/c <= 10) return c;
+  return 60;
+}
+
+// Snaps a coordinate to a half-pixel so a 1px-wide canvas stroke lands exactly on
+// one physical pixel row/column instead of straddling two and anti-aliasing into
+// a soft 2px smudge — the actual remaining source of "blur" once DPI is correct.
+const snap = v => Math.round(v) + 0.5;
+
+function drawSeqStrips(){
+  const RULER_H = 14;
+  seqStrips.forEach(({ canvas, groupName, key, yForValue }) => {
+    const { ctx, w, h } = syncCanvasRes(canvas);
+    const trackY = RULER_H + 2, trackH = h - trackY;
+    ctx.clearRect(0,0,w,h);
+    ctx.textBaseline = 'alphabetic';
+
+    const group = CONTROL_GROUPS.find(g => g.name === groupName);
+    const [start,end] = group.window();
+    const span = Math.max(0.001, end-start);
+
+    // Ruler: major ticks every niceTickStep seconds (labeled), minor ticks at
+    // tenths of that step (unlabeled) for sub-second/millisecond placement.
+    const step = niceTickStep(span);
+    const minorStep = step/10;
+    const totalMinor = Math.ceil(span/minorStep);
+    ctx.font = `10px ${PANEL_FONT}`; ctx.textAlign = 'left';
+    ctx.lineWidth = 1;
+    for (let i=0;i<=totalMinor;i++){
+      const s = i*minorStep;
+      if (s > span+1e-6) break;
+      const xRaw = (s/span)*w;
+      const x = snap(xRaw);
+      const isMajor = (i%10 === 0);
+      ctx.strokeStyle = isMajor ? '#6b7690' : '#25252f';
+      ctx.beginPath();
+      ctx.moveTo(x, isMajor ? 0 : Math.round(RULER_H*0.45));
+      ctx.lineTo(x, RULER_H);
+      ctx.stroke();
+      if (isMajor) {
+        ctx.fillStyle = '#9db3d6';
+        ctx.fillText((start+s).toFixed(step<1?2:0), Math.round(xRaw)+3, 10);
+      }
+    }
+    ctx.strokeStyle = '#3a3a48';
+    ctx.beginPath(); ctx.moveTo(0,snap(RULER_H)); ctx.lineTo(w,snap(RULER_H)); ctx.stroke();
+
+    // Playhead — a thin line plus a small cap at the top, like a pro NLE cursor
+    const localT = clamp((T-start)/span, 0, 1);
+    const pxRaw = localT*w, px = snap(pxRaw);
+    ctx.strokeStyle = '#5cf';
+    ctx.beginPath(); ctx.moveTo(px,0); ctx.lineTo(px,h); ctx.stroke();
+    ctx.fillStyle = '#5cf';
+    ctx.beginPath(); ctx.moveTo(Math.round(pxRaw)-3,0); ctx.lineTo(Math.round(pxRaw)+3,0); ctx.lineTo(Math.round(pxRaw),4); ctx.closePath(); ctx.fill();
+
+    const kfs = getKeyframes(groupName, key);
+
+    // Connecting curve — samples the actual eased shape between each pair of
+    // keyframes, so you can see whether a segment is linear or accelerating/
+    // decelerating, not just where the keyframes sit in time.
+    if (kfs.length >= 2) {
+      ctx.strokeStyle = '#5a7aa0'; ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      for (let i=0;i<kfs.length-1;i++){
+        const a = kfs[i], b = kfs[i+1];
+        const ease = EASE_FNS[a.curve] || EASE_FNS.linear;
+        const strength = a.strength || DEFAULT_EASE_STRENGTH;
+        const STEPS = 16;
+        for (let s=0;s<=STEPS;s++){
+          const lt = s/STEPS;
+          const vVal = a.v + (b.v-a.v)*ease(lt, strength);
+          const xPx = (a.t + (b.t-a.t)*lt)*w, yPx = yForValue(vVal, h);
+          if (i===0 && s===0) ctx.moveTo(xPx,yPx); else ctx.lineTo(xPx,yPx);
+        }
+      }
+      ctx.stroke();
+    }
+
+    // Keyframes — diamond positioned by both time (x) and value (y), filled with
+    // a dark outline so it reads clearly against the track and ruler. A small
+    // label shows the ease curve going OUT of this keyframe (shift+click to cycle).
+    kfs.forEach(k => {
+      const x = Math.round(k.t*w), cy = Math.round(yForValue(k.v, h)), r = 6;
+      ctx.beginPath();
+      ctx.moveTo(x,cy-r); ctx.lineTo(x+r,cy); ctx.lineTo(x,cy+r); ctx.lineTo(x-r,cy);
+      ctx.closePath();
+      ctx.fillStyle = '#ffc85c'; ctx.fill();
+      ctx.lineWidth = 1; ctx.strokeStyle = '#3a2a08'; ctx.stroke();
+      const label = EASE_LABEL[k.curve];
+      if (label) {
+        ctx.font = `8px ${PANEL_FONT}`; ctx.textAlign = 'center'; ctx.fillStyle = '#9fe6b0';
+        ctx.fillText(label, x, Math.min(h-2, cy+r+9));
       }
     });
   });
+}
+
+function updateControlsPanel(f){
+  // Check panelEl's own visibility rather than controlsWin — the inline fallback
+  // (showPanelInline) never sets controlsWin, so gating on that would leave the
+  // fallback panel permanently stale (sliders/strips/buttons never refreshing).
+  if (panelEl.style.display !== 'block') return;
+  // Defensive: cross-window access to a popup can throw (browser COOP isolation),
+  // and this runs every frame inside tick() before the render call — letting it
+  // throw here would silently freeze the whole scene, not just the controls panel.
+  try {
+    playBtn.textContent = paused ? '▶ Play' : '⏸ Pause';
+    const liveMap = { Playback:true, Nebula:f.fine, Collapse:f.cloud, CollapseCloud:f.collapseShape,
+      Ignition:f.ignite, ExplosionBall:f.ignite, Sun:f.sun };
+    groupEls.forEach(({ dotEl, rangeEl, group, inputs, loopBtn, groupPlayBtn }) => {
+      dotEl.textContent = liveMap[group.name] ? '●' : '○';
+      rangeEl.textContent = group.range();
+      groupPlayBtn.textContent = paused ? '▶' : '⏸';
+      const looping = loopGroupName === group.name;
+      loopBtn.style.background = looping ? '#2a5a3a' : '#1c1c26';
+      loopBtn.style.color = looping ? '#9fe6b0' : '#7a7a8a';
+      inputs.forEach(({ el, numEl, key, isHeld }) => {
+        if (isHeld()) return;
+        el.value = tVals[key];
+        numEl.textContent = Number(tVals[key]).toFixed(2);
+      });
+    });
+    drawSeqStrips();
+  } catch (e) {
+    console.warn('Controls panel update skipped:', e);
+  }
 }
 
 function updateClock(T, paused, igniteDur){
@@ -345,12 +896,21 @@ function updateClock(T, paused, igniteDur){
 
 // ── Play / Pause ──────────────────────────────────────────────────────────────
 let paused = false;
+let loopGroupName = null; // when set, T bounces within that group's own window instead of advancing past it
 
 function resetScene() {
   T = 0;
   paused = false;
   ignitionTriggered = false;
   coreVisibility = 0;
+  rotAngleFine = 0; rotAngleCloud = 0; rotAngleSpark = 0;
+  // Full reset also snaps every slider back to its stored default — the per-group
+  // ⟲ buttons in the Controls panel do this scoped to one group only.
+  CONTROL_GROUPS.forEach(group => {
+    group.props.forEach(p => {
+      if (p.key in paramDefaults) tVals[p.key] = paramDefaults[p.key];
+    });
+  });
 
   sunMesh.visible    = false;
   flashMesh.visible  = false;
@@ -429,10 +989,10 @@ const voidGeo = new THREE.BufferGeometry();
   const p = new Float32Array(VOID_N*3);
   const c = new Float32Array(VOID_N*3);
   for(let i=0;i<VOID_N;i++){
-    const a=Math.random()*Math.PI*2, b=Math.acos(2*Math.random()-1);
-    const r=30+Math.random()*280;
+    const a=rand()*Math.PI*2, b=Math.acos(2*rand()-1);
+    const r=30+rand()*280;
     p[i*3]=r*Math.sin(b)*Math.cos(a); p[i*3+1]=r*Math.sin(b)*Math.sin(a); p[i*3+2]=r*Math.cos(b);
-    const t=Math.random();
+    const t=rand();
     c[i*3]=0.18+t*0.22; c[i*3+1]=0.04+t*0.08; c[i*3+2]=0.45+t*0.35;
   }
   voidGeo.setAttribute('position',new THREE.BufferAttribute(p,3));
@@ -457,30 +1017,31 @@ let fineMat;
   const seed = new Float32Array(FINE_N);
   for(let i=0;i<FINE_N;i++){
     const arm  = i % NUM_ARMS;
-    const t    = Math.random();
+    const t    = rand();
     const r    = 5 + t*130;
     const spin = r * 0.022;
     const base = (arm/NUM_ARMS)*Math.PI*2;
-    const u    = Math.random()*0.999+0.0005;
-    const g    = Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*Math.random());
+    const u    = rand()*0.999+0.0005;
+    const g    = Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*rand());
     const angle  = base + spin + g*0.16;
     const rFinal = r + g*r*0.07;
     pos[i*3]   = rFinal*Math.cos(angle);
     pos[i*3+1] = g*r*0.022;
     pos[i*3+2] = rFinal*Math.sin(angle);
-    seed[i]    = Math.random();
+    seed[i]    = rand();
   }
   geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
   geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
 
   fineMat = new THREE.ShaderMaterial({
-    uniforms:{ time:{value:0}, gAlpha:{value:0}, formT:{value:0}, rotSpeed:{value:0.058}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0}, galaxyT:{value:0}, turbMult:{value:1.0}, spiralMult:{value:1.0}, coreMult:{value:1.0}, hotHue:{value:0.07}, satMult:{value:1.0} },
+    uniforms:{ time:{value:0}, gAlpha:{value:0}, formT:{value:0}, rotSpeed:{value:0.058}, rotAngle:{value:0}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0}, galaxyT:{value:0}, turbMult:{value:1.0}, spiralMult:{value:1.0}, coreMult:{value:1.0}, hotHue:{value:0.07}, satMult:{value:1.0} },
     transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
     vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
       attribute float nSeed;
       uniform float time;
       uniform float formT;
       uniform float rotSpeed;
+      uniform float rotAngle;
       uniform float warmBias;
       uniform float collapseT;
       uniform float galaxyT;
@@ -494,7 +1055,8 @@ let fineMat;
       void main(){
         float s=nSeed;
         float formFactor=0.5+0.5*sin(time*0.028+s*2.1);
-        float amp=2.0+formFactor*11.0;
+        float formEnvelope=smoothstep(0.0,0.35,formT);
+        float amp=(2.0+formFactor*11.0)*formEnvelope;
         float t1=time*(0.052+s*0.038)+s*6.2832;
         float t2=time*(0.079+s*0.026)+s*4.1888;
         float t3=time*(0.065+s*0.044)+s*2.0944;
@@ -505,7 +1067,7 @@ let fineMat;
         );
         float breathe=1.0+0.05*sin(time*0.14+s*4.0);
         vec3 basePos=vec3(position.x*breathe,position.y,position.z*breathe);
-        float rotA=time*rotSpeed;
+        float rotA=rotAngle;
         float cr=cos(rotA),sr=sin(rotA);
         basePos=vec3(basePos.x*cr-basePos.z*sr,basePos.y,basePos.x*sr+basePos.z*cr);
         float cloudiness=1.0-smoothstep(0.18,0.92,formT);
@@ -524,7 +1086,11 @@ let fineMat;
         else if(normR<0.78) radHue=0.04;
         else                radHue=0.80;
         float sh=remapHue(fract(s*1.618+time*0.008));
-        float nebulaHue=mix(mix(radHue,sh,0.36),0.08+s*0.07,warmBias);
+        // sh mix ramps in with formation — at formT=0 the color is pure radHue (blue/cyan
+        // radial bands), avoiding the linear hue-mix-through-green artifact you get from
+        // blending a red-band radHue with a blue-ish sh at full 0.36 weight from frame one.
+        float shWeight=0.36*smoothstep(0.0,0.5,formT);
+        float nebulaHue=mix(mix(radHue,sh,shWeight),0.08+s*0.07,warmBias);
         float nebulaLum=0.28+s*0.20+(1.0-normR)*0.10;
         float formed=1.0-formFactor;
         float nebulaAlpha=0.75*(0.38+formed*0.68)*reveal*(1.0-cloudiness*0.42);
@@ -616,28 +1182,30 @@ let cloudMat;
   const seed = new Float32Array(CLOUD_N);
   for(let i=0;i<CLOUD_N;i++){
     const arm  = i % NUM_ARMS;
-    const t    = Math.random();
+    const t    = rand();
     const r    = 8 + t*125;
     const spin = r * 0.022;
     const base = (arm/NUM_ARMS)*Math.PI*2;
-    const scatter = (Math.random()-0.5)*r*0.55;
+    const scatter = (rand()-0.5)*r*0.55;
     const angle   = base + spin + scatter/Math.max(r,1);
-    const rFinal  = r + (Math.random()-0.5)*r*0.35;
+    const rFinal  = r + (rand()-0.5)*r*0.35;
     pos[i*3]   = rFinal*Math.cos(angle);
-    pos[i*3+1] = (Math.random()-0.5)*r*0.12;
+    pos[i*3+1] = (rand()-0.5)*r*0.12;
     pos[i*3+2] = rFinal*Math.sin(angle);
-    seed[i]    = Math.random();
+    seed[i]    = rand();
   }
   geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
   geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
 
   cloudMat = new THREE.ShaderMaterial({
-    uniforms:{ time:{value:0}, gAlpha:{value:0}, rotSpeed:{value:0.026}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0}, turbMult:{value:1.0}, spiralMult:{value:1.0}, coreMult:{value:1.0}, hotHue:{value:0.07}, satMult:{value:1.0} },
+    uniforms:{ time:{value:0}, gAlpha:{value:0}, rotSpeed:{value:0.026}, rotAngle:{value:0}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0}, turbMult:{value:1.0}, spiralMult:{value:1.0}, coreMult:{value:1.0}, hotHue:{value:0.07}, satMult:{value:1.0} },
     transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
     vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
       attribute float nSeed;
       uniform float time;
+      uniform float gAlpha;
       uniform float rotSpeed;
+      uniform float rotAngle;
       uniform float warmBias;
       uniform float collapseT;
       uniform float turbMult;
@@ -651,7 +1219,7 @@ let cloudMat;
       void main(){
         float s=nSeed;
         float formFactor=0.5+0.5*sin(time*0.012+s*1.5);
-        float amp=4.0+formFactor*10.0;
+        float amp=(4.0+formFactor*10.0)*smoothstep(0.0,0.5,gAlpha);
         float t1=time*(0.018+s*0.010)+s*6.2832;
         float t2=time*(0.024+s*0.008)+s*4.1888;
         float t3=time*(0.020+s*0.013)+s*2.0944;
@@ -660,7 +1228,7 @@ let cloudMat;
           (cos(t2)*0.10+sin(t3)*0.07)*amp,
           cos(t3)*amp+sin(t1*0.68)*amp*0.40
         );
-        float rotA=time*rotSpeed;
+        float rotA=rotAngle;
         float cr=cos(rotA),sr=sin(rotA);
         vec3 basePos=vec3(position.x*cr-position.z*sr,position.y,position.x*sr+position.z*cr);
         vec3 nebulaPos=basePos+drift;
@@ -743,27 +1311,28 @@ let sparkMat;
   const seed  = new Float32Array(SPARK_N);
   for(let i=0;i<SPARK_N;i++){
     const arm   = i % NUM_ARMS;
-    const t     = Math.random();
+    const t     = rand();
     const r     = 5 + t*130;
     const spin  = r*0.022;
     const base  = (arm/NUM_ARMS)*Math.PI*2;
-    const angle = base + spin + (Math.random()-0.5)*0.08;
-    const rF    = r + (Math.random()-0.5)*r*0.03;
+    const angle = base + spin + (rand()-0.5)*0.08;
+    const rF    = r + (rand()-0.5)*r*0.03;
     pos[i*3]   = rF*Math.cos(angle);
-    pos[i*3+1] = (Math.random()-0.5)*1.5;
+    pos[i*3+1] = (rand()-0.5)*1.5;
     pos[i*3+2] = rF*Math.sin(angle);
-    seed[i]    = Math.random();
+    seed[i]    = rand();
   }
   geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
   geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
 
   sparkMat = new THREE.ShaderMaterial({
-    uniforms:{ time:{value:0}, gAlpha:{value:0}, rotSpeed:{value:0.058} },
+    uniforms:{ time:{value:0}, gAlpha:{value:0}, rotSpeed:{value:0.058}, rotAngle:{value:0} },
     transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
     vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
       attribute float nSeed;
       uniform float time;
       uniform float rotSpeed;
+      uniform float rotAngle;
       varying vec3  vColor;
       varying float vAlpha;
       void main(){
@@ -782,7 +1351,7 @@ let sparkMat;
           position.y+(s-0.5)*reach*0.04,
           position.z+ejectDir.y*reach
         );
-        float rotA=time*rotSpeed;
+        float rotA=rotAngle;
         float cr=cos(rotA),sr=sin(rotA);
         ejPos=vec3(ejPos.x*cr-ejPos.z*sr,ejPos.y,ejPos.x*sr+ejPos.z*cr);
         float normR=length(position.xz)/130.0;
@@ -830,9 +1399,9 @@ const starMat = new THREE.PointsMaterial({
   const p=new Float32Array(N*3), c=new Float32Array(N*3);
   const pal=[[0.88,0.94,1],[1,1,0.88],[0.68,0.80,1],[1,0.82,0.62]];
   for(let i=0;i<N;i++){
-    const a=Math.random()*Math.PI*2, b=Math.acos(2*Math.random()-1), r=700+Math.random()*300;
+    const a=rand()*Math.PI*2, b=Math.acos(2*rand()-1), r=700+rand()*300;
     p[i*3]=r*Math.sin(b)*Math.cos(a); p[i*3+1]=r*Math.sin(b)*Math.sin(a); p[i*3+2]=r*Math.cos(b);
-    const sc=pal[Math.floor(Math.random()*pal.length)];
+    const sc=pal[Math.floor(rand()*pal.length)];
     c[i*3]=sc[0]; c[i*3+1]=sc[1]; c[i*3+2]=sc[2];
   }
   geo.setAttribute('position',new THREE.BufferAttribute(p,3));
@@ -852,13 +1421,13 @@ let drainMat;
   const N=20000, geo=new THREE.BufferGeometry();
   const pos=new Float32Array(N*3), seed=new Float32Array(N);
   for(let i=0;i<N;i++){
-    const arm=i%3, t=Math.random(), r=4+t*125, spin=r*0.022;
+    const arm=i%3, t=rand(), r=4+t*125, spin=r*0.022;
     const base=(arm/3)*Math.PI*2;
-    const u=Math.random()*0.999+0.0005;
-    const g=Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*Math.random());
+    const u=rand()*0.999+0.0005;
+    const g=Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*rand());
     const angle=base+spin+g*0.14, rF=r+g*r*0.06;
     pos[i*3]=rF*Math.cos(angle); pos[i*3+1]=g*r*0.018; pos[i*3+2]=rF*Math.sin(angle);
-    seed[i]=Math.random();
+    seed[i]=rand();
   }
   geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
   geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
@@ -931,12 +1500,12 @@ let cvortMat;
   const N=1600, geo=new THREE.BufferGeometry();
   const pos=new Float32Array(N*3), seed=new Float32Array(N);
   for(let i=0;i<N;i++){
-    const arm=i%3, t=Math.random(), r=6+t*110, spin=r*0.022;
+    const arm=i%3, t=rand(), r=6+t*110, spin=r*0.022;
     const base=(arm/3)*Math.PI*2;
-    const scatter=(Math.random()-0.5)*r*0.50;
-    const angle=base+spin+scatter/Math.max(r,1), rF=r+(Math.random()-0.5)*r*0.30;
-    pos[i*3]=rF*Math.cos(angle); pos[i*3+1]=(Math.random()-0.5)*r*0.10; pos[i*3+2]=rF*Math.sin(angle);
-    seed[i]=Math.random();
+    const scatter=(rand()-0.5)*r*0.50;
+    const angle=base+spin+scatter/Math.max(r,1), rF=r+(rand()-0.5)*r*0.30;
+    pos[i*3]=rF*Math.cos(angle); pos[i*3+1]=(rand()-0.5)*r*0.10; pos[i*3+2]=rF*Math.sin(angle);
+    seed[i]=rand();
   }
   geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
   geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
@@ -1014,9 +1583,9 @@ let jetTopMat, jetBotMat;
     const N=4000, geo=new THREE.BufferGeometry();
     const pos=new Float32Array(N*3), seed=new Float32Array(N);
     for(let i=0;i<N;i++){
-      const t=Math.pow(Math.random(),0.65), yR=t*58, spread=t*t*0.30, a=Math.random()*Math.PI*2;
+      const t=Math.pow(rand(),0.65), yR=t*58, spread=t*t*0.30, a=rand()*Math.PI*2;
       pos[i*3]=Math.cos(a)*yR*spread; pos[i*3+1]=side*yR; pos[i*3+2]=Math.sin(a)*yR*spread;
-      seed[i]=Math.random();
+      seed[i]=rand();
     }
     geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
     geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
@@ -1087,22 +1656,22 @@ const galaxyDiscGeo = new THREE.BufferGeometry();
   const pos   = new Float32Array(GALAXY_DISC_N * 3);
   const seeds = new Float32Array(GALAXY_DISC_N);
   for(let i = 0; i < GALAXY_DISC_N; i++){
-    const s = Math.random(); seeds[i] = s;
-    const r = Math.random();
+    const s = rand(); seeds[i] = s;
+    const r = rand();
     let gR, tightness;
     if(r < 0.12){
-      gR = Math.random() * 28; tightness = 12;
+      gR = rand() * 28; tightness = 12;
     } else if(r < 0.72){
-      gR = 18 + Math.random() * 220; tightness = 16;
+      gR = 18 + rand() * 220; tightness = 16;
     } else {
-      gR = 12 + Math.random() * 240; tightness = 48;
+      gR = 12 + rand() * 240; tightness = 48;
     }
-    const armOff = Math.floor(Math.random() * 2) * Math.PI;
-    const gTheta = armOff + (gR / 75.0) * 2.8 + (Math.random() - 0.5) * 0.38;
+    const armOff = Math.floor(rand() * 2) * Math.PI;
+    const gTheta = armOff + (gR / 75.0) * 2.8 + (rand() - 0.5) * 0.38;
     const gPerp  = gTheta + Math.PI * 0.5;
-    const gSpread = (Math.random() - 0.5) * tightness;
+    const gSpread = (rand() - 0.5) * tightness;
     pos[i*3]   = gR * Math.cos(gTheta) + gSpread * Math.cos(gPerp);
-    pos[i*3+1] = (Math.random() - 0.5) * 7;
+    pos[i*3+1] = (rand() - 0.5) * 7;
     pos[i*3+2] = gR * Math.sin(gTheta) + gSpread * Math.sin(gPerp);
   }
   galaxyDiscGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -1311,8 +1880,8 @@ const loopMat=new THREE.ShaderMaterial({
 const loopPoints = new THREE.Points(loopGeo,loopMat);
 scene.add(loopPoints);
 const loopStates=Array.from({length:N_LOOPS},(_,i)=>({
-  a1:(i/N_LOOPS)*Math.PI*2, a2:(i/N_LOOPS)*Math.PI*2+0.5+Math.random()*0.7,
-  h:3.0+Math.random()*5.5, spd:0.14+Math.random()*0.12, phase:i/N_LOOPS,
+  a1:(i/N_LOOPS)*Math.PI*2, a2:(i/N_LOOPS)*Math.PI*2+0.5+rand()*0.7,
+  h:3.0+rand()*5.5, spd:0.14+rand()*0.12, phase:i/N_LOOPS,
   col:FLARE_COLORS[i%FLARE_COLORS.length].clone(),
 }));
 function bezP(t,p0,p1,p2){const m=1-t;return{x:m*m*p0.x+2*m*t*p1.x+t*t*p2.x,y:m*m*p0.y+2*m*t*p1.y+t*t*p2.y,z:m*m*p0.z+2*m*t*p1.z+t*t*p2.z};}
@@ -1401,9 +1970,13 @@ const T_COLL_START = 56;
 const T_COLL_END   = 74;
 
 let T = 0; // driven by sheet.sequence.position
+let autoWarmBias = 0; // recomputed fresh each frame in timeline() — never self-referential, so the
+                       // warmBias sliders can never get stuck ratcheted at a stale high value
+let rotAngleFine = 0, rotAngleCloud = 0, rotAngleSpark = 0; // properly integrated rotation angles
 
 function timeline(){
   // T is set externally from Theatre playhead before this call
+  autoWarmBias = 0;
 
   const voidBreath = 0.5 + 0.5*Math.sin(T*0.55);
 
@@ -1449,8 +2022,7 @@ function timeline(){
     fineMat.uniforms.rotSpeed.value  = 0.058 + cCurve * (0.32 - 0.058);
     cloudMat.uniforms.rotSpeed.value = 0.026 + cCurve * (0.32 - 0.026);
     sparkMat.uniforms.rotSpeed.value = 0.058 + cCurve * (0.32 - 0.058);
-    fineMat.uniforms.warmBias.value  = easeOut(cSub) * 0.55;
-    cloudMat.uniforms.warmBias.value = easeOut(cSub) * 0.55;
+    autoWarmBias = easeOut(cSub) * 0.55;
     sparkMat.uniforms.gAlpha.value = Math.max(0, 1.0 - cSub * 3.0);
     coreVisibility = cCurve * cCurve;
     sphTarget.r = 320 - cCurve * 185;
@@ -1474,8 +2046,19 @@ function tick(){
 
   // Auto-clock drives T; push scaled position to Theatre so its cursor tracks the scene
   if (!paused) T += dt * tVals.speed;
+  if (loopGroupName) {
+    const loopGroup = CONTROL_GROUPS.find(g => g.name === loopGroupName);
+    if (loopGroup) {
+      const [ls, le] = loopGroup.window();
+      if (T < ls || T > le) T = ls;
+    }
+  }
   // Theatre timeline is 10s wide, scene is 90s — scale so Theatre cursor syncs
   sheet.sequence.position = Math.min(9.99, T / 9);
+
+  // Keyframed properties win over Theatre/sliders for this frame — applied early
+  // so every later read of tVals (timeline(), ignition sequence, overrides) sees it.
+  applySequencers();
 
   // Reset one-shot state when scrubbing/jumping back
   if (T < prevT - 0.1) {
@@ -1527,6 +2110,18 @@ function tick(){
   }
 
   timeline();
+
+  // Rotation angle is properly accumulated (speed × dt each frame) instead of
+  // "current speed × absolute elapsed time" — the old formula overstated rotation
+  // any time rotSpeed was still ramping up, which is exactly the formation window.
+  if (!paused) {
+    rotAngleFine  += fineMat.uniforms.rotSpeed.value  * dt;
+    rotAngleCloud += cloudMat.uniforms.rotSpeed.value * dt;
+    rotAngleSpark += sparkMat.uniforms.rotSpeed.value * dt;
+  }
+  fineMat.uniforms.rotAngle.value  = rotAngleFine;
+  cloudMat.uniforms.rotAngle.value = rotAngleCloud;
+  sparkMat.uniforms.rotAngle.value = rotAngleSpark;
 
   // ── Ignition trigger ──────────────────────────────────────────────────────
   if(!ignitionTriggered && fineMat.uniforms.collapseT.value >= 1.0) {
@@ -1640,8 +2235,8 @@ function tick(){
   cloudMat.uniforms.brightMult.value = tVals.nebulaBright;
   drainMat.uniforms.gAlpha.value    *= tVals.collapseBright;
   cvortMat.uniforms.gAlpha.value    *= tVals.collapseBright;
-  fineMat.uniforms.warmBias.value    = Math.max(fineMat.uniforms.warmBias.value, tVals.nebulaWarm);
-  cloudMat.uniforms.warmBias.value   = Math.max(cloudMat.uniforms.warmBias.value, tVals.collapseWarm);
+  fineMat.uniforms.warmBias.value    = Math.max(autoWarmBias, tVals.nebulaWarm);
+  cloudMat.uniforms.warmBias.value   = Math.max(autoWarmBias, tVals.collapseWarm);
   fineMat.uniforms.turbMult.value    = tVals.cloudTurb;
   cloudMat.uniforms.turbMult.value   = tVals.cloudTurb;
   fineMat.uniforms.spiralMult.value  = tVals.cloudSpiral;
