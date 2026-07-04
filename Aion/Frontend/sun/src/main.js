@@ -1,0 +1,723 @@
+import * as THREE from 'three';
+import { getProject, types } from '@theatre/core';
+import studio from '@theatre/studio';
+
+studio.default.initialize();
+
+const canvas   = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x000000, 1);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(44, innerWidth/innerHeight, 0.1, 2000);
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ── Lighting ──────────────────────────────────────────────────────────────────
+const sunLight = new THREE.PointLight(0xfff4e0, 0, 400);
+scene.add(sunLight);
+scene.add(new THREE.AmbientLight(0x02010a, 0.3));
+
+// ── Stars ─────────────────────────────────────────────────────────────────────
+{
+  const g = new THREE.BufferGeometry();
+  const p = new Float32Array(7000 * 3);
+  for (let i = 0; i < 7000*3; i++) p[i] = (Math.random()-0.5) * 900;
+  g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({
+    color:0xffffff, size:0.15, sizeAttenuation:true,
+    transparent:true, opacity:0.9, depthWrite:false
+  })));
+  const g2 = new THREE.BufferGeometry();
+  const p2 = new Float32Array(40*3);
+  for (let i = 0; i < 40*3; i++) p2[i] = (Math.random()-0.5) * 600;
+  g2.setAttribute('position', new THREE.BufferAttribute(p2, 3));
+  scene.add(new THREE.Points(g2, new THREE.PointsMaterial({
+    color:0xffffff, size:0.7, sizeAttenuation:true,
+    transparent:true, opacity:1.0, depthWrite:false
+  })));
+}
+
+// ── Sun material ──────────────────────────────────────────────────────────────
+const SUN_R = 2.4;
+const sunMaterial = new THREE.ShaderMaterial({
+  uniforms: {
+    time:       { value: 0 },
+    hueMode:    { value: 0.0 },
+    uRippleStr: { value: 0.0 },
+  },
+  vertexShader: `
+    varying vec3 vPos;
+    varying vec3 vNormal;
+    uniform float time, uRippleStr;
+
+    float rippleWave(vec3 pn, vec3 c, float t, float off){
+      float p   = fract(t + off);
+      float cosA = clamp(dot(pn, normalize(c)), -1.0, 1.0);
+      float ang  = acos(cosA);
+      float env  = exp(-ang*1.5) * pow(max(0.0,1.0-p), 0.55);
+      return sin(ang*20.0 - p*26.0) * env;
+    }
+
+    void main(){
+      vNormal = normalize(normalMatrix * normal);
+      vec3 pn = normalize(position);
+      float t = time * 0.17;
+      float d = 0.0;
+      d += rippleWave(pn, vec3( 0.82, 0.40, 0.41), t, 0.00);
+      d += rippleWave(pn, vec3(-0.65, 0.72, 0.25), t, 0.20);
+      d += rippleWave(pn, vec3( 0.15,-0.88, 0.45), t, 0.40);
+      d += rippleWave(pn, vec3(-0.50,-0.30, 0.81), t, 0.60);
+      d += rippleWave(pn, vec3( 0.30, 0.85,-0.43), t, 0.80);
+      vec3 displaced = position + pn * d * uRippleStr * 0.38;
+      vPos = displaced;
+      gl_Position = projectionMatrix*modelViewMatrix*vec4(displaced,1.0);
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vPos;
+    varying vec3 vNormal;
+    uniform float time, hueMode, uRippleStr;
+
+    float crestGlow(vec3 pn, vec3 c, float t, float off){
+      float p    = fract(t + off);
+      float cosA = clamp(dot(pn, normalize(c)), -1.0, 1.0);
+      float ang  = acos(cosA);
+      float env  = exp(-ang*1.5) * pow(max(0.0,1.0-p), 0.50);
+      return max(0.0, sin(ang*20.0 - p*26.0)) * env;
+    }
+
+    float hash(vec3 p){ return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453); }
+    float noise(vec3 p){
+      vec3 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+      return mix(
+        mix(mix(hash(i),          hash(i+vec3(1,0,0)),u.x),
+            mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),u.x),u.y),
+        mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),u.x),
+            mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),u.x),u.y),u.z);
+    }
+    float fbm(vec3 p){
+      float v=0.,a=0.5;
+      for(int i=0;i<7;i++){v+=a*noise(p);p*=2.1;a*=0.48;}
+      return v;
+    }
+
+    vec3 getDeep(float m){
+      if(m<1.0) return mix(vec3(0.22,0.04,0.0), vec3(0.18,0.01,0.0), m);
+      if(m<2.0) return mix(vec3(0.18,0.01,0.0), vec3(0.0,0.06,0.10), m-1.0);
+      if(m<3.0) return mix(vec3(0.0,0.06,0.10), vec3(0.0,0.01,0.16), m-2.0);
+      if(m<4.0) return mix(vec3(0.0,0.01,0.16), vec3(0.06,0.0,0.16), m-3.0);
+      return      mix(vec3(0.06,0.0,0.16), vec3(0.22,0.04,0.0), m-4.0);
+    }
+    vec3 getHot(float m){
+      if(m<1.0) return mix(vec3(1.0,0.88,0.08), vec3(1.0,0.15,0.03), m);
+      if(m<2.0) return mix(vec3(1.0,0.15,0.03), vec3(0.06,0.95,0.88), m-1.0);
+      if(m<3.0) return mix(vec3(0.06,0.95,0.88), vec3(0.14,0.52,1.0), m-2.0);
+      if(m<4.0) return mix(vec3(0.14,0.52,1.0), vec3(0.68,0.14,1.0), m-3.0);
+      return      mix(vec3(0.68,0.14,1.0), vec3(1.0,0.88,0.08), m-4.0);
+    }
+    vec3 getBright(float m){
+      if(m<1.0) return mix(vec3(1.6,0.90,0.28), vec3(1.8,0.30,0.05), m);
+      if(m<2.0) return mix(vec3(1.8,0.30,0.05), vec3(0.1,1.8,1.6),   m-1.0);
+      if(m<3.0) return mix(vec3(0.1,1.8,1.6),   vec3(0.2,0.7,2.0),   m-2.0);
+      if(m<4.0) return mix(vec3(0.2,0.7,2.0),   vec3(1.1,0.2,2.0),   m-3.0);
+      return      mix(vec3(1.1,0.2,2.0),   vec3(1.6,0.90,0.28), m-4.0);
+    }
+
+    void main(){
+      vec3 p = vPos * 4.5 + vec3(time*0.10, time*0.07, time*0.13);
+      vec3 q = vec3(fbm(p),
+                    fbm(p + vec3(5.2,1.3,2.8)),
+                    fbm(p + vec3(1.7,9.2,3.1)));
+      float n = fbm(p + 0.5*q);
+      n = pow(n, 1.5);
+      n = clamp(n * 1.8 + 0.2, 0.0, 1.0);
+
+      float spot = fbm(vPos * 2.8 + vec3(time*0.018));
+      spot = smoothstep(0.62, 0.45, spot);
+      n *= 0.70 + spot * 0.30;
+
+      float limb = abs(dot(normalize(vNormal), vec3(0.0, 0.0, 1.0)));
+      n *= 0.55 + 0.45 * limb;
+
+      float m = mod(hueMode, 5.0);
+      vec3 deep   = getDeep(m);
+      vec3 hot    = getHot(m);
+      vec3 bright = getBright(m);
+
+      vec3 col = mix(deep, hot, n);
+      float em = smoothstep(0.68, 1.0, n) * 1.5;
+      col += em * bright;
+
+      if(uRippleStr > 0.01){
+        vec3 pn = normalize(vPos);
+        float t  = time * 0.17;
+        float rg = 0.0;
+        rg += crestGlow(pn, vec3( 0.82, 0.40, 0.41), t, 0.00);
+        rg += crestGlow(pn, vec3(-0.65, 0.72, 0.25), t, 0.20);
+        rg += crestGlow(pn, vec3( 0.15,-0.88, 0.45), t, 0.40);
+        rg += crestGlow(pn, vec3(-0.50,-0.30, 0.81), t, 0.60);
+        rg += crestGlow(pn, vec3( 0.30, 0.85,-0.43), t, 0.80);
+        col += rg * bright * 5.0 * uRippleStr;
+      }
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+  transparent: false,
+});
+const sunMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(SUN_R, 64, 64),
+  sunMaterial
+);
+sunMesh.scale.setScalar(0.001);
+scene.add(sunMesh);
+
+// ── Corona ────────────────────────────────────────────────────────────────────
+const coronaGroup = new THREE.Group();
+scene.add(coronaGroup);
+coronaGroup.visible = false;
+
+const coronaMats = [];
+function makeCoronaMat(color, flareStr, glowStr, falloff, fFalloff, sz) {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      time:             { value: 0 },
+      glowColor:        { value: new THREE.Color(color) },
+      flareStrength:    { value: flareStr },
+      baseGlowStrength: { value: glowStr  },
+      radialFalloff:    { value: falloff  },
+      flareFalloff:     { value: fFalloff },
+    },
+    transparent:true, depthWrite:false,
+    blending:THREE.AdditiveBlending, side:THREE.DoubleSide,
+    vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+    fragmentShader:`
+      varying vec2 vUv;
+      uniform float time,flareStrength,baseGlowStrength,radialFalloff,flareFalloff;
+      uniform vec3 glowColor;
+      float hash(float n){return fract(sin(n)*43758.5453);}
+      float noise(float x){float i=floor(x),f=fract(x),u=f*f*(3.0-2.0*f);return mix(hash(i),hash(i+1.0),u);}
+      void main(){
+        vec2 uv=vUv-0.5; float dist=length(uv);
+        if(dist>0.5)discard;
+        float angle=atan(uv.y,uv.x);
+        float aN=(angle+3.14159)/6.28318;
+        float fN=noise(aN*40.0);
+        float fA=noise(aN*40.0+time*0.6);
+        float flare=pow(fN*fA,flareFalloff);
+        float radFade=pow(max(0.0,1.0-dist),radialFalloff);
+        float baseG=smoothstep(0.38,0.0,dist)*(0.9+0.1*sin(time*0.5));
+        float intensity=baseGlowStrength*baseG+flareStrength*flare*radFade;
+        intensity*=1.0-smoothstep(0.18,0.50,dist);
+        if(intensity<0.008)discard;
+        gl_FragColor=vec4(glowColor*intensity,intensity);
+      }
+    `,
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(sz, sz), mat);
+  coronaGroup.add(mesh);
+  coronaMats.push(mat);
+  return mat;
+}
+makeCoronaMat(0xfffacc, 1.8, 1.4, 2.2, 2.0,  6.5);
+makeCoronaMat(0xffcc44, 2.4, 0.9, 1.8, 2.4, 10.0);
+makeCoronaMat(0xff7700, 1.6, 0.5, 1.5, 2.8, 16.0);
+makeCoronaMat(0xcc3300, 0.8, 0.3, 1.2, 3.0, 26.0);
+const CORONA_GLOW0  = [1.4, 0.9, 0.5, 0.3];
+const CORONA_FLARE0 = [1.8, 2.4, 1.6, 0.8];
+
+const CORONA_HUES = [
+  [0xfffacc, 0xffcc44, 0xff7700, 0xcc3300],
+  [0xff7744, 0xdd2200, 0xaa0000, 0x550000],
+  [0xaaffee, 0x00ddcc, 0x009988, 0x004444],
+  [0xaabbff, 0x5577ff, 0x2244dd, 0x112266],
+  [0xdd99ff, 0x9933dd, 0x661199, 0x220055],
+];
+
+// ── Solar flare strands ───────────────────────────────────────────────────────
+const flareMat = new THREE.ShaderMaterial({
+  uniforms: {
+    progress:   { value: 0 },
+    flareColor: { value: new THREE.Color(1.0, 0.55, 0.1) },
+    seed:       { value: 0.0 },
+  },
+  transparent:true, depthWrite:false,
+  blending:THREE.AdditiveBlending, side:THREE.DoubleSide,
+  vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`
+    varying vec2 vUv;
+    uniform float progress,seed;
+    uniform vec3 flareColor;
+    float h(float n){return fract(sin(n)*43758.5453);}
+    const float PI=3.14159265;
+    void main(){
+      vec2 uv=vUv-0.5;
+      float ay=abs(uv.y);
+      if(ay<0.03||length(uv)>0.495)discard;
+      float posPhase=clamp(progress/0.65,0.0,1.0);
+      float negPhase=clamp((progress-0.35)/0.65,0.0,1.0);
+      float posOp=sin(posPhase*PI);
+      float negOp=sin(negPhase*PI);
+      float lenFade=smoothstep(0.03,0.09,ay)*exp(-ay*6.0);
+      float s=0.0;
+      if(uv.y>0.03&&posOp>0.005){
+        float posS=0.0;
+        for(int i=0;i<5;i++){
+          float fi=float(i);
+          float lean=(h(fi*2.7+seed)-0.5)*1.4;
+          float thick=h(fi*1.3+seed+1.0)*0.024+0.007;
+          float brt=max(0.0,h(fi*1.9+seed+2.0)-0.2)*1.25;
+          float cx=uv.x-lean*uv.y;
+          float w=thick*ay+0.003;
+          posS+=exp(-cx*cx/(w*w))*brt;
+        }
+        float tip=posOp*0.47+0.01;
+        float wave=1.0-smoothstep(tip-0.05,tip,uv.y);
+        s+=posS*lenFade*wave*posOp;
+      }
+      if(uv.y<-0.03&&negOp>0.005){
+        float negS=0.0;
+        for(int i=0;i<5;i++){
+          float fi=float(i);
+          float lean=(h(fi*2.7+seed)-0.5)*1.4;
+          float thick=h(fi*1.3+seed+1.0)*0.024+0.007;
+          float brt=max(0.0,h(fi*1.9+seed+9.0)-0.48)*1.92;
+          float cx=uv.x-lean*uv.y;
+          float w=thick*ay+0.003;
+          negS+=exp(-cx*cx/(w*w))*brt;
+        }
+        float tip=negOp*0.47+0.01;
+        float wave=1.0-smoothstep(tip-0.05,tip,-uv.y);
+        s+=negS*lenFade*wave*negOp*0.75;
+      }
+      float intensity=s*2.5;
+      if(intensity<0.005)discard;
+      gl_FragColor=vec4(flareColor*intensity,intensity*0.85);
+    }
+  `,
+});
+const flareMesh = new THREE.Mesh(new THREE.PlaneGeometry(60,60), flareMat);
+coronaGroup.add(flareMesh);
+
+const FLARE_COLORS = [
+  new THREE.Color(1.0, 0.55, 0.10),
+  new THREE.Color(1.0, 0.92, 0.28),
+  new THREE.Color(0.28, 0.82, 1.0),
+  new THREE.Color(1.0, 0.28, 0.62),
+  new THREE.Color(0.68, 0.28, 1.0),
+  new THREE.Color(0.18, 1.0,  0.78),
+  new THREE.Color(1.0,  1.0,  1.0),
+];
+let flareActive = false, flareTimer = 0, flareScheduled = false;
+let shockwaveActive = false, shockwaveTimer = 0, shockwaveTriggered = false;
+const SHOCKWAVE_DUR = 5.0;
+let rippleBurstDone = false;
+let rippleBurstTimer = 0;
+
+function triggerFlare() {
+  if (flareActive) return;
+  flareActive = true; flareTimer = 0;
+  flareMesh.rotation.z = Math.random() * Math.PI * 2;
+  flareMat.uniforms.seed.value = Math.random() * 100;
+  flareMat.uniforms.flareColor.value.copy(
+    FLARE_COLORS[Math.floor(Math.random() * FLARE_COLORS.length)]
+  );
+}
+function scheduleFlares() {
+  if (flareScheduled) return;
+  flareScheduled = true;
+  (function loop() {
+    triggerFlare();
+    setTimeout(loop, 2000 + Math.random() * 3500);
+  })();
+}
+
+// ── Emission loops ────────────────────────────────────────────────────────────
+const N_LOOPS = 5;
+const LOOP_PTS = 90;
+const loopGeo = new THREE.BufferGeometry();
+const loopPos = new Float32Array(N_LOOPS * LOOP_PTS * 3);
+const loopCol = new Float32Array(N_LOOPS * LOOP_PTS * 3);
+const loopAlp = new Float32Array(N_LOOPS * LOOP_PTS);
+loopGeo.setAttribute('position', new THREE.BufferAttribute(loopPos, 3));
+loopGeo.setAttribute('color',    new THREE.BufferAttribute(loopCol, 3));
+loopGeo.setAttribute('alpha',    new THREE.BufferAttribute(loopAlp, 1));
+
+const loopMat = new THREE.ShaderMaterial({
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  vertexShader:`
+    attribute float alpha;
+    attribute vec3 color;
+    varying vec3 vC; varying float vA;
+    void main(){
+      vC=color; vA=alpha;
+      vec4 mv=modelViewMatrix*vec4(position,1.0);
+      gl_PointSize=max(1.5,4.0*90.0/-mv.z);
+      gl_Position=projectionMatrix*mv;
+    }
+  `,
+  fragmentShader:`
+    varying vec3 vC; varying float vA;
+    void main(){
+      vec2 c=gl_PointCoord-0.5;
+      if(length(c)>0.5||vA<0.01)discard;
+      float a=vA*(1.0-length(c)*2.0);
+      gl_FragColor=vec4(vC*a,a);
+    }
+  `,
+});
+scene.add(new THREE.Points(loopGeo, loopMat));
+
+const loopStates = Array.from({length:N_LOOPS}, (_, i) => ({
+  a1:    (i / N_LOOPS) * Math.PI * 2,
+  a2:    (i / N_LOOPS) * Math.PI * 2 + 0.5 + Math.random() * 0.6,
+  h:     1.8 + Math.random() * 3.0,
+  spd:   0.18 + Math.random() * 0.14,
+  phase: i / N_LOOPS,
+  col:   FLARE_COLORS[i % FLARE_COLORS.length].clone(),
+}));
+
+function bezierPoint(t, p0, p1, p2) {
+  const mt = 1 - t;
+  return {
+    x: mt*mt*p0.x + 2*mt*t*p1.x + t*t*p2.x,
+    y: mt*mt*p0.y + 2*mt*t*p1.y + t*t*p2.y,
+    z: mt*mt*p0.z + 2*mt*t*p1.z + t*t*p2.z,
+  };
+}
+
+function updateLoops(t) {
+  loopStates.forEach((lp, li) => {
+    const ph = (t * lp.spd + lp.phase) % 1.0;
+    if (ph < 0.015 && Math.random() < 0.08) {
+      lp.a1  = Math.random() * Math.PI * 2;
+      lp.a2  = lp.a1 + 0.4 + Math.random() * 0.9;
+      lp.h   = 1.8 + Math.random() * 3.5;
+      lp.spd = 0.16 + Math.random() * 0.16;
+      lp.col = FLARE_COLORS[Math.floor(Math.random() * FLARE_COLORS.length)].clone();
+    }
+    const p0 = { x: SUN_R*Math.cos(lp.a1), y: 0, z: SUN_R*Math.sin(lp.a1) };
+    const p2 = { x: SUN_R*Math.cos(lp.a2), y: 0, z: SUN_R*Math.sin(lp.a2) };
+    const mx = (p0.x + p2.x) * 0.5;
+    const mz = (p0.z + p2.z) * 0.5;
+    const ml = Math.sqrt(mx*mx + mz*mz) || 1;
+    const p1 = { x: mx/ml*(SUN_R + lp.h), y: lp.h * 0.4, z: mz/ml*(SUN_R + lp.h) };
+    const base = li * LOOP_PTS;
+    for (let j = 0; j < LOOP_PTS; j++) {
+      const u = j / (LOOP_PTS - 1);
+      const bp = bezierPoint(u, p0, p1, p2);
+      loopPos[(base+j)*3+0] = bp.x;
+      loopPos[(base+j)*3+1] = bp.y;
+      loopPos[(base+j)*3+2] = bp.z;
+      loopCol[(base+j)*3+0] = lp.col.r;
+      loopCol[(base+j)*3+1] = lp.col.g;
+      loopCol[(base+j)*3+2] = lp.col.b;
+      const dist = Math.abs(u - ph);
+      const wrap = Math.min(dist, 1.0 - dist);
+      loopAlp[base+j] = Math.max(0, 1.0 - wrap * 14.0) * 0.9;
+    }
+  });
+  loopGeo.attributes.position.needsUpdate = true;
+  loopGeo.attributes.color.needsUpdate    = true;
+  loopGeo.attributes.alpha.needsUpdate    = true;
+}
+
+// ── Collapse particles ────────────────────────────────────────────────────────
+const PCNT = 4000;
+const pcGeo = new THREE.BufferGeometry();
+const pcPos = new Float32Array(PCNT * 3);
+const pcCol = new Float32Array(PCNT * 3);
+for (let i = 0; i < PCNT; i++) {
+  const r = 12 + Math.random() * 80;
+  const th = Math.random() * Math.PI * 2;
+  const ph = Math.acos(2*Math.random()-1);
+  pcPos[i*3]   = r * Math.sin(ph) * Math.cos(th);
+  pcPos[i*3+1] = r * Math.cos(ph) * 0.25;
+  pcPos[i*3+2] = r * Math.sin(ph) * Math.sin(th);
+  const w = Math.random();
+  pcCol[i*3]   = 0.3 + w*0.7;
+  pcCol[i*3+1] = 0.15 + w*0.3;
+  pcCol[i*3+2] = 0.7 - w*0.6;
+}
+const pcPosOrigin = pcPos.slice(); // save original positions for reset
+pcGeo.setAttribute('position', new THREE.BufferAttribute(pcPos, 3));
+pcGeo.setAttribute('color',    new THREE.BufferAttribute(pcCol, 3));
+const pcMat = new THREE.PointsMaterial({
+  size:0.45, sizeAttenuation:true, vertexColors:true,
+  transparent:true, opacity:0.85, depthWrite:false,
+  blending:THREE.AdditiveBlending,
+});
+const pcMesh = new THREE.Points(pcGeo, pcMat);
+scene.add(pcMesh);
+
+// ── Ignition flash ────────────────────────────────────────────────────────────
+const flashMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(55, 32, 32),
+  new THREE.MeshBasicMaterial({
+    color:0xfffef8, transparent:true, opacity:0,
+    side:THREE.BackSide, blending:THREE.AdditiveBlending, depthWrite:false
+  })
+);
+scene.add(flashMesh);
+
+// ── Shockwave ring ────────────────────────────────────────────────────────────
+const shockwaveMat = new THREE.ShaderMaterial({
+  uniforms: { progress: { value: 0.0 } },
+  transparent:true, depthWrite:false,
+  blending:THREE.AdditiveBlending, side:THREE.DoubleSide,
+  vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`
+    varying vec2 vUv;
+    uniform float progress;
+    void main(){
+      vec2 uv=vUv-0.5;
+      float dist=length(uv);
+      if(dist>0.5)discard;
+      float r1=0.05+progress*0.45;
+      float w1=0.010+progress*0.012;
+      float ring1=exp(-pow((dist-r1)/w1,2.0))*9.0;
+      float halo=exp(-pow((dist-r1)/(w1*6.0),2.0))*1.8;
+      float p2=clamp((progress-0.15)/0.85,0.0,1.0);
+      float r2=0.05+p2*0.45;
+      float ring2=exp(-pow((dist-r2)/(w1*0.75),2.0))*4.5;
+      float fade2=pow(1.0-p2,0.65);
+      float inner=smoothstep(r1+0.02,r1-0.12,dist)*0.7;
+      float fade=pow(1.0-progress,0.55);
+      float intensity=(ring1+halo+inner)*fade+ring2*fade2*0.7;
+      if(intensity<0.002)discard;
+      vec3 col=mix(vec3(1.6,1.4,1.1),vec3(1.1,0.35,0.03),progress);
+      gl_FragColor=vec4(col*intensity,min(intensity,1.0));
+    }
+  `,
+});
+const shockwaveMesh = new THREE.Mesh(new THREE.PlaneGeometry(100,100), shockwaveMat);
+shockwaveMesh.visible = false;
+scene.add(shockwaveMesh);
+
+// ── Camera controls ───────────────────────────────────────────────────────────
+let sph       = { r:220, theta:0.35, phi:0.50 };
+let sphTarget = { r:220, theta:0.35, phi:0.50 };
+let drag = false, prev = {x:0,y:0};
+let userDragged = false, autoTimer;
+
+function updateCamera() {
+  camera.position.set(
+    sph.r * Math.sin(sph.phi) * Math.sin(sph.theta),
+    sph.r * Math.cos(sph.phi),
+    sph.r * Math.sin(sph.phi) * Math.cos(sph.theta)
+  );
+  camera.lookAt(0,0,0);
+}
+
+canvas.addEventListener('mousedown', e => {
+  drag=true; prev={x:e.clientX,y:e.clientY};
+  userDragged=true; clearTimeout(autoTimer);
+});
+window.addEventListener('mouseup', () => {
+  drag=false;
+  autoTimer = setTimeout(() => { userDragged=false; }, 4000);
+});
+window.addEventListener('mousemove', e => {
+  if(!drag) return;
+  sphTarget.theta -= (e.clientX - prev.x)*0.005;
+  sphTarget.phi    = Math.max(0.08, Math.min(Math.PI*0.88, sphTarget.phi+(e.clientY-prev.y)*0.005));
+  prev={x:e.clientX,y:e.clientY};
+});
+window.addEventListener('wheel', e => {
+  sphTarget.r = Math.max(4, Math.min(180, sphTarget.r + e.deltaY*0.05));
+},{passive:true});
+
+// ── Theatre.js ────────────────────────────────────────────────────────────────
+const project = getProject('Sun Scene');
+const sheet   = project.sheet('Ignition');
+
+// Set sequence length to match ignition duration
+sheet.sequence.attachAudio; // no-op, just ensuring sequence is ready
+project.ready.then(() => {
+  sheet.sequence.play({ iterationCount: 1, range: [0, 11] });
+  sheet.sequence.pause();
+  sheet.sequence.position = 0;
+});
+
+const sunObj = sheet.object('Sun', {
+  rippleStrength: types.number(0, { range: [0, 1] }),
+  hueMode:        types.number(0, { range: [0, 5] }),
+});
+
+let theatreVals = { rippleStrength: 0, hueMode: 0 };
+sunObj.onValuesChange(v => { theatreVals = v; });
+
+// ── Render loop ───────────────────────────────────────────────────────────────
+const easeOut3 = t => 1 - Math.pow(1-t, 3);
+const easeIn3  = t => t*t*t;
+
+let lastTime = 0;
+const IGNITE_DUR = 11;
+let colorCycleT  = 0;
+const COLOR_PERIOD = 45;
+let prevIgniteT = -1; // track scrub direction for resetting one-shot flags
+
+function frame(ts) {
+  const t  = ts * 0.001;
+  const dt = Math.min(t - lastTime, 0.05);
+  lastTime = t;
+
+  const cs = 0.035;
+  sph.r     += (sphTarget.r     - sph.r)     * cs;
+  sph.theta += (sphTarget.theta - sph.theta) * cs;
+  sph.phi   += (sphTarget.phi   - sph.phi)   * cs;
+  // Theatre.js playhead IS the ignition clock
+  const igniteT = Math.min(sheet.sequence.position, IGNITE_DUR);
+  const ignitionDone = igniteT >= IGNITE_DUR;
+
+  // Reset one-shot flags and particles when playhead scrubs back
+  if (igniteT < prevIgniteT) {
+    shockwaveTriggered = false; shockwaveActive = false; shockwaveMesh.visible = false;
+    rippleBurstDone = false; rippleBurstTimer = 0;
+    flareScheduled = false; flareActive = false; flareMat.uniforms.progress.value = 0;
+    colorCycleT = 0;
+    // Restore particle positions to original scattered state
+    pcPos.set(pcPosOrigin);
+    pcGeo.attributes.position.needsUpdate = true;
+    pcMat.opacity = 0.85;
+  }
+  prevIgniteT = igniteT;
+
+  if (!userDragged && ignitionDone) sphTarget.theta += 0.00042;
+  updateCamera();
+
+  if (!ignitionDone) {
+    const pct = igniteT / IGNITE_DUR;
+
+    if (pct < 0.32) {
+      const sub  = pct / 0.32;
+      const speed = easeIn3(sub) * 0.65;
+      const pos = pcGeo.attributes.position.array;
+      for (let i = 0; i < PCNT; i++) {
+        const ix=pos[i*3], iy=pos[i*3+1], iz=pos[i*3+2];
+        const d = Math.sqrt(ix*ix+iy*iy+iz*iz) || 1;
+        pos[i*3]   -= (ix/d)*speed;
+        pos[i*3+1] -= (iy/d)*speed*0.4;
+        pos[i*3+2] -= (iz/d)*speed;
+      }
+      pcGeo.attributes.position.needsUpdate = true;
+      pcMat.opacity = 0.85 - sub*0.55;
+      sunMesh.scale.setScalar(0.001 + sub*0.22);
+      sunLight.intensity = sub * 4;
+      sphTarget.r = 220 - sub * 175;
+      sunMaterial.uniforms.hueMode.value = 0;
+      coronaGroup.visible = false;
+
+    } else if (pct < 0.48) {
+      const sub = (pct - 0.32) / 0.16;
+      const flashOp = Math.sin(sub * Math.PI * 0.5) * 0.90;
+      flashMesh.material.opacity = flashOp;
+      sunMesh.scale.setScalar(0.22 + sub * 2.4);
+      sunLight.intensity = 4 + sub * 40;
+      pcMat.opacity = 0;
+      coronaGroup.visible = false;
+      sphTarget.r = 45 + sub * 12;
+
+    } else {
+      const sub = (pct - 0.48) / 0.52;
+      const eased = easeOut3(sub);
+      const cf = Math.min(1, Math.max(0, (sub - 0.28) / 0.28));
+      coronaGroup.visible = cf > 0;
+      coronaMats.forEach((m, i) => {
+        m.uniforms.baseGlowStrength.value = CORONA_GLOW0[i]  * cf;
+        m.uniforms.flareStrength.value    = CORONA_FLARE0[i] * cf;
+      });
+      if (!shockwaveTriggered) {
+        shockwaveTriggered = true; shockwaveActive = true;
+        shockwaveTimer = 0; shockwaveMesh.visible = true;
+      }
+      if (!rippleBurstDone) {
+        rippleBurstDone = true;
+        rippleBurstTimer = 0;
+      }
+      flashMesh.material.opacity = (1 - eased) * 0.90;
+      sunMesh.scale.setScalar(2.62 - eased * 1.62);
+      sunLight.intensity = 44 - eased * 35;
+      sphTarget.r = 57 - eased * 7;
+      if (sub > 0.5 && !flareScheduled) scheduleFlares();
+    }
+  }
+
+  if (ignitionDone) {
+    colorCycleT += dt;
+    sunMaterial.uniforms.hueMode.value = (colorCycleT / COLOR_PERIOD) * 5.0;
+    const mode = sunMaterial.uniforms.hueMode.value % 5;
+    const mi   = Math.floor(mode);
+    const mf   = mode - mi;
+    coronaMats.forEach((mat, ci) => {
+      const c1 = new THREE.Color(CORONA_HUES[mi % 5][ci]);
+      const c2 = new THREE.Color(CORONA_HUES[(mi+1) % 5][ci]);
+      mat.uniforms.glowColor.value.lerpColors(c1, c2, mf);
+    });
+    loopStates.forEach((lp) => {
+      const base = mi % 5;
+      const cols = [
+        [1.0,0.55,0.10], [1.0,0.15,0.03], [0.06,0.95,0.88],
+        [0.14,0.52,1.0], [0.68,0.14,1.0]
+      ];
+      const c1 = cols[base], c2 = cols[(base+1)%5];
+      lp.col.setRGB(
+        c1[0]+(c2[0]-c1[0])*mf,
+        c1[1]+(c2[1]-c1[1])*mf,
+        c1[2]+(c2[2]-c1[2])*mf
+      );
+    });
+  }
+
+  sunMaterial.uniforms.time.value = t;
+  coronaMats.forEach(m => m.uniforms.time.value = t);
+  coronaGroup.quaternion.copy(camera.quaternion);
+
+  if (shockwaveActive) {
+    shockwaveTimer += dt;
+    shockwaveMat.uniforms.progress.value = Math.min(shockwaveTimer / SHOCKWAVE_DUR, 1.0);
+    shockwaveMesh.quaternion.copy(camera.quaternion);
+    if (shockwaveTimer >= SHOCKWAVE_DUR) {
+      shockwaveActive = false;
+      shockwaveMesh.visible = false;
+    }
+  }
+
+  if (rippleBurstDone) {
+    rippleBurstTimer += dt;
+    const str = rippleBurstTimer < 2.0  ? Math.min(rippleBurstTimer / 0.4, 1.0)
+              : rippleBurstTimer < 6.0  ? 1.0
+              : rippleBurstTimer < 9.0  ? 1.0 - (rippleBurstTimer - 6.0) / 3.0
+              : 0.25;
+    sunMaterial.uniforms.uRippleStr.value = str;
+  }
+
+  if (flareActive) {
+    flareTimer += dt;
+    const dur = 5.0;
+    flareMat.uniforms.progress.value = flareTimer / dur;
+    if (flareTimer > dur) {
+      flareActive = false;
+      flareMat.uniforms.progress.value = 0;
+    }
+  }
+
+  if (igniteT > IGNITE_DUR * 0.55) updateLoops(t);
+
+  // Theatre.js overrides — applied last so they always win
+  sunMaterial.uniforms.uRippleStr.value = theatreVals.rippleStrength;
+  sunMaterial.uniforms.hueMode.value    = theatreVals.hueMode;
+
+  sunLight.position.set(0,0,0);
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+requestAnimationFrame(frame);
