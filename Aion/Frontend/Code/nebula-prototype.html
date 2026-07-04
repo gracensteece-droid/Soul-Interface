@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Nebula — Spiral Prototype</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{position:fixed;inset:0}
+#info{
+  position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+  font-family:monospace;font-size:9px;letter-spacing:0.25em;
+  color:rgba(200,175,135,0.16);pointer-events:none;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="info">DRAG · SCROLL TO ZOOM</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+window.onerror = function(msg,src,line){
+  document.body.innerHTML += `<div style="position:fixed;bottom:20px;left:20px;right:20px;background:#1a0000;color:#ff8080;font-family:monospace;font-size:12px;padding:16px;z-index:9999;border:1px solid #660000;">JS Error (line ${line}): ${msg}</div>`;
+};
+
+const canvas   = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000308, 1);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 2000);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+
+// ── Spherical camera ──────────────────────────────────────────────────────────
+const sph       = { r:320, theta:0.30, phi:0.46 };
+const sphTarget = { r:320, theta:0.30, phi:0.46 };
+
+function applyCamera(){
+  camera.position.set(
+    sph.r*Math.sin(sph.phi)*Math.sin(sph.theta),
+    sph.r*Math.cos(sph.phi),
+    sph.r*Math.sin(sph.phi)*Math.cos(sph.theta)
+  );
+  camera.lookAt(0,0,0);
+}
+
+let drag=false, prev={x:0,y:0};
+canvas.addEventListener('mousedown', e=>{ drag=true; prev={x:e.clientX,y:e.clientY}; });
+window.addEventListener('mouseup', ()=>drag=false);
+window.addEventListener('mousemove', e=>{
+  if(!drag) return;
+  sphTarget.theta -= (e.clientX-prev.x)*0.004;
+  sphTarget.phi    = clamp(sphTarget.phi+(e.clientY-prev.y)*0.004, 0.05, Math.PI*0.88);
+  prev={x:e.clientX,y:e.clientY};
+  sph.theta=sphTarget.theta; sph.phi=sphTarget.phi;
+});
+window.addEventListener('wheel', e=>{
+  sphTarget.r = clamp(sphTarget.r+e.deltaY*0.20, 50, 700);
+  sph.r=sphTarget.r;
+},{passive:true});
+
+// ── Shared hsl2rgb GLSL ───────────────────────────────────────────────────────
+const HSL_GLSL = `
+  vec3 hsl2rgb(float h,float s,float l){
+    vec3 rgb=clamp(abs(mod(h*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
+    return l+s*(rgb-0.5)*(1.0-abs(2.0*l-1.0));
+  }
+`;
+
+// ── Hue remap — skip yellow-green, keep nebula palette ────────────────────────
+// 0→0.20 → crimson/red  |  0.20→0.45 → electric blue  |  0.45→0.65 → teal/cyan
+// 0.65→0.82 → violet/pink  |  0.82→1.0 → gold/amber
+const HUE_REMAP_GLSL = `
+  float remapHue(float h){
+    if     (h<0.20) return h*0.30;
+    else if(h<0.45) return 0.55+(h-0.20)*0.60;
+    else if(h<0.65) return 0.48+(h-0.45)*0.35;
+    else if(h<0.82) return 0.75+(h-0.65)*0.59;
+    else            return 0.08+(h-0.82)*0.67;
+  }
+`;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYER 1 — FINE SPIRAL PARTICLES (structure / detail)
+// Logarithmic spiral arms. Variable-amplitude turbulence:
+//   low amp  → particles hug spine → arm visible
+//   high amp → particles scatter   → arm dissolves
+// ═══════════════════════════════════════════════════════════════════════════════
+const NUM_ARMS = 3;
+const FINE_N   = 14000;
+{
+  const geo  = new THREE.BufferGeometry();
+  const pos  = new Float32Array(FINE_N*3);
+  const seed = new Float32Array(FINE_N);
+
+  for(let i=0;i<FINE_N;i++){
+    const arm  = i % NUM_ARMS;
+    const t    = Math.random();
+    const r    = 5 + t*130;
+    const spin = r * 0.022;
+    const base = (arm/NUM_ARMS)*Math.PI*2;
+    const u    = Math.random()*0.999+0.0005;
+    const g    = Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*Math.random());
+    const angle  = base + spin + g*0.16;
+    const rFinal = r + g*r*0.07;
+    pos[i*3]   = rFinal*Math.cos(angle);
+    pos[i*3+1] = g*r*0.022;
+    pos[i*3+2] = rFinal*Math.sin(angle);
+    seed[i]    = Math.random();
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
+      attribute float nSeed;
+      uniform float time;
+      varying vec3  vColor;
+      varying float vAlpha;
+      void main(){
+        float s=nSeed;
+        // Forming: amplitude modulates arm visibility
+        float formFactor=0.5+0.5*sin(time*0.028+s*2.1);
+        float amp=2.0+formFactor*11.0;
+        float t1=time*(0.052+s*0.038)+s*6.2832;
+        float t2=time*(0.079+s*0.026)+s*4.1888;
+        float t3=time*(0.065+s*0.044)+s*2.0944;
+        vec3 drift=vec3(
+          sin(t1)*amp+cos(t2*0.67)*amp*0.36,
+          (cos(t2)*0.12+sin(t3)*0.08)*amp,
+          cos(t3)*amp+sin(t1*0.73)*amp*0.36
+        );
+        // Radial arm breathing
+        float breathe=1.0+0.05*sin(time*0.14+s*4.0);
+        vec3 basePos=vec3(position.x*breathe,position.y,position.z*breathe);
+        // Rotation
+        float rotA=time*0.058;
+        float cr=cos(rotA),sr=sin(rotA);
+        basePos=vec3(basePos.x*cr-basePos.z*sr,basePos.y,basePos.x*sr+basePos.z*cr);
+        vec3 pos=basePos+drift;
+        // Color
+        float normR=length(position.xz)/130.0;
+        float radHue;
+        if     (normR<0.10) radHue=0.60;
+        else if(normR<0.38) radHue=0.58;
+        else if(normR<0.58) radHue=0.50;
+        else if(normR<0.78) radHue=0.04;
+        else                radHue=0.80;
+        float sh=remapHue(fract(s*1.618+time*0.008));
+        float hue=mix(radHue,sh,0.36);
+        float lum=0.28+s*0.20+(1.0-normR)*0.10;
+        float formed=1.0-formFactor;
+        float bright=(0.22+formed*0.78)*0.90;
+        vColor=hsl2rgb(hue,0.86,lum)*bright;
+        vAlpha=0.75*(0.38+formed*0.68);
+        vec4 mvPos=modelViewMatrix*vec4(pos,1.0);
+        float coreFactor=1.0+(1.0-normR)*0.9;
+        float ptSz=2.4*(0.50+s*1.55)*coreFactor*(0.62+formed*0.48)*640.0/-mvPos.z;
+        gl_PointSize=clamp(ptSz,1.1,13.0);
+        gl_Position=projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader:`
+      varying vec3  vColor;
+      varying float vAlpha;
+      void main(){
+        vec2  c=gl_PointCoord-0.5;
+        float d=length(c)*2.0;
+        if(d>1.0) discard;
+        // Tight crisp falloff — most alpha lives in the center third
+        float crisp=smoothstep(0.42,0.0,d);
+        float core=max(0.0,1.0-d*9.0)*0.65;
+        float alpha=(crisp*0.40+core)*(0.50+vAlpha*0.60);
+        if(alpha<0.003) discard;
+        gl_FragColor=vec4(vColor,alpha);
+      }
+    `,
+  });
+
+  scene.add(new THREE.Points(geo, mat));
+  window._fineMat = mat; // expose for tick
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYER 2 — VOLUMETRIC CLOUD PUFFS
+// Large soft gaussian-falloff particles that give the heavy nebula cloud feel.
+// Distributed loosely along the same spiral arms but much more scattered.
+// Slow independent hue cycle — rich, majestic fades.
+// Rotates at 85% of the fine-spiral rate for subtle parallax depth.
+// ═══════════════════════════════════════════════════════════════════════════════
+const CLOUD_N = 2800;
+{
+  const geo  = new THREE.BufferGeometry();
+  const pos  = new Float32Array(CLOUD_N*3);
+  const seed = new Float32Array(CLOUD_N);
+
+  for(let i=0;i<CLOUD_N;i++){
+    const arm  = i % NUM_ARMS;
+    const t    = Math.random();
+    const r    = 8 + t*125;
+    const spin = r * 0.022;
+    const base = (arm/NUM_ARMS)*Math.PI*2;
+    // Much wider scatter for the cloud puffs — loose along arm, large blobs
+    const scatter = (Math.random()-0.5)*r*0.55;
+    const angle   = base + spin + scatter/Math.max(r,1);
+    const rFinal  = r + (Math.random()-0.5)*r*0.35;
+    pos[i*3]   = rFinal*Math.cos(angle);
+    pos[i*3+1] = (Math.random()-0.5)*r*0.12;
+    pos[i*3+2] = rFinal*Math.sin(angle);
+    seed[i]    = Math.random();
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
+      attribute float nSeed;
+      uniform float time;
+      varying vec3  vColor;
+      varying float vAlpha;
+      varying vec2  vSeedOff;
+      void main(){
+        float s=nSeed;
+        // Cloud puffs also form/dissolve but on a slower, broader cycle
+        float formFactor=0.5+0.5*sin(time*0.012+s*1.5);
+        float amp=4.0+formFactor*10.0;
+        float t1=time*(0.018+s*0.010)+s*6.2832;
+        float t2=time*(0.024+s*0.008)+s*4.1888;
+        float t3=time*(0.020+s*0.013)+s*2.0944;
+        vec3 drift=vec3(
+          sin(t1)*amp+cos(t2*0.55)*amp*0.40,
+          (cos(t2)*0.10+sin(t3)*0.07)*amp,
+          cos(t3)*amp+sin(t1*0.68)*amp*0.40
+        );
+        // Slower rotation + slight parallax offset vs fine layer
+        float rotA=time*0.026;
+        float cr=cos(rotA),sr=sin(rotA);
+        vec3 basePos=vec3(
+          position.x*cr-position.z*sr,
+          position.y,
+          position.x*sr+position.z*cr
+        );
+        vec3 pos=basePos+drift;
+        // Color — slow full-spectrum hue cycle, rich saturation
+        // Base hue sweeps the full nebula palette slowly over ~210 seconds
+        float globalHue=fract(time*0.0048);
+        float hue=remapHue(fract(globalHue+s*0.42));
+        // Pulse alpha and hue in and out for the "fading in and out" feel
+        float lum=0.22+s*0.14;
+        vColor=hsl2rgb(hue,0.80,lum)*0.62;
+        vAlpha=0.55;
+        // Very large soft point size — these are the cloud volumes
+        vec4 mvPos=modelViewMatrix*vec4(pos,1.0);
+        float normR=length(position.xz)/125.0;
+        float baseSize=22.0+s*38.0; // world-space cloud size: 22→60 units
+        // FBM scroll offset — moves the cloud pattern inside each puff over time
+        vSeedOff=vec2(s*17.31+time*0.030, s*11.73+time*0.020);
+        float ptSz=baseSize*0.92*640.0/-mvPos.z;
+        gl_PointSize=clamp(ptSz,4.0,400.0);
+        gl_Position=projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader: HSL_GLSL + HUE_REMAP_GLSL + `
+      varying vec3  vColor;
+      varying float vAlpha;
+      varying vec2  vSeedOff;
+
+      float h2(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+      float n2(vec2 p){
+        vec2 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+        return mix(mix(h2(i),h2(i+vec2(1,0)),u.x),
+                   mix(h2(i+vec2(0,1)),h2(i+vec2(1,1)),u.x),u.y);
+      }
+      float fbm(vec2 p){
+        float v=0.0,a=0.5;
+        for(int i=0;i<4;i++){v+=a*n2(p);p=p*2.1+vec2(1.3,7.9);a*=0.5;}
+        return v;
+      }
+
+      void main(){
+        vec2  c=gl_PointCoord-0.5;
+        float d=length(c);
+        if(d>0.52) discard;
+        // FBM displaces the cloud edge — organic shape, no perfect circles
+        float n=fbm(c*4.5+vSeedOff);
+        float edge=d - n*0.32 + 0.04;
+        float shape=smoothstep(0.48,0.06,edge);
+        // Secondary FBM for interior streaks and density variation
+        float detail=fbm(c*9.0+vSeedOff*1.8)*0.45+0.55;
+        float alpha=shape*detail*vAlpha*0.48;
+        if(alpha<0.002) discard;
+        gl_FragColor=vec4(vColor*detail, alpha);
+      }
+    `,
+  });
+
+  scene.add(new THREE.Points(geo, mat));
+  window._cloudMat = mat;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYER 3 — EJECTION SPARKS
+// Tiny granular particles that shoot outward from the spiral arms periodically.
+// Each particle has a random cycle offset — they fire at different times so
+// the ejection looks organic, not synchronized. Active for 22% of their cycle,
+// invisible the rest of the time.
+// ═══════════════════════════════════════════════════════════════════════════════
+{
+  const SPARK_N = 9000;
+  const geo   = new THREE.BufferGeometry();
+  const pos   = new Float32Array(SPARK_N*3);
+  const seed  = new Float32Array(SPARK_N);
+
+  for(let i=0;i<SPARK_N;i++){
+    const arm   = i % NUM_ARMS;
+    const t     = Math.random();
+    const r     = 5 + t*130;
+    const spin  = r*0.022;
+    const base  = (arm/NUM_ARMS)*Math.PI*2;
+    const angle = base + spin + (Math.random()-0.5)*0.08;
+    const rF    = r + (Math.random()-0.5)*r*0.03;
+    pos[i*3]   = rF*Math.cos(angle);
+    pos[i*3+1] = (Math.random()-0.5)*1.5;
+    pos[i*3+2] = rF*Math.sin(angle);
+    seed[i]    = Math.random();
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
+      attribute float nSeed;
+      uniform float time;
+      varying vec3  vColor;
+      varying float vAlpha;
+      void main(){
+        float s=nSeed;
+        // Each spark has its own cycle length: 5-14 seconds
+        float cycleLen=5.0+s*9.0;
+        float phase=fract((time+s*cycleLen)/cycleLen);
+        float activeWin=0.22;
+        float t=clamp(phase/activeWin,0.0,1.0);
+        float isActive=step(phase,activeWin);
+        // Eject along the spiral arm tangent (not radially) so sparks trail the arm
+        vec2 radDir=normalize(position.xz+vec2(0.0002,0.0002));
+        vec2 tangDir=normalize(vec2(-position.z, position.x)); // 90° tangent
+        vec2 ejectDir=normalize(radDir*0.25+tangDir*0.75);     // mostly tangential
+        float reach=t*(24.0+s*44.0);
+        vec3 ejPos=vec3(
+          position.x+ejectDir.x*reach,
+          position.y+(s-0.5)*reach*0.04,
+          position.z+ejectDir.y*reach
+        );
+        // Rotate with the structure
+        float rotA=time*0.058;
+        float cr=cos(rotA),sr=sin(rotA);
+        ejPos=vec3(ejPos.x*cr-ejPos.z*sr,ejPos.y,ejPos.x*sr+ejPos.z*cr);
+        // Color: hot blue-white at base fading to arm color at tip
+        float normR=length(position.xz)/130.0;
+        float tipHue=0.60; // blue-white spark tip
+        float armHue=mix(0.58,0.04,normR);
+        float hue=mix(tipHue,remapHue(armHue),t);
+        float lum=0.70-t*0.32;
+        vColor=hsl2rgb(hue,0.80,lum)*(1.2-t*0.65)*isActive;
+        vAlpha=isActive*(1.0-t)*(1.0-t)*0.48;
+        vec4 mvPos=modelViewMatrix*vec4(ejPos,1.0);
+        // Tiny — granular feel
+        float ptSz=(0.7+s*0.6)*isActive*640.0/-mvPos.z;
+        gl_PointSize=clamp(ptSz,0.6,5.0);
+        gl_Position=projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader:`
+      varying vec3  vColor;
+      varying float vAlpha;
+      void main(){
+        if(vAlpha<0.004) discard;
+        vec2  c=gl_PointCoord-0.5;
+        float d=length(c)*2.0;
+        if(d>1.0) discard;
+        float alpha=vAlpha*smoothstep(0.5,0.05,d);
+        gl_FragColor=vec4(vColor,alpha);
+      }
+    `,
+  });
+
+  scene.add(new THREE.Points(geo, mat));
+  window._sparkMat = mat;
+}
+
+// ── Volumetric atmosphere spheres — large-scale mood ─────────────────────────
+function haze(col,r,op){
+  const m=new THREE.Mesh(new THREE.SphereGeometry(r,24,24),
+    new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:op,
+      side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
+  scene.add(m);
+}
+haze(0x5a0015, 145, 0.09);
+haze(0x001866, 125, 0.07);
+haze(0x3a1800, 110, 0.05);
+
+// ── Star field ────────────────────────────────────────────────────────────────
+{
+  const N=3500,geo=new THREE.BufferGeometry();
+  const p=new Float32Array(N*3),c=new Float32Array(N*3);
+  const pal=[[0.88,0.94,1],[1,1,0.88],[0.68,0.80,1],[1,0.82,0.62]];
+  for(let i=0;i<N;i++){
+    const a=Math.random()*Math.PI*2,b=Math.acos(2*Math.random()-1),r=700+Math.random()*300;
+    p[i*3]=r*Math.sin(b)*Math.cos(a); p[i*3+1]=r*Math.sin(b)*Math.sin(a); p[i*3+2]=r*Math.cos(b);
+    const sc=pal[Math.floor(Math.random()*pal.length)];
+    c[i*3]=sc[0]; c[i*3+1]=sc[1]; c[i*3+2]=sc[2];
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+  geo.setAttribute('color',new THREE.BufferAttribute(c,3));
+  scene.add(new THREE.Points(geo,new THREE.PointsMaterial({
+    size:2.0,sizeAttenuation:true,vertexColors:true,
+    transparent:true,opacity:0.48,depthWrite:false,blending:THREE.AdditiveBlending
+  })));
+}
+
+// ── Render loop ───────────────────────────────────────────────────────────────
+let last=performance.now();
+function tick(){
+  requestAnimationFrame(tick);
+  const now=performance.now();
+  const dt=(now-last)/1000; last=now;
+  window._fineMat.uniforms.time.value  +=dt;
+  window._cloudMat.uniforms.time.value +=dt;
+  window._sparkMat.uniforms.time.value +=dt;
+  if(!drag) sphTarget.theta+=0.00038;
+  sph.r     +=(sphTarget.r-sph.r)*0.08;
+  sph.theta +=(sphTarget.theta-sph.theta)*0.08;
+  sph.phi   +=(sphTarget.phi-sph.phi)*0.08;
+  applyCamera();
+  renderer.render(scene,camera);
+}
+tick();
+</script>
+</body>
+</html>
