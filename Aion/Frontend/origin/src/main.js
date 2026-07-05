@@ -39,6 +39,9 @@ const ignitionObj = sheet.object('Ignition', {
 const sunObj = sheet.object('Sun', {
   hueMode:   types.number(0.0, { range: [0, 5] }),
   coronaGlow: types.number(1.0, { range: [0, 3] }),
+  coronaHueShift:     types.number(0.0, { range: [0, 1] }),   // rotates the corona's color cycle
+  coronaFlareStrength:types.number(1.0, { range: [0, 3] }),   // how bright/spiky the flare rays are
+  coronaSpread:       types.number(1.0, { range: [0.2, 3] }), // how quickly the glow/flares fall off with distance
 });
 
 // Collapse Cloud — shape/color of the collapsing nebula as it nears ignition (T≈56-74, esp. the 72-74 tail)
@@ -48,9 +51,12 @@ const cloudShapeObj = sheet.object('CollapseCloud', {
   coreSize:    types.number(1.0,  { range: [0.2, 3] }),  // >1 = core cluster concentrates/brightens sooner
   hotHue:      types.number(0.07, { range: [0, 1] }),    // hue of the hottest (innermost) particles
   satMult:     types.number(1.0,  { range: [0, 2] }),    // saturation multiplier
-  spinSpeed:   types.number(1.0,  { range: [0.2, 4] }),  // multiplies the whole collapse rotation rate
-  cloudSize:   types.number(1.0,  { range: [0.3, 3] }),  // scales the collapse spiral's overall radius
+  spinSpeed:   types.number(1.0,  { range: [0.2, 25] }),  // multiplies the whole collapse rotation rate
+  spinRampShape: types.number(3.0, { range: [1, 6] }),    // shape of the ramp-in curve (3 = default cubic, 1 = linear)
+  cloudSize:   types.number(1.0,  { range: [0.0005, 3] }),  // scales the collapse spiral's overall radius
   coreLightHue:types.number(0.0,  { range: [0, 1] }),    // hue rotation applied to the core-glow light/shells
+  ballForm:    types.number(0.0,  { range: [0, 3] }),     // 0 = flat collapse to a point, higher = rounds into a ball
+  coreGlowSize:types.number(1.0,  { range: [0.01, 3] }),  // scales the 4 fixed core-glow spheres (independent of cloudSize)
 });
 
 // Explosion Ball — shape/blend of the ignition flash + sun emergence (T≈74-80)
@@ -62,24 +68,28 @@ const ballObj = sheet.object('ExplosionBall', {
   blendWidth:  types.number(0.36, { range: [0.05, 0.8] }),// how gradually the flash fades — widen to soften the handoff
   coronaStart: types.number(0.80, { range: [0.3, 0.95] }),// ignition-pct where corona begins fading in
   igniteLock:  types.number(-1,   { range: [-1, 1] }),    // -1 = auto, 0-1 = freeze ignition progress at a fixed pct
+  flashHue:    types.number(0.08, { range: [0, 1] }),     // hue tint applied to the flash sphere
+  flashTint:   types.number(0.0,  { range: [0, 1] }),     // 0 = default near-white flash, 1 = fully tinted to flashHue
+  bgTintAmount:types.number(1.0,  { range: [0, 3] }),     // multiplies the background's warm shift during ignition
 });
 
 let tVals = {
   speed: 1, nebulaBright: 1, nebulaWarm: 0, formLock: -1,
   collapseBright: 1, collapseWarm: 0, collapseLock: -1,
   igniteDuration: 4, flashIntensity: 1, distortAmt: 1, emergenceStart: 0.68, coreGlow: 1,
-  sunHue: 0, coronaGlow: 1,
+  sunHue: 0, coronaGlow: 1, coronaHueShift: 0, coronaFlareStrength: 1, coronaSpread: 1,
+  flashHue: 0.08, flashTint: 0, bgTintAmount: 1,
   cloudTurb: 1, cloudSpiral: 1, cloudCore: 1, cloudHotHue: 0.07, cloudSat: 1,
-  cloudSpin: 1, cloudScale: 1, coreHue: 0,
+  cloudSpin: 1, cloudSpinCurve: 3, cloudScale: 1, coreHue: 0, cloudBallForm: 0, coreGlowSize: 1,
   ballRadius: 1, ballFreq: 1, ballAmp: 1, ballAsym: 0, ballBlend: 0.36, ballCoronaStart: 0.80, igniteLock: -1,
 };
 playbackObj.onValuesChange(v  => { tVals.speed           = v.speed; });
 nebulaObj.onValuesChange(v    => { tVals.nebulaBright = v.brightMult; tVals.nebulaWarm = v.warmBias; tVals.formLock = v.formLock; });
 collapseObj.onValuesChange(v  => { tVals.collapseBright = v.brightMult; tVals.collapseWarm = v.warmBias; tVals.collapseLock = v.collapseLock; });
 ignitionObj.onValuesChange(v  => { tVals.igniteDuration = v.duration; tVals.flashIntensity = v.flashIntensity; tVals.distortAmt = v.distortAmt; tVals.emergenceStart = v.emergenceStart; tVals.coreGlow = v.coreGlow; });
-sunObj.onValuesChange(v       => { tVals.sunHue            = v.hueMode; tVals.coronaGlow = v.coronaGlow; });
-cloudShapeObj.onValuesChange(v => { tVals.cloudTurb = v.turbulence; tVals.cloudSpiral = v.spiralTight; tVals.cloudCore = v.coreSize; tVals.cloudHotHue = v.hotHue; tVals.cloudSat = v.satMult; tVals.cloudSpin = v.spinSpeed; tVals.cloudScale = v.cloudSize; tVals.coreHue = v.coreLightHue; });
-ballObj.onValuesChange(v      => { tVals.ballRadius = v.radius; tVals.ballFreq = v.distortFreq; tVals.ballAmp = v.distortAmp; tVals.ballAsym = v.asymmetry; tVals.ballBlend = v.blendWidth; tVals.ballCoronaStart = v.coronaStart; tVals.igniteLock = v.igniteLock; });
+sunObj.onValuesChange(v       => { tVals.sunHue = v.hueMode; tVals.coronaGlow = v.coronaGlow; tVals.coronaHueShift = v.coronaHueShift; tVals.coronaFlareStrength = v.coronaFlareStrength; tVals.coronaSpread = v.coronaSpread; });
+cloudShapeObj.onValuesChange(v => { tVals.cloudTurb = v.turbulence; tVals.cloudSpiral = v.spiralTight; tVals.cloudCore = v.coreSize; tVals.cloudHotHue = v.hotHue; tVals.cloudSat = v.satMult; tVals.cloudSpin = v.spinSpeed; tVals.cloudSpinCurve = v.spinRampShape; tVals.cloudScale = v.cloudSize; tVals.coreHue = v.coreLightHue; tVals.cloudBallForm = v.ballForm; tVals.coreGlowSize = v.coreGlowSize; });
+ballObj.onValuesChange(v      => { tVals.ballRadius = v.radius; tVals.ballFreq = v.distortFreq; tVals.ballAmp = v.distortAmp; tVals.ballAsym = v.asymmetry; tVals.ballBlend = v.blendWidth; tVals.ballCoronaStart = v.coronaStart; tVals.igniteLock = v.igniteLock; tVals.flashHue = v.flashHue; tVals.flashTint = v.flashTint; tVals.bgTintAmount = v.bgTintAmount; });
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const canvas   = document.getElementById('c');
@@ -313,9 +323,12 @@ const CONTROL_GROUPS = [
     { key:'cloudCore',   label:'coreSize',    min:0.2, max:3, step:0.01 },
     { key:'cloudHotHue', label:'hotHue',      min:0,   max:1, step:0.01 },
     { key:'cloudSat',    label:'satMult',     min:0,   max:2, step:0.01 },
-    { key:'cloudSpin',   label:'spinSpeed',   min:0.2, max:4, step:0.01 },
-    { key:'cloudScale',  label:'cloudSize',   min:0.3, max:3, step:0.01 },
+    { key:'cloudSpin',   label:'spinSpeed',   min:0.2, max:25, step:0.05 },
+    { key:'cloudSpinCurve', label:'spinRampShape', min:1, max:6, step:0.05 },
+    { key:'cloudScale',  label:'cloudSize',   min:0.0005, max:3, step:0.001, log:true },
     { key:'coreHue',     label:'coreLightHue',min:0,   max:1, step:0.01 },
+    { key:'cloudBallForm', label:'ballForm',  min:0,   max:3, step:0.02 },
+    { key:'coreGlowSize',  label:'coreGlowSize', min:0.01, max:3, step:0.01, log:true },
   ]},
   { name:'Ignition', window: () => [74, 74+tVals.igniteDuration], range: () => `74–${(74+tVals.igniteDuration).toFixed(1)}s`, props:[
     { key:'igniteDuration', label:'duration',       min:1, max:30,   step:0.1 },
@@ -332,10 +345,16 @@ const CONTROL_GROUPS = [
     { key:'ballBlend',       label:'blendWidth',  min:0.05, max:0.8,  step:0.01 },
     { key:'ballCoronaStart', label:'coronaStart', min:0.3,  max:0.95, step:0.01 },
     { key:'igniteLock',      label:'igniteLock',  min:-1,   max:1,    step:0.01 },
+    { key:'flashHue',        label:'flashHue',    min:0,    max:1,    step:0.01 },
+    { key:'flashTint',       label:'flashTint',   min:0,    max:1,    step:0.01 },
+    { key:'bgTintAmount',    label:'bgTintAmount',min:0,    max:3,    step:0.01 },
   ]},
   { name:'Sun', window: () => [74,90], range: () => `74–90s (post-ignition)`, props:[
-    { key:'sunHue',     label:'hueMode',    min:0, max:5, step:0.01 },
-    { key:'coronaGlow', label:'coronaGlow', min:0, max:3, step:0.01 },
+    { key:'sunHue',             label:'hueMode',           min:0, max:5, step:0.01 },
+    { key:'coronaGlow',         label:'coronaGlow',        min:0, max:3, step:0.01 },
+    { key:'coronaHueShift',     label:'coronaHueShift',    min:0, max:1, step:0.01 },
+    { key:'coronaFlareStrength',label:'coronaFlareStrength',min:0, max:3, step:0.01 },
+    { key:'coronaSpread',       label:'coronaSpread',      min:0.2, max:3, step:0.01 },
   ]},
 ];
 
@@ -451,7 +470,10 @@ collapseAllBtn.addEventListener('click', () => {
   });
   collapseAllBtn.textContent = allCollapsed ? '▸ Expand All' : '▾ Collapse All';
 });
-transportRow.appendChild(playBtn); transportRow.appendChild(resetBtn); transportRow.appendChild(collapseAllBtn);
+const exportBtn = document.createElement('button');
+exportBtn.textContent = '📋 Export Values';
+exportBtn.style.cssText = 'font:11px monospace;padding:4px 10px;border-radius:5px;background:#1c1c26;color:#cfe6ff;border:1px solid #33333f;cursor:pointer;';
+transportRow.appendChild(playBtn); transportRow.appendChild(resetBtn); transportRow.appendChild(collapseAllBtn); transportRow.appendChild(exportBtn);
 panelTitleRow.appendChild(transportRow);
 panelHeader.appendChild(panelTitleRow);
 
@@ -497,6 +519,20 @@ loopRangeRow.appendChild(loopRangeToTxt);
 loopRangeRow.appendChild(loopEndInput);
 loopRangeRow.appendChild(loopRangeToggleBtn);
 panelHeader.appendChild(loopRangeRow);
+
+// Export current values — nothing about a live (non-keyframed) slider position
+// is saved anywhere, so if a combination looks right, this is the only way to
+// capture it before a reload (or anything else) resets it back to defaults.
+const exportArea = document.createElement('textarea');
+exportArea.readOnly = true;
+exportArea.style.cssText = 'display:none;width:100%;height:200px;margin-top:8px;font:10px monospace;background:#0a0a10;color:#9fe6b0;border:1px solid #33333f;border-radius:4px;padding:6px;white-space:pre;box-sizing:border-box;';
+exportBtn.addEventListener('click', () => {
+  exportArea.value = JSON.stringify(tVals, null, 2);
+  exportArea.style.display = 'block';
+  exportArea.focus();
+  exportArea.select();
+});
+panelHeader.appendChild(exportArea);
 
 const panelHint = document.createElement('div');
 panelHint.style.cssText = 'font-size:10px;color:#5a5a68;margin-top:6px;';
@@ -651,14 +687,24 @@ CONTROL_GROUPS.forEach(group => {
     // Value axis: top of the track = p.max, bottom = p.min — so a keyframe's
     // vertical position on the strip directly shows its value, same range as its
     // slider. Dragging a diamond moves it in time (x) AND value (y) at once.
+    // A handful of properties (e.g. cloudSize) span a huge min-to-max ratio so
+    // a value can be shrunk toward ~0. On a linear scale, everything below a
+    // small fraction of max gets squeezed into a few pixels at the bottom of
+    // the track — technically reachable, but impossible to actually aim for
+    // with a mouse. Logarithmic properties spread that low range out instead.
+    const logMin = p.log ? Math.log(p.min) : 0, logMax = p.log ? Math.log(p.max) : 0;
     const valueAt = (yCss, hCss) => {
       const f = Math.max(0, Math.min(1, yCss/hCss));
+      if (p.log) return Math.exp(logMax - f*(logMax-logMin));
       return p.max - f*(p.max-p.min);
     };
     const yForValue = (v, hCss) => {
-      const f = (v-p.min)/(p.max-p.min || 1);
+      let f;
+      if (p.log) f = (Math.log(Math.max(v,p.min))-logMin)/((logMax-logMin) || 1);
+      else f = (v-p.min)/(p.max-p.min || 1);
       return Math.max(0, Math.min(1, 1-f)) * hCss;
     };
+    const fmtVal = v => (Math.abs(v) < 0.1 ? v.toFixed(4) : v.toFixed(2));
     let dragIdx = -1;
     let dragStartX = 0, dragStartY = 0, dragMoved = false, dragShiftHeld = false;
     const hitTest = (xCss, yCss, wCss, hCss) => {
@@ -704,7 +750,7 @@ CONTROL_GROUPS.forEach(group => {
         const vv = valueAt(yy, hh);
         const kfs2 = getKeyframes(group.name, p.key);
         if (kfs2[dragIdx]) { kfs2[dragIdx].t = tt; kfs2[dragIdx].v = vv; }
-        readout.textContent = `t = ${timeAt(xx, ww).toFixed(3)}s   v = ${vv.toFixed(2)}`;
+        readout.textContent = `t = ${timeAt(xx, ww).toFixed(3)}s   v = ${fmtVal(vv)}`;
       }
       function onDragUp(){
         const kfs2 = getKeyframes(group.name, p.key);
@@ -727,7 +773,7 @@ CONTROL_GROUPS.forEach(group => {
     canvas.addEventListener('mousemove', e => {
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX-rect.left, y = e.clientY-rect.top;
-      readout.textContent = `t = ${timeAt(x, rect.width).toFixed(3)}s   v = ${valueAt(y, rect.height).toFixed(2)}`;
+      readout.textContent = `t = ${timeAt(x, rect.width).toFixed(3)}s   v = ${fmtVal(valueAt(y, rect.height))}`;
     });
     canvas.addEventListener('mouseleave', () => { if (dragIdx < 0) readout.textContent = ''; });
     canvas.addEventListener('contextmenu', e => {
@@ -1099,7 +1145,7 @@ let fineMat;
   geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
 
   fineMat = new THREE.ShaderMaterial({
-    uniforms:{ time:{value:0}, gAlpha:{value:0}, formT:{value:0}, rotSpeed:{value:0.058}, rotAngle:{value:0}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0}, galaxyT:{value:0}, turbMult:{value:1.0}, spiralMult:{value:1.0}, coreMult:{value:1.0}, hotHue:{value:0.07}, satMult:{value:1.0}, cloudScale:{value:1.0} },
+    uniforms:{ time:{value:0}, gAlpha:{value:0}, formT:{value:0}, rotSpeed:{value:0.058}, rotAngle:{value:0}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0}, galaxyT:{value:0}, turbMult:{value:1.0}, spiralMult:{value:1.0}, coreMult:{value:1.0}, hotHue:{value:0.07}, satMult:{value:1.0}, cloudScale:{value:1.0}, ballForm:{value:0.0} },
     transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
     vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
       attribute float nSeed;
@@ -1116,6 +1162,7 @@ let fineMat;
       uniform float hotHue;
       uniform float satMult;
       uniform float cloudScale;
+      uniform float ballForm;
       varying vec3  vColor;
       varying float vAlpha;
       void main(){
@@ -1169,12 +1216,17 @@ let fineMat;
         float rc=initR*(1.0-pow(tc,1.70))*cloudScale;
         float winds=(2.8+initR*0.060)*spiralMult;
         float anglec=atan(position.z,position.x)+tc*winds*6.2832;
-        float hc=position.y*(1.0-tc*0.88)*cloudScale;
+        // ballForm=0 (default) is bit-identical to before. Above 0, particles get
+        // pushed outward vertically as they converge inward radially, so as rc
+        // shrinks toward 0 the vertical spread stays comparable instead of also
+        // collapsing to nearly flat — the cloud rounds into a ball instead of a point.
+        float ballScatter=(fract(s*13.7)-0.5)*2.0;
+        float hc=position.y*(1.0-tc*0.88)*cloudScale + ballForm*rc*ballScatter;
         float turbAmp=(0.4+tc*3.2)*(0.8+s*0.4)*turbMult;
         float tv1=time*(1.8+s*1.2)+s*6.2832;
         float tv2=time*(2.5+s*0.8)+s*4.1888;
         vec3 turb=vec3(sin(tv1)*turbAmp,cos(tv2)*0.22*turbAmp,cos(tv1)*turbAmp);
-        vec3 collapsePos=vec3(rc*cos(anglec),hc,rc*sin(anglec))+turb*tc;
+        vec3 collapsePos=vec3(rc*cos(anglec),hc,rc*sin(anglec))+turb*tc*cloudScale;
         float heat=pow(tc,1.80/max(0.2,coreMult));
         float collapseHue=mix(remapHue(fract(s*1.618+time*0.012)),hotHue+s*0.06,heat);
         float collapseLum=mix(0.28+s*0.18,0.72,pow(heat,1.5));
@@ -1264,7 +1316,7 @@ let cloudMat;
   geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
 
   cloudMat = new THREE.ShaderMaterial({
-    uniforms:{ time:{value:0}, gAlpha:{value:0}, rotSpeed:{value:0.026}, rotAngle:{value:0}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0}, turbMult:{value:1.0}, spiralMult:{value:1.0}, coreMult:{value:1.0}, hotHue:{value:0.07}, satMult:{value:1.0}, cloudScale:{value:1.0} },
+    uniforms:{ time:{value:0}, gAlpha:{value:0}, rotSpeed:{value:0.026}, rotAngle:{value:0}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0}, turbMult:{value:1.0}, spiralMult:{value:1.0}, coreMult:{value:1.0}, hotHue:{value:0.07}, satMult:{value:1.0}, cloudScale:{value:1.0}, ballForm:{value:0.0} },
     transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
     vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
       attribute float nSeed;
@@ -1280,6 +1332,7 @@ let cloudMat;
       uniform float hotHue;
       uniform float satMult;
       uniform float cloudScale;
+      uniform float ballForm;
       varying vec3  vColor;
       varying float vAlpha;
       varying vec2  vSeedOff;
@@ -1303,14 +1356,15 @@ let cloudMat;
         float tc=pow(loopT,0.70);
         float rCC=length(position.xz)*(1.0-pow(tc,2.0))*cloudScale;
         float angleCC=atan(position.z,position.x)+tc*4.5*spiralMult*6.2832;
-        float hCC=position.y*(1.0-tc*0.70)*cloudScale;
+        float ballScatterCC=(fract(s*13.7)-0.5)*2.0;
+        float hCC=position.y*(1.0-tc*0.70)*cloudScale + ballForm*rCC*ballScatterCC;
         float ampCC=(3.0+tc*8.0)*turbMult;
         float tv1=time*(0.12+s*0.08)+s*6.2832;
         float tv2=time*(0.18+s*0.06)+s*4.1888;
         vec3 driftCC=vec3(sin(tv1)*ampCC+cos(tv2*0.6)*ampCC*0.4,
                           (cos(tv2)*0.09+sin(tv1)*0.07)*ampCC,
                           cos(tv1)*ampCC+sin(tv2*0.7)*ampCC*0.4);
-        vec3 collapsePos=vec3(rCC*cos(angleCC),hCC,rCC*sin(angleCC))+driftCC*tc;
+        vec3 collapsePos=vec3(rCC*cos(angleCC),hCC,rCC*sin(angleCC))+driftCC*tc*cloudScale;
         vec3 pos=mix(nebulaPos,collapsePos,collapseT);
         float globalHue=fract(time*0.0048);
         float nebulaHue=mix(remapHue(fract(globalHue+s*0.42)),0.08+s*0.06,warmBias);
@@ -1934,6 +1988,23 @@ const CORONA_HUES = [
   makeCoronaMat(0xff3300, 3.0, 0.3, 1.1, 2.6, 85);
   makeCoronaMat(0xff8822, 8.5, 0.2, 1.5, 1.2, 28);
 }
+// Base values captured once, so per-frame multipliers always scale from a fixed
+// starting point instead of compounding onto whatever the value already drifted
+// to — `baseGlowStrength.value *= tVals.coronaGlow` every frame would otherwise
+// double/halve indefinitely for any coronaGlow != 1, blowing out within seconds.
+const CORONA_BASE_GLOW        = coronaMats.map(m => m.uniforms.baseGlowStrength.value);
+const CORONA_BASE_FLARE       = coronaMats.map(m => m.uniforms.flareStrength.value);
+const CORONA_BASE_RADIAL      = coronaMats.map(m => m.uniforms.radialFalloff.value);
+const CORONA_BASE_FLAREFALLOFF= coronaMats.map(m => m.uniforms.flareFalloff.value);
+const CORONA_BASE_COLORS      = coronaMats.map(m => m.uniforms.glowColor.value.clone());
+function applyCoronaHueShift(shift){
+  if (!shift) return; // shift=0 is a no-op, so untouched behavior is bit-identical to before
+  coronaMats.forEach(m => {
+    const hsl = {h:0,s:0,l:0};
+    m.uniforms.glowColor.value.getHSL(hsl);
+    m.uniforms.glowColor.value.setHSL((hsl.h+shift)%1, hsl.s, hsl.l);
+  });
+}
 
 // ── Solar emission loops ──────────────────────────────────────────────────────
 const FLARE_COLORS = [
@@ -2006,7 +2077,7 @@ function updateLoops(t, worldR){
 
 // ── Ignition flash ────────────────────────────────────────────────────────────
 const flashMat = new THREE.ShaderMaterial({
-  uniforms:{ time:{value:0}, opacity:{value:0}, asymmetry:{value:0} },
+  uniforms:{ time:{value:0}, opacity:{value:0}, asymmetry:{value:0}, flashHue:{value:0.08}, flashTint:{value:0} },
   transparent:true, side:THREE.BackSide, blending:THREE.AdditiveBlending, depthWrite:false,
   vertexShader:`
     uniform float time, asymmetry;
@@ -2017,9 +2088,13 @@ const flashMat = new THREE.ShaderMaterial({
       gl_Position = projectionMatrix*modelViewMatrix*vec4(displaced,1.0);
     }
   `,
-  fragmentShader:`
-    uniform float opacity;
-    void main(){ gl_FragColor = vec4(1.0,0.996,0.973, opacity); }
+  fragmentShader: HSL_GLSL + `
+    uniform float opacity, flashHue, flashTint;
+    void main(){
+      vec3 baseCol = vec3(1.0,0.996,0.973);
+      vec3 tintCol = hsl2rgb(flashHue, 0.85, 0.72) * 1.3;
+      gl_FragColor = vec4(mix(baseCol, tintCol, flashTint), opacity);
+    }
   `,
 });
 const flashMesh = new THREE.Mesh(new THREE.SphereGeometry(55,32,32), flashMat);
@@ -2101,9 +2176,19 @@ function timeline(){
     const cCurve = cSub * cSub * cSub;
     fineMat.uniforms.collapseT.value  = cCurve;
     cloudMat.uniforms.collapseT.value = cCurve;
-    fineMat.uniforms.rotSpeed.value  = (0.058 + cCurve * (0.32 - 0.058)) * tVals.cloudSpin;
-    cloudMat.uniforms.rotSpeed.value = (0.026 + cCurve * (0.32 - 0.026)) * tVals.cloudSpin;
-    sparkMat.uniforms.rotSpeed.value = (0.058 + cCurve * (0.32 - 0.058)) * tVals.cloudSpin;
+    // spinRampShape is its own exponent, independent of cCurve above — cCurve
+    // drives how fast particles visually converge inward, spinRamp only shapes
+    // how the rotation speed ramps in. Default 3 matches cCurve's own cubic
+    // shape exactly (no change from before); 1 = a fully even/linear ramp,
+    // higher = stays slow longer then rushes at the end.
+    const spinRamp = Math.pow(cSub, tVals.cloudSpinCurve);
+    // Only the ramp-ABOVE-baseline is scaled by cloudSpin — the baseline itself
+    // (0.058 / 0.026 / 0.058) must stay untouched so it exactly matches the speed
+    // the nebula phase was already at when collapse begins, or spinSpeed>1 causes
+    // a discontinuous jump right at T=56 instead of a smooth ramp from there.
+    fineMat.uniforms.rotSpeed.value  = 0.058 + spinRamp * (0.32 - 0.058) * tVals.cloudSpin;
+    cloudMat.uniforms.rotSpeed.value = 0.026 + spinRamp * (0.32 - 0.026) * tVals.cloudSpin;
+    sparkMat.uniforms.rotSpeed.value = 0.058 + spinRamp * (0.32 - 0.058) * tVals.cloudSpin;
     autoWarmBias = easeOut(cSub) * 0.55;
     sparkMat.uniforms.gAlpha.value = Math.max(0, 1.0 - cSub * 3.0);
     coreVisibility = cCurve * cCurve;
@@ -2231,6 +2316,8 @@ function tick(){
     coronaMats.forEach(m => m.uniforms.time.value = ignitionClock);
     flashMat.uniforms.time.value = ignitionClock;
     flashMat.uniforms.asymmetry.value = tVals.ballAsym;
+    flashMat.uniforms.flashHue.value = tVals.flashHue;
+    flashMat.uniforms.flashTint.value = tVals.flashTint;
     flashMesh.scale.setScalar(tVals.ballRadius);
 
     if(!ignitionDone) {
@@ -2250,13 +2337,21 @@ function tick(){
       fineMat.uniforms.gAlpha.value  = Math.max(0, 1.0 - pct * 7);
       cloudMat.uniforms.gAlpha.value = Math.max(0, 1.0 - pct * 7);
       sphTarget.r = 95 + 42 * Math.exp(-pct * 4.0);
-      const bgWarm = Math.max(0, Math.sin(pct * Math.PI * 0.65) * 0.065);
+      const bgWarm = Math.max(0, Math.sin(pct * Math.PI * 0.65) * 0.065) * tVals.bgTintAmount;
       bgTarget.r = 0.003 + bgWarm;
       bgTarget.g = 0.001 + bgWarm * 0.28;
       bgTarget.b = 0.001;
       const coronaStart = tVals.ballCoronaStart;
       const cSub = Math.max(0, (pct - coronaStart) / (1.0 - coronaStart));
-      coronaMats.forEach(m => m.uniforms.globalAlpha.value = eO(cSub));
+      coronaMats.forEach((m,i) => {
+        m.uniforms.globalAlpha.value = eO(cSub);
+        m.uniforms.baseGlowStrength.value = CORONA_BASE_GLOW[i] * tVals.coronaGlow;
+        m.uniforms.flareStrength.value    = CORONA_BASE_FLARE[i] * tVals.coronaFlareStrength;
+        m.uniforms.radialFalloff.value    = CORONA_BASE_RADIAL[i] * tVals.coronaSpread;
+        m.uniforms.flareFalloff.value     = CORONA_BASE_FLAREFALLOFF[i] * tVals.coronaSpread;
+        m.uniforms.glowColor.value.copy(CORONA_BASE_COLORS[i]);
+      });
+      applyCoronaHueShift(tVals.coronaHueShift);
       if(pct > coronaStart){
         coronaGroup.visible = true;
         updateLoops(sunMat.uniforms.time.value, SUN_R * sunMesh.scale.x);
@@ -2276,7 +2371,12 @@ function tick(){
         const c2 = new THREE.Color(CORONA_HUES[(mi+1) % 5][ci]);
         mat.uniforms.glowColor.value.lerpColors(c1, c2, mf);
         mat.uniforms.globalAlpha.value = 1.0;
+        mat.uniforms.baseGlowStrength.value = CORONA_BASE_GLOW[ci] * tVals.coronaGlow;
+        mat.uniforms.flareStrength.value    = CORONA_BASE_FLARE[ci] * tVals.coronaFlareStrength;
+        mat.uniforms.radialFalloff.value    = CORONA_BASE_RADIAL[ci] * tVals.coronaSpread;
+        mat.uniforms.flareFalloff.value     = CORONA_BASE_FLAREFALLOFF[ci] * tVals.coronaSpread;
       });
+      applyCoronaHueShift(tVals.coronaHueShift);
       coreLight.intensity = 8 + 4 * Math.sin(colorCycleT * 0.3);
       if(!drag) sphTarget.theta += 0.00042;
       updateLoops(sunMat.uniforms.time.value, SUN_R * sunMesh.scale.x);
@@ -2338,10 +2438,14 @@ function tick(){
   cloudMat.uniforms.satMult.value    = tVals.cloudSat;
   fineMat.uniforms.cloudScale.value  = tVals.cloudScale;
   cloudMat.uniforms.cloudScale.value = tVals.cloudScale;
+  fineMat.uniforms.ballForm.value  = tVals.cloudBallForm;
+  cloudMat.uniforms.ballForm.value = tVals.cloudBallForm;
   applyCoreHueShift(tVals.coreHue);
+  CORE_GLOW_MESHES.forEach(m => m.scale.setScalar(tVals.coreGlowSize));
   if (ignitionTriggered) {
     sunMat.uniforms.hueMode.value    = tVals.sunHue > 0 ? tVals.sunHue : sunMat.uniforms.hueMode.value;
-    coronaMats.forEach(m => { m.uniforms.baseGlowStrength.value *= tVals.coronaGlow; });
+    // (corona glow/flare/spread/hue are already set from fixed bases in the
+    // ignition-sequence block above — no separate override needed here)
     sunMat.uniforms.distort.value   *= tVals.distortAmt;
     sunMat.uniforms.distFreqMult.value = tVals.ballFreq;
     sunMat.uniforms.distAmpMult.value  = tVals.ballAmp;
