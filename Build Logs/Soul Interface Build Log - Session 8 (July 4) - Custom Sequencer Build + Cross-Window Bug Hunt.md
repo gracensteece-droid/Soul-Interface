@@ -78,6 +78,22 @@ npm run dev
 
 ### Next Session
 
-- No committed code from this session yet — everything above is still only on disk, not committed to git.
 - Open question from earlier: eventually retire Theatre.js once the custom sequencer is trusted, rather than keeping both indefinitely (flagged as a real risk — two systems touching the same state is what caused several of tonight's more confusing bugs).
 - Sun scene (`Aion/Frontend/sun/`) untouched this session — still just Theatre.js, no custom sequencer there yet if that's ever wanted.
+
+---
+
+### Addendum — Later the Same Session
+
+**One more real determinism bug, deeper than the seeded-RNG fix.** Ricky kept noticing color and particle intensity varying between plays even after the seed fix. Root cause: several shader `time` uniforms (`fineMat`, `cloudMat`, `sparkMat`, `sunMat`, `coronaMats`, `flashMat`, `galaxyDiscMat`) were accumulated independently frame-by-frame (`time.value += dt`) instead of being derived from the scene clock `T`. Two consequences: (1) touching the `Playback.speed` slider permanently desyncs shader-time from `T`, since `T` scales by speed but these didn't; (2) looping a section snaps `T` back but these kept climbing, so a second pass through a loop sampled a completely different point in the noise functions than the first pass. Fixed by setting each one directly `= T` (or a T-derived offset, e.g. `T - T_COLL_END` for ignition-relative ones) every frame instead of accumulating — the whole scene is now a pure function of `T` alone.
+
+**Custom loop-range control** — added alongside the existing per-group 🔁 buttons: two number inputs + a toggle in the Controls panel header let you loop *any* arbitrary start/end in seconds, independent of group boundaries (e.g. a transition that spans two groups). Mutually exclusive with the per-group loop (whichever was set most recently wins).
+
+**Three new CollapseCloud controls**, directly on the collapse-phase particle materials:
+- `spinSpeed` — multiplies the whole collapse rotation rate
+- `cloudSize` — scales the collapse spiral's overall radius
+- `coreLightHue` — rotates the core-glow shells (white/amber/orange/dark) + point light around the color wheel together, preserving their relative brightness spread
+
+All three also added to the Theatre.js `CollapseCloud` sheet object for parity, per the "keep both in sync" convention established earlier.
+
+**Committed this time** — everything from this session (origin scene bug fixes, the full sequencer build, the determinism fix, and the three new controls) is in git as of end of session.

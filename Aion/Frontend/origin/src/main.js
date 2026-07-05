@@ -48,6 +48,9 @@ const cloudShapeObj = sheet.object('CollapseCloud', {
   coreSize:    types.number(1.0,  { range: [0.2, 3] }),  // >1 = core cluster concentrates/brightens sooner
   hotHue:      types.number(0.07, { range: [0, 1] }),    // hue of the hottest (innermost) particles
   satMult:     types.number(1.0,  { range: [0, 2] }),    // saturation multiplier
+  spinSpeed:   types.number(1.0,  { range: [0.2, 4] }),  // multiplies the whole collapse rotation rate
+  cloudSize:   types.number(1.0,  { range: [0.3, 3] }),  // scales the collapse spiral's overall radius
+  coreLightHue:types.number(0.0,  { range: [0, 1] }),    // hue rotation applied to the core-glow light/shells
 });
 
 // Explosion Ball — shape/blend of the ignition flash + sun emergence (T≈74-80)
@@ -67,6 +70,7 @@ let tVals = {
   igniteDuration: 4, flashIntensity: 1, distortAmt: 1, emergenceStart: 0.68, coreGlow: 1,
   sunHue: 0, coronaGlow: 1,
   cloudTurb: 1, cloudSpiral: 1, cloudCore: 1, cloudHotHue: 0.07, cloudSat: 1,
+  cloudSpin: 1, cloudScale: 1, coreHue: 0,
   ballRadius: 1, ballFreq: 1, ballAmp: 1, ballAsym: 0, ballBlend: 0.36, ballCoronaStart: 0.80, igniteLock: -1,
 };
 playbackObj.onValuesChange(v  => { tVals.speed           = v.speed; });
@@ -74,7 +78,7 @@ nebulaObj.onValuesChange(v    => { tVals.nebulaBright = v.brightMult; tVals.nebu
 collapseObj.onValuesChange(v  => { tVals.collapseBright = v.brightMult; tVals.collapseWarm = v.warmBias; tVals.collapseLock = v.collapseLock; });
 ignitionObj.onValuesChange(v  => { tVals.igniteDuration = v.duration; tVals.flashIntensity = v.flashIntensity; tVals.distortAmt = v.distortAmt; tVals.emergenceStart = v.emergenceStart; tVals.coreGlow = v.coreGlow; });
 sunObj.onValuesChange(v       => { tVals.sunHue            = v.hueMode; tVals.coronaGlow = v.coronaGlow; });
-cloudShapeObj.onValuesChange(v => { tVals.cloudTurb = v.turbulence; tVals.cloudSpiral = v.spiralTight; tVals.cloudCore = v.coreSize; tVals.cloudHotHue = v.hotHue; tVals.cloudSat = v.satMult; });
+cloudShapeObj.onValuesChange(v => { tVals.cloudTurb = v.turbulence; tVals.cloudSpiral = v.spiralTight; tVals.cloudCore = v.coreSize; tVals.cloudHotHue = v.hotHue; tVals.cloudSat = v.satMult; tVals.cloudSpin = v.spinSpeed; tVals.cloudScale = v.cloudSize; tVals.coreHue = v.coreLightHue; });
 ballObj.onValuesChange(v      => { tVals.ballRadius = v.radius; tVals.ballFreq = v.distortFreq; tVals.ballAmp = v.distortAmp; tVals.ballAsym = v.asymmetry; tVals.ballBlend = v.blendWidth; tVals.ballCoronaStart = v.coronaStart; tVals.igniteLock = v.igniteLock; });
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
@@ -257,6 +261,7 @@ const statusRowEls = STATUS_ROWS.map(row => {
         loopGroupName = null;
       } else {
         loopGroupName = row.name;
+        customLoopRange = null;
         const g = CONTROL_GROUPS.find(cg => cg.name === row.name);
         if (g) T = g.window()[0];
       }
@@ -308,6 +313,9 @@ const CONTROL_GROUPS = [
     { key:'cloudCore',   label:'coreSize',    min:0.2, max:3, step:0.01 },
     { key:'cloudHotHue', label:'hotHue',      min:0,   max:1, step:0.01 },
     { key:'cloudSat',    label:'satMult',     min:0,   max:2, step:0.01 },
+    { key:'cloudSpin',   label:'spinSpeed',   min:0.2, max:4, step:0.01 },
+    { key:'cloudScale',  label:'cloudSize',   min:0.3, max:3, step:0.01 },
+    { key:'coreHue',     label:'coreLightHue',min:0,   max:1, step:0.01 },
   ]},
   { name:'Ignition', window: () => [74, 74+tVals.igniteDuration], range: () => `74–${(74+tVals.igniteDuration).toFixed(1)}s`, props:[
     { key:'igniteDuration', label:'duration',       min:1, max:30,   step:0.1 },
@@ -446,8 +454,52 @@ collapseAllBtn.addEventListener('click', () => {
 transportRow.appendChild(playBtn); transportRow.appendChild(resetBtn); transportRow.appendChild(collapseAllBtn);
 panelTitleRow.appendChild(transportRow);
 panelHeader.appendChild(panelTitleRow);
+
+// Custom loop range — pick any arbitrary section to loop, independent of any
+// single group's window (e.g. a transition that spans two groups). Mutually
+// exclusive with the per-group 🔁 buttons — whichever was set most recently wins.
+const loopRangeRow = document.createElement('div');
+loopRangeRow.style.cssText = 'display:flex;align-items:center;gap:5px;margin-top:8px;';
+const loopRangeLabel = document.createElement('span');
+loopRangeLabel.textContent = 'Loop section:';
+loopRangeLabel.style.cssText = 'font-size:11px;color:#8a8a9a;';
+const loopStartInput = document.createElement('input');
+const loopEndInput = document.createElement('input');
+[loopStartInput, loopEndInput].forEach(inp => {
+  inp.type = 'number'; inp.min = 0; inp.max = 90; inp.step = 0.1;
+  inp.style.cssText = 'width:56px;font:11px monospace;background:#1c1c26;color:#cfe6ff;border:1px solid #33333f;border-radius:4px;padding:2px 4px;';
+});
+loopStartInput.value = '0'; loopEndInput.value = '90';
+let loopRangeInputFocused = false;
+[loopStartInput, loopEndInput].forEach(inp => {
+  inp.addEventListener('focus', () => { loopRangeInputFocused = true; });
+  inp.addEventListener('blur', () => { loopRangeInputFocused = false; });
+});
+const loopRangeToTxt = document.createElement('span');
+loopRangeToTxt.textContent = 'to'; loopRangeToTxt.style.cssText = 'font-size:11px;color:#8a8a9a;';
+const loopRangeToggleBtn = document.createElement('button');
+loopRangeToggleBtn.textContent = '🔁 Off';
+loopRangeToggleBtn.style.cssText = 'font:11px monospace;padding:3px 10px;border-radius:5px;background:#1c1c26;color:#cfe6ff;border:1px solid #33333f;cursor:pointer;';
+loopRangeToggleBtn.addEventListener('click', () => {
+  if (customLoopRange) {
+    customLoopRange = null;
+  } else {
+    const s = parseFloat(loopStartInput.value) || 0;
+    const e = parseFloat(loopEndInput.value) || 90;
+    customLoopRange = [Math.min(s,e), Math.max(s,e)];
+    loopGroupName = null;
+    T = customLoopRange[0];
+  }
+});
+loopRangeRow.appendChild(loopRangeLabel);
+loopRangeRow.appendChild(loopStartInput);
+loopRangeRow.appendChild(loopRangeToTxt);
+loopRangeRow.appendChild(loopEndInput);
+loopRangeRow.appendChild(loopRangeToggleBtn);
+panelHeader.appendChild(loopRangeRow);
+
 const panelHint = document.createElement('div');
-panelHint.style.cssText = 'font-size:10px;color:#5a5a68;margin-top:2px;';
+panelHint.style.cssText = 'font-size:10px;color:#5a5a68;margin-top:6px;';
 panelHint.textContent = 'click strip: add keyframe at that time/value · drag diamond: move in time + value · right-click: delete · shift+click: cycle ease curve · scroll over diamond: adjust ease strength';
 panelHeader.appendChild(panelHint);
 panelEl.appendChild(panelHeader);
@@ -506,6 +558,7 @@ CONTROL_GROUPS.forEach(group => {
       loopGroupName = null;
     } else {
       loopGroupName = group.name;
+      customLoopRange = null;
       const [ls] = group.window();
       T = ls;
     }
@@ -863,6 +916,17 @@ function updateControlsPanel(f){
   // throw here would silently freeze the whole scene, not just the controls panel.
   try {
     playBtn.textContent = paused ? '▶ Play' : '⏸ Pause';
+    if (customLoopRange) {
+      loopRangeToggleBtn.textContent = `🔁 ${customLoopRange[0].toFixed(1)}–${customLoopRange[1].toFixed(1)}s`;
+      loopRangeToggleBtn.style.background = '#2a5a3a';
+      if (!loopRangeInputFocused) {
+        loopStartInput.value = customLoopRange[0].toFixed(1);
+        loopEndInput.value = customLoopRange[1].toFixed(1);
+      }
+    } else {
+      loopRangeToggleBtn.textContent = '🔁 Off';
+      loopRangeToggleBtn.style.background = '#1c1c26';
+    }
     const liveMap = { Playback:true, Nebula:f.fine, Collapse:f.cloud, CollapseCloud:f.collapseShape,
       Ignition:f.ignite, ExplosionBall:f.ignite, Sun:f.sun };
     groupEls.forEach(({ dotEl, rangeEl, group, inputs, loopBtn, groupPlayBtn }) => {
@@ -897,6 +961,7 @@ function updateClock(T, paused, igniteDur){
 // ── Play / Pause ──────────────────────────────────────────────────────────────
 let paused = false;
 let loopGroupName = null; // when set, T bounces within that group's own window instead of advancing past it
+let customLoopRange = null; // [start,end] in seconds — an arbitrary section, independent of any group's window
 
 function resetScene() {
   T = 0;
@@ -1034,7 +1099,7 @@ let fineMat;
   geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
 
   fineMat = new THREE.ShaderMaterial({
-    uniforms:{ time:{value:0}, gAlpha:{value:0}, formT:{value:0}, rotSpeed:{value:0.058}, rotAngle:{value:0}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0}, galaxyT:{value:0}, turbMult:{value:1.0}, spiralMult:{value:1.0}, coreMult:{value:1.0}, hotHue:{value:0.07}, satMult:{value:1.0} },
+    uniforms:{ time:{value:0}, gAlpha:{value:0}, formT:{value:0}, rotSpeed:{value:0.058}, rotAngle:{value:0}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0}, galaxyT:{value:0}, turbMult:{value:1.0}, spiralMult:{value:1.0}, coreMult:{value:1.0}, hotHue:{value:0.07}, satMult:{value:1.0}, cloudScale:{value:1.0} },
     transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
     vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
       attribute float nSeed;
@@ -1050,6 +1115,7 @@ let fineMat;
       uniform float coreMult;
       uniform float hotHue;
       uniform float satMult;
+      uniform float cloudScale;
       varying vec3  vColor;
       varying float vAlpha;
       void main(){
@@ -1100,10 +1166,10 @@ let fineMat;
         float loopT=fract(time*cycleSpeed+s);
         float tc=pow(loopT,0.80);
         float initR=length(position.xz);
-        float rc=initR*(1.0-pow(tc,1.70));
+        float rc=initR*(1.0-pow(tc,1.70))*cloudScale;
         float winds=(2.8+initR*0.060)*spiralMult;
         float anglec=atan(position.z,position.x)+tc*winds*6.2832;
-        float hc=position.y*(1.0-tc*0.88);
+        float hc=position.y*(1.0-tc*0.88)*cloudScale;
         float turbAmp=(0.4+tc*3.2)*(0.8+s*0.4)*turbMult;
         float tv1=time*(1.8+s*1.2)+s*6.2832;
         float tv2=time*(2.5+s*0.8)+s*4.1888;
@@ -1198,7 +1264,7 @@ let cloudMat;
   geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
 
   cloudMat = new THREE.ShaderMaterial({
-    uniforms:{ time:{value:0}, gAlpha:{value:0}, rotSpeed:{value:0.026}, rotAngle:{value:0}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0}, turbMult:{value:1.0}, spiralMult:{value:1.0}, coreMult:{value:1.0}, hotHue:{value:0.07}, satMult:{value:1.0} },
+    uniforms:{ time:{value:0}, gAlpha:{value:0}, rotSpeed:{value:0.026}, rotAngle:{value:0}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0}, turbMult:{value:1.0}, spiralMult:{value:1.0}, coreMult:{value:1.0}, hotHue:{value:0.07}, satMult:{value:1.0}, cloudScale:{value:1.0} },
     transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
     vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
       attribute float nSeed;
@@ -1213,6 +1279,7 @@ let cloudMat;
       uniform float coreMult;
       uniform float hotHue;
       uniform float satMult;
+      uniform float cloudScale;
       varying vec3  vColor;
       varying float vAlpha;
       varying vec2  vSeedOff;
@@ -1234,9 +1301,9 @@ let cloudMat;
         vec3 nebulaPos=basePos+drift;
         float loopT=fract(time*0.040+s);
         float tc=pow(loopT,0.70);
-        float rCC=length(position.xz)*(1.0-pow(tc,2.0));
+        float rCC=length(position.xz)*(1.0-pow(tc,2.0))*cloudScale;
         float angleCC=atan(position.z,position.x)+tc*4.5*spiralMult*6.2832;
-        float hCC=position.y*(1.0-tc*0.70);
+        float hCC=position.y*(1.0-tc*0.70)*cloudScale;
         float ampCC=(3.0+tc*8.0)*turbMult;
         float tv1=time*(0.12+s*0.08)+s*6.2832;
         float tv2=time*(0.18+s*0.06)+s*4.1888;
@@ -1649,6 +1716,21 @@ const coreLight  = new THREE.PointLight(0xffaa40, 0, 400);
 scene.add(coreLight);
 let coreVisibility = 0;
 
+// Core-glow hue control — rotates all four glow shells + the point light around
+// the color wheel together, preserving their relative hue/brightness spread
+// (white core, then amber/orange/dark) rather than recoloring them independently.
+const CORE_GLOW_MESHES = [coreWhite, coreAmber, coreOrange, coreDark];
+const CORE_BASE_HSL = CORE_GLOW_MESHES.map(m => { const hsl={h:0,s:0,l:0}; m.material.color.getHSL(hsl); return hsl; });
+const coreLightBaseHSL = {h:0,s:0,l:0};
+coreLight.color.getHSL(coreLightBaseHSL);
+function applyCoreHueShift(shift){
+  CORE_GLOW_MESHES.forEach((m,i) => {
+    const b = CORE_BASE_HSL[i];
+    m.material.color.setHSL((b.h+shift)%1, b.s, b.l);
+  });
+  coreLight.color.setHSL((coreLightBaseHSL.h+shift)%1, coreLightBaseHSL.s, coreLightBaseHSL.l);
+}
+
 // ── Galaxy disc ───────────────────────────────────────────────────────────────
 const GALAXY_DISC_N = 28000;
 const galaxyDiscGeo = new THREE.BufferGeometry();
@@ -2019,9 +2101,9 @@ function timeline(){
     const cCurve = cSub * cSub * cSub;
     fineMat.uniforms.collapseT.value  = cCurve;
     cloudMat.uniforms.collapseT.value = cCurve;
-    fineMat.uniforms.rotSpeed.value  = 0.058 + cCurve * (0.32 - 0.058);
-    cloudMat.uniforms.rotSpeed.value = 0.026 + cCurve * (0.32 - 0.026);
-    sparkMat.uniforms.rotSpeed.value = 0.058 + cCurve * (0.32 - 0.058);
+    fineMat.uniforms.rotSpeed.value  = (0.058 + cCurve * (0.32 - 0.058)) * tVals.cloudSpin;
+    cloudMat.uniforms.rotSpeed.value = (0.026 + cCurve * (0.32 - 0.026)) * tVals.cloudSpin;
+    sparkMat.uniforms.rotSpeed.value = (0.058 + cCurve * (0.32 - 0.058)) * tVals.cloudSpin;
     autoWarmBias = easeOut(cSub) * 0.55;
     sparkMat.uniforms.gAlpha.value = Math.max(0, 1.0 - cSub * 3.0);
     coreVisibility = cCurve * cCurve;
@@ -2052,6 +2134,9 @@ function tick(){
       const [ls, le] = loopGroup.window();
       if (T < ls || T > le) T = ls;
     }
+  } else if (customLoopRange) {
+    const [ls, le] = customLoopRange;
+    if (T < ls || T > le) T = ls;
   }
   // Theatre timeline is 10s wide, scene is 90s — scale so Theatre cursor syncs
   sheet.sequence.position = Math.min(9.99, T / 9);
@@ -2082,12 +2167,13 @@ function tick(){
   }
   prevT = T;
 
-  // Shader time only advances when not paused — Space truly freezes everything
-  if (!paused) {
-    fineMat.uniforms.time.value  += dt;
-    cloudMat.uniforms.time.value += dt;
-    sparkMat.uniforms.time.value += dt;
-  }
+  // Shader time is derived directly from T (not accumulated independently) so
+  // the visual is a pure function of scene position — jumping T via a loop,
+  // scrub, or reset always reproduces the exact same look, with no memory of
+  // how many times a section has looped or whether speed was ever changed.
+  fineMat.uniforms.time.value  = T;
+  cloudMat.uniforms.time.value = T;
+  sparkMat.uniforms.time.value = T;
 
   // Derived time values
   const IGNITE_DUR_CUR   = tVals.igniteDuration;
@@ -2138,9 +2224,12 @@ function tick(){
   // ── Ignition sequence ──────────────────────────────────────────────────────
   if(ignitionTriggered) {
     const eO = t => 1 - Math.pow(1-t, 3);
-    sunMat.uniforms.time.value  += dt;
-    coronaMats.forEach(m => m.uniforms.time.value += dt);
-    flashMat.uniforms.time.value += dt;
+    // Same fix as above — derive from T (time since ignition began) instead of
+    // accumulating independently, so replaying/looping ignition is reproducible.
+    const ignitionClock = Math.max(0, T - T_COLL_END);
+    sunMat.uniforms.time.value  = ignitionClock;
+    coronaMats.forEach(m => m.uniforms.time.value = ignitionClock);
+    flashMat.uniforms.time.value = ignitionClock;
     flashMat.uniforms.asymmetry.value = tVals.ballAsym;
     flashMesh.scale.setScalar(tVals.ballRadius);
 
@@ -2197,7 +2286,7 @@ function tick(){
       const gtCurve = gt * gt;
       fineMat.uniforms.galaxyT.value = gtCurve;
       galaxyDiscMat.uniforms.gAlpha.value = Math.min(1.0, gtCurve * 1.5);
-      galaxyDiscMat.uniforms.time.value += dt;
+      galaxyDiscMat.uniforms.time.value = postIgnitionT;
       cloudMat.uniforms.gAlpha.value = Math.max(0, 1.0 - gtCurve * 2.5);
       sunMesh.scale.setScalar(1.0 + gtCurve * 3.5);
       if(gt < 0.96) {
@@ -2247,6 +2336,9 @@ function tick(){
   cloudMat.uniforms.hotHue.value     = tVals.cloudHotHue;
   fineMat.uniforms.satMult.value     = tVals.cloudSat;
   cloudMat.uniforms.satMult.value    = tVals.cloudSat;
+  fineMat.uniforms.cloudScale.value  = tVals.cloudScale;
+  cloudMat.uniforms.cloudScale.value = tVals.cloudScale;
+  applyCoreHueShift(tVals.coreHue);
   if (ignitionTriggered) {
     sunMat.uniforms.hueMode.value    = tVals.sunHue > 0 ? tVals.sunHue : sunMat.uniforms.hueMode.value;
     coronaMats.forEach(m => { m.uniforms.baseGlowStrength.value *= tVals.coronaGlow; });
