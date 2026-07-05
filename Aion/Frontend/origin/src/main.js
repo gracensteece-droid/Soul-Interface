@@ -1950,6 +1950,9 @@ const CORONA_HUES = [
   [0xaabbff,0x5577ff,0x2244dd,0x111166,0x4466ee],
   [0xffddff,0xcc55ff,0x8811cc,0x440066,0xaa44dd],
 ];
+// Pre-converted once — the per-frame corona color cycle used to call `new THREE.Color()`
+// twice per layer (10 allocations/frame) for the entire galaxy phase, real GC pressure.
+const CORONA_HUES_RGB = CORONA_HUES.map(row => row.map(hex => new THREE.Color(hex)));
 {
   function makeCoronaMat(color,flareStr,glowStr,falloff,fFalloff,sz){
     const mat=new THREE.ShaderMaterial({
@@ -1997,10 +2000,11 @@ const CORONA_BASE_FLARE       = coronaMats.map(m => m.uniforms.flareStrength.val
 const CORONA_BASE_RADIAL      = coronaMats.map(m => m.uniforms.radialFalloff.value);
 const CORONA_BASE_FLAREFALLOFF= coronaMats.map(m => m.uniforms.flareFalloff.value);
 const CORONA_BASE_COLORS      = coronaMats.map(m => m.uniforms.glowColor.value.clone());
+const coronaHueShiftScratch = {h:0,s:0,l:0};
 function applyCoronaHueShift(shift){
   if (!shift) return; // shift=0 is a no-op, so untouched behavior is bit-identical to before
   coronaMats.forEach(m => {
-    const hsl = {h:0,s:0,l:0};
+    const hsl = coronaHueShiftScratch;
     m.uniforms.glowColor.value.getHSL(hsl);
     m.uniforms.glowColor.value.setHSL((hsl.h+shift)%1, hsl.s, hsl.l);
   });
@@ -2110,9 +2114,10 @@ const COLOR_PERIOD = 45;
 // ── Background color ──────────────────────────────────────────────────────────
 const bg = { r:0, g:0, b:0.016 };
 const bgTarget = { r:0, g:0, b:0.016 };
+const bgColorScratch = new THREE.Color(); // reused every frame — allocating a new Color here every frame was real, continuous GC pressure
 function lerpBg(spd){
   bg.r+=(bgTarget.r-bg.r)*spd; bg.g+=(bgTarget.g-bg.g)*spd; bg.b+=(bgTarget.b-bg.b)*spd;
-  renderer.setClearColor(new THREE.Color(bg.r,bg.g,bg.b),1);
+  renderer.setClearColor(bgColorScratch.setRGB(bg.r,bg.g,bg.b),1);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2367,8 +2372,8 @@ function tick(){
       const mode = sunMat.uniforms.hueMode.value % 5;
       const mi = Math.floor(mode), mf = mode - mi;
       coronaMats.forEach((mat, ci) => {
-        const c1 = new THREE.Color(CORONA_HUES[mi % 5][ci]);
-        const c2 = new THREE.Color(CORONA_HUES[(mi+1) % 5][ci]);
+        const c1 = CORONA_HUES_RGB[mi % 5][ci];
+        const c2 = CORONA_HUES_RGB[(mi+1) % 5][ci];
         mat.uniforms.glowColor.value.lerpColors(c1, c2, mf);
         mat.uniforms.globalAlpha.value = 1.0;
         mat.uniforms.baseGlowStrength.value = CORONA_BASE_GLOW[ci] * tVals.coronaGlow;

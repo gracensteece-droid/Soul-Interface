@@ -19,6 +19,7 @@
 
 **New from Session 9:**
 7. **Post-ignition cloud-color control** — matching the sun's color to the cloud's ("melt the sun into the cloud") currently relies on the frozen CollapseCloud `hotHue` carryover past 74s. No dedicated post-ignition control exists yet; add one if the carryover approach proves too limiting.
+8. **Galaxy-phase stutter — verify fix**: removed two continuous per-frame `THREE.Color` allocations (background clear-color, corona hue-cycling) that were real GC-pressure sources. Not yet confirmed by Ricky whether this fully resolves the stutter — if not, next step is browser dev-tools frame profiling to check for raw particle-count/shader-cost issues instead.
 
 **Key files**: `Aion/Frontend/origin/src/main.js` (active, has the sequencer), `Aion/Frontend/sun/src/main.js` (unchanged since Session 6, Theatre.js only)
 **References**: `Aion/Frontend/Code/origin.html`, `nebula-prototype.html`, `collapse-prototype.html`, `sun-prototype.html` — all untouched, reference only

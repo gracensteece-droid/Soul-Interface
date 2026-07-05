@@ -73,6 +73,19 @@ Even with the above fixed, the collapse "ball" still had a size floor. Found a f
 
 ---
 
+### Addendum — Later the Same Session: Galaxy-Phase Stutter
+
+Ricky reported stuttering specifically during the galaxy phase, after saying he was otherwise happy with the sequence. Found two real, continuous sources of per-frame garbage allocation — a classic cause of GC-pause stutter in a Three.js render loop:
+
+1. **Background color** (`lerpBg`) — allocated a brand-new `THREE.Color` every single frame (not just in the galaxy phase — the whole scene, the entire time) just to set the renderer's clear color. Fixed by reusing one scratch `Color` and calling `.setRGB()` on it instead of constructing a new one.
+2. **Corona color-cycling** — allocated *ten* new `THREE.Color` objects every frame (two per corona layer × 5 layers), continuously, for as long as the post-ignition/galaxy phase runs, just to re-convert the same fixed hex palette (`CORONA_HUES`) over and over. Fixed by pre-converting the whole palette to `THREE.Color` objects once at startup (`CORONA_HUES_RGB`) and referencing those directly in the per-frame lerp — no allocation left in that path.
+
+Also swept the rest of the file for other per-frame `new THREE.*` calls; everything else confirmed to be one-time setup at scene construction, not per-frame.
+
+Not yet confirmed by Ricky whether this resolves the stutter fully — if it doesn't, the next step is browser dev-tools frame profiling to check whether remaining cost is raw particle-count/shader complexity rather than GC pauses.
+
+---
+
 ### Current State
 
 Ricky confirmed the collapse→ignition sequence is finally landing the way he wants. All changes are in `Aion/Frontend/origin/src/main.js` only.
