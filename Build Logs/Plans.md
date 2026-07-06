@@ -18,8 +18,10 @@
 6. **Sun scene has no sequencer** — `Aion/Frontend/sun/` is untouched, still Theatre.js only.
 
 **New from Session 9:**
-7. **Post-ignition cloud-color control** — matching the sun's color to the cloud's ("melt the sun into the cloud") currently relies on the frozen CollapseCloud `hotHue` carryover past 74s. No dedicated post-ignition control exists yet; add one if the carryover approach proves too limiting.
+7. ~~Post-ignition cloud-color control~~ — done: added `GalaxyCloud` group (hue/satMult/warmBias/brightMult, window 74+igniteDuration→90s), takes over from CollapseCloud's frozen values once ignition completes.
 8. **Galaxy-phase stutter — verify fix**: removed two continuous per-frame `THREE.Color` allocations (background clear-color, corona hue-cycling) that were real GC-pressure sources. Not yet confirmed by Ricky whether this fully resolves the stutter — if not, next step is browser dev-tools frame profiling to check for raw particle-count/shader-cost issues instead.
+9. **Sun controls added**: `spinSpeed` (-15 to 15, own-axis rotation), `sizeMult` (log-scaled 0.01–6), `ripple` (ported from `sun-prototype.html`'s traveling crest-wave effect) — all on the Sun group, all keyframeable across 74–90s.
+10. **Reference-look request, not yet implemented**: Ricky wants the post-ignition halo to look like a smooth warm-to-cool radial gradient/ring (reference image provided) rather than the current patchy particle cloud. Existing `GalaxyCloud` hue controls are uniform, not radial, so they can shift overall tone but not replicate a true center-to-edge gradient. Suggested leveraging the existing corona system (`coronaGlow`/`coronaSpread`, already a smooth additive-billboard ring) plus dialing back `GalaxyCloud.brightMult` instead — Ricky was going to try that manually before any new radial-gradient shader feature gets built.
 
 **Key files**: `Aion/Frontend/origin/src/main.js` (active, has the sequencer), `Aion/Frontend/sun/src/main.js` (unchanged since Session 6, Theatre.js only)
 **References**: `Aion/Frontend/Code/origin.html`, `nebula-prototype.html`, `collapse-prototype.html`, `sun-prototype.html` — all untouched, reference only

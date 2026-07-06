@@ -86,6 +86,26 @@ Not yet confirmed by Ricky whether this resolves the stutter fully — if it doe
 
 ---
 
+### Addendum — Still Later the Same Session: GalaxyCloud, Sun Spin/Size/Ripple
+
+Ricky moved on to the galaxy-phase sun/cloud relationship and wanted several more things directly controllable and keyframeable:
+
+**`GalaxyCloud` control group (new)** — CollapseCloud's own `hotHue`/`warmBias`/`satMult`/`brightMult` only keyframe within 56–74s; past that they freeze and keep silently driving the same shared `fineMat`/`cloudMat` uniforms for the rest of the scene (the exact carryover issue discussed earlier this session). Added a new group, `GalaxyCloud` (window: `74+igniteDuration` → 90s, i.e. exactly the post-ignition tail), with its own `hue`/`satMult`/`warmBias`/`brightMult`. Once ignition completes, these take over driving those same four uniforms instead of the frozen collapse values — so the cloud's color/brightness can now be keyframed all the way through the galaxy phase, e.g. to gradually blend it toward the sun's own color instead of staying stuck wherever collapse left it. Defaults match CollapseCloud's own defaults (so nothing changes until touched), but a heads-up was flagged: if CollapseCloud's `hotHue` etc. have already been tuned away from default, there will now be a snap at the ignition-complete boundary until GalaxyCloud's first keyframe is set to match.
+
+**Sun spin** — the sun mesh itself never rotated on its own axis before (only the camera orbited it). Added `Sun.spinSpeed`, properly integrated (`angle += speed*dt`, not a `time*speed` snapshot — same pattern as the collapse-cloud rotation fix earlier this session) so it stays correct regardless of playback speed/looping. Ricky asked for a wider range and direction control immediately after — widened to **-15 to 15** (negative reverses direction, which falls out for free from how the accumulator works, no extra code needed).
+
+**Sun size** — `Sun.sizeMult` multiplies the sun's scale on top of its existing grow/shrink ignition/galaxy animation (both scale formulas), letting it shrink to a near-invisible particle or grow beyond its normal size. Log-scaled (0.01–6), same fix as `cloudSize`'s drag-precision issue from earlier.
+
+**Sun ripple** — Ricky remembered a traveling surface-wave effect from `sun-prototype.html` (five crest sources sweeping across the sphere, displacing the surface and adding a bright glow trail) and wanted it ported in. Added `Sun.rippleStr` uniform and the exact same `rippleWave`/`crestGlow` functions from the prototype into origin's `sunMat` vertex + fragment shaders, exposed as `Sun.ripple` (default 0 = off, matches prototype's dormant state).
+
+All four new properties live on the existing **Sun** group, so all are already keyframeable across its full 74–90s window with no extra sequencer work needed.
+
+**Reference-look discussion (no code change)**: Ricky shared a reference image wanting the post-ignition cloud/halo to look more like a smooth warm-to-cool radial gradient/ring rather than the current patchy particle look. Diagnosed that the existing `GalaxyCloud` hue/sat controls apply uniformly (not a radial gradient), so they can shift the overall tone but not replicate a true center-to-edge gradient without new shader work. Redirected toward the existing **corona** system instead (`Sun.coronaGlow`/`coronaSpread`) since it's a smooth additive-billboard ring already, suggesting that combined with dialing back `GalaxyCloud.brightMult` — not yet implemented, Ricky was going to try it manually first.
+
+**Stray file-corruption caught before commit**: `Aion/Frontend/Code/sun-prototype.html` (reference-only, untouched intentionally) showed a one-character diff (`1<!DOCTYPE html>`) almost certainly from an earlier malformed tool call while reading it for the ripple-porting reference. Caught during pre-commit review and reverted with `git restore` before committing — not part of this session's actual changes.
+
+---
+
 ### Current State
 
 Ricky confirmed the collapse→ignition sequence is finally landing the way he wants. All changes are in `Aion/Frontend/origin/src/main.js` only.

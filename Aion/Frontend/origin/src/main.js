@@ -42,6 +42,19 @@ const sunObj = sheet.object('Sun', {
   coronaHueShift:     types.number(0.0, { range: [0, 1] }),   // rotates the corona's color cycle
   coronaFlareStrength:types.number(1.0, { range: [0, 3] }),   // how bright/spiky the flare rays are
   coronaSpread:       types.number(1.0, { range: [0.2, 3] }), // how quickly the glow/flares fall off with distance
+  spinSpeed:          types.number(0.0, { range: [-15, 15] }), // rotates the sun mesh on its own axis — negative = reverse direction
+  sizeMult:           types.number(1.0, { range: [0.01, 6] }), // multiplies the sun's scale on top of its own growth/shrink animation
+  ripple:             types.number(0.0, { range: [0, 3] }),    // traveling surface-wave crests, ported from sun-prototype.html
+});
+
+// Galaxy Cloud — takes over driving the shared cloud particle materials' color/warmth/
+// brightness once ignition completes, since CollapseCloud's own keyframes stop at 74s
+// and would otherwise just freeze in place for the rest of the scene.
+const galaxyCloudObj = sheet.object('GalaxyCloud', {
+  hue:        types.number(0.07, { range: [0, 1] }),
+  satMult:    types.number(1.0,  { range: [0, 2] }),
+  warmBias:   types.number(0.0,  { range: [0, 1] }),
+  brightMult: types.number(1.0,  { range: [0, 3] }),
 });
 
 // Collapse Cloud — shape/color of the collapsing nebula as it nears ignition (T≈56-74, esp. the 72-74 tail)
@@ -77,17 +90,20 @@ let tVals = {
   speed: 1, nebulaBright: 1, nebulaWarm: 0, formLock: -1,
   collapseBright: 1, collapseWarm: 0, collapseLock: -1,
   igniteDuration: 4, flashIntensity: 1, distortAmt: 1, emergenceStart: 0.68, coreGlow: 1,
-  sunHue: 0, coronaGlow: 1, coronaHueShift: 0, coronaFlareStrength: 1, coronaSpread: 1,
+  sunHue: 0, coronaGlow: 1, coronaHueShift: 0, coronaFlareStrength: 1, coronaSpread: 1, sunSpinSpeed: 0,
+  sunSizeMult: 1, sunRipple: 0,
   flashHue: 0.08, flashTint: 0, bgTintAmount: 1,
   cloudTurb: 1, cloudSpiral: 1, cloudCore: 1, cloudHotHue: 0.07, cloudSat: 1,
   cloudSpin: 1, cloudSpinCurve: 3, cloudScale: 1, coreHue: 0, cloudBallForm: 0, coreGlowSize: 1,
+  galaxyCloudHue: 0.07, galaxyCloudSat: 1, galaxyCloudWarm: 0, galaxyCloudBright: 1,
   ballRadius: 1, ballFreq: 1, ballAmp: 1, ballAsym: 0, ballBlend: 0.36, ballCoronaStart: 0.80, igniteLock: -1,
 };
 playbackObj.onValuesChange(v  => { tVals.speed           = v.speed; });
 nebulaObj.onValuesChange(v    => { tVals.nebulaBright = v.brightMult; tVals.nebulaWarm = v.warmBias; tVals.formLock = v.formLock; });
 collapseObj.onValuesChange(v  => { tVals.collapseBright = v.brightMult; tVals.collapseWarm = v.warmBias; tVals.collapseLock = v.collapseLock; });
 ignitionObj.onValuesChange(v  => { tVals.igniteDuration = v.duration; tVals.flashIntensity = v.flashIntensity; tVals.distortAmt = v.distortAmt; tVals.emergenceStart = v.emergenceStart; tVals.coreGlow = v.coreGlow; });
-sunObj.onValuesChange(v       => { tVals.sunHue = v.hueMode; tVals.coronaGlow = v.coronaGlow; tVals.coronaHueShift = v.coronaHueShift; tVals.coronaFlareStrength = v.coronaFlareStrength; tVals.coronaSpread = v.coronaSpread; });
+sunObj.onValuesChange(v       => { tVals.sunHue = v.hueMode; tVals.coronaGlow = v.coronaGlow; tVals.coronaHueShift = v.coronaHueShift; tVals.coronaFlareStrength = v.coronaFlareStrength; tVals.coronaSpread = v.coronaSpread; tVals.sunSpinSpeed = v.spinSpeed; tVals.sunSizeMult = v.sizeMult; tVals.sunRipple = v.ripple; });
+galaxyCloudObj.onValuesChange(v => { tVals.galaxyCloudHue = v.hue; tVals.galaxyCloudSat = v.satMult; tVals.galaxyCloudWarm = v.warmBias; tVals.galaxyCloudBright = v.brightMult; });
 cloudShapeObj.onValuesChange(v => { tVals.cloudTurb = v.turbulence; tVals.cloudSpiral = v.spiralTight; tVals.cloudCore = v.coreSize; tVals.cloudHotHue = v.hotHue; tVals.cloudSat = v.satMult; tVals.cloudSpin = v.spinSpeed; tVals.cloudSpinCurve = v.spinRampShape; tVals.cloudScale = v.cloudSize; tVals.coreHue = v.coreLightHue; tVals.cloudBallForm = v.ballForm; tVals.coreGlowSize = v.coreGlowSize; });
 ballObj.onValuesChange(v      => { tVals.ballRadius = v.radius; tVals.ballFreq = v.distortFreq; tVals.ballAmp = v.distortAmp; tVals.ballAsym = v.asymmetry; tVals.ballBlend = v.blendWidth; tVals.ballCoronaStart = v.coronaStart; tVals.igniteLock = v.igniteLock; tVals.flashHue = v.flashHue; tVals.flashTint = v.flashTint; tVals.bgTintAmount = v.bgTintAmount; });
 
@@ -355,6 +371,21 @@ const CONTROL_GROUPS = [
     { key:'coronaHueShift',     label:'coronaHueShift',    min:0, max:1, step:0.01 },
     { key:'coronaFlareStrength',label:'coronaFlareStrength',min:0, max:3, step:0.01 },
     { key:'coronaSpread',       label:'coronaSpread',      min:0.2, max:3, step:0.01 },
+    { key:'sunSpinSpeed',       label:'spinSpeed',         min:-15, max:15, step:0.05 },
+    { key:'sunSizeMult',        label:'size',              min:0.01, max:6, step:0.01, log:true },
+    { key:'sunRipple',          label:'ripple',            min:0,   max:3, step:0.01 },
+  ]},
+  // The collapse cloud's own color controls (CollapseCloud group) only keyframe
+  // within 56-74s — past that their last value just freezes and keeps silently
+  // driving the same shared particle materials. This group takes over driving
+  // those same materials once ignition completes, so the cloud's color/warmth/
+  // brightness can be keyframed all the way through the galaxy phase — e.g. to
+  // gradually blend it toward the sun's own color instead of staying frozen.
+  { name:'GalaxyCloud', window: () => [74+tVals.igniteDuration, 90], range: () => `${(74+tVals.igniteDuration).toFixed(1)}–90s (post-ignition cloud color)`, props:[
+    { key:'galaxyCloudHue',    label:'hue',        min:0, max:1, step:0.01 },
+    { key:'galaxyCloudSat',    label:'satMult',    min:0, max:2, step:0.01 },
+    { key:'galaxyCloudWarm',   label:'warmBias',   min:0, max:1, step:0.01 },
+    { key:'galaxyCloudBright', label:'brightMult', min:0, max:3, step:0.01 },
   ]},
 ];
 
@@ -1864,10 +1895,17 @@ scene.add(new THREE.Points(galaxyDiscGeo, galaxyDiscMat));
 // ── Sun ───────────────────────────────────────────────────────────────────────
 const SUN_R = 2.4;
 const sunMat = new THREE.ShaderMaterial({
-  uniforms:{ time:{value:0}, hueMode:{value:0.0}, emergence:{value:0}, distort:{value:0}, distFreqMult:{value:1.0}, distAmpMult:{value:1.0} },
+  uniforms:{ time:{value:0}, hueMode:{value:0.0}, emergence:{value:0}, distort:{value:0}, distFreqMult:{value:1.0}, distAmpMult:{value:1.0}, rippleStr:{value:0.0} },
   vertexShader:`
     varying vec3 vPos; varying vec3 vNormal;
-    uniform float time, distort, distFreqMult, distAmpMult;
+    uniform float time, distort, distFreqMult, distAmpMult, rippleStr;
+    float rippleWave(vec3 pn, vec3 c, float t, float off){
+      float p    = fract(t + off);
+      float cosA = clamp(dot(pn, normalize(c)), -1.0, 1.0);
+      float ang  = acos(cosA);
+      float env  = exp(-ang*1.5) * pow(max(0.0,1.0-p), 0.55);
+      return sin(ang*20.0 - p*26.0) * env;
+    }
     void main(){
       float rAmp = distort * 0.09 * distAmpMult;
       float fq = distFreqMult;
@@ -1875,7 +1913,15 @@ const sunMat = new THREE.ShaderMaterial({
       float r2 = cos(position.z*6.5*fq+time*4.7*fq)*cos(position.y*4.8*fq+time*3.8*fq);
       float r3 = sin(position.x*8.0*fq+time*3.5*fq)*cos(position.z*5.0*fq+time*5.0*fq);
       float ripple = (r1*0.5+r2*0.35+r3*0.15) * rAmp;
-      vec3 displaced = position + normalize(position) * ripple;
+      vec3 pn = normalize(position);
+      float rt = time * 0.17;
+      float rd = 0.0;
+      rd += rippleWave(pn, vec3( 0.82, 0.40, 0.41), rt, 0.00);
+      rd += rippleWave(pn, vec3(-0.65, 0.72, 0.25), rt, 0.20);
+      rd += rippleWave(pn, vec3( 0.15,-0.88, 0.45), rt, 0.40);
+      rd += rippleWave(pn, vec3(-0.50,-0.30, 0.81), rt, 0.60);
+      rd += rippleWave(pn, vec3( 0.30, 0.85,-0.43), rt, 0.80);
+      vec3 displaced = position + normalize(position) * ripple + pn * rd * rippleStr * 0.38;
       vPos = displaced;
       vNormal = normalize(normalMatrix * normal);
       gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
@@ -1883,7 +1929,14 @@ const sunMat = new THREE.ShaderMaterial({
   `,
   fragmentShader:`
     varying vec3 vPos; varying vec3 vNormal;
-    uniform float time,hueMode,emergence,distort,distFreqMult,distAmpMult;
+    uniform float time,hueMode,emergence,distort,distFreqMult,distAmpMult,rippleStr;
+    float crestGlow(vec3 pn, vec3 c, float t, float off){
+      float p    = fract(t + off);
+      float cosA = clamp(dot(pn, normalize(c)), -1.0, 1.0);
+      float ang  = acos(cosA);
+      float env  = exp(-ang*1.5) * pow(max(0.0,1.0-p), 0.50);
+      return max(0.0, sin(ang*20.0 - p*26.0)) * env;
+    }
     float hash(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
     float noise(vec3 p){
       vec3 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
@@ -1927,6 +1980,17 @@ const sunMat = new THREE.ShaderMaterial({
       float m=mod(hueMode,5.0);
       vec3 col=mix(getDeep(m),getHot(m),n);
       col+=smoothstep(0.68,1.0,n)*1.5*getBright(m);
+      if(rippleStr > 0.01){
+        vec3 rpn = normalize(vPos);
+        float rt = time * 0.17;
+        float rg = 0.0;
+        rg += crestGlow(rpn, vec3( 0.82, 0.40, 0.41), rt, 0.00);
+        rg += crestGlow(rpn, vec3(-0.65, 0.72, 0.25), rt, 0.20);
+        rg += crestGlow(rpn, vec3( 0.15,-0.88, 0.45), rt, 0.40);
+        rg += crestGlow(rpn, vec3(-0.50,-0.30, 0.81), rt, 0.60);
+        rg += crestGlow(rpn, vec3( 0.30, 0.85,-0.43), rt, 0.80);
+        col += rg * getBright(m) * 5.0 * rippleStr;
+      }
       vec3 whiteHot=vec3(1.8,1.5,1.0);
       gl_FragColor=vec4(mix(whiteHot,col,emergence),1.0);
     }
@@ -2135,6 +2199,7 @@ let T = 0; // driven by sheet.sequence.position
 let autoWarmBias = 0; // recomputed fresh each frame in timeline() — never self-referential, so the
                        // warmBias sliders can never get stuck ratcheted at a stale high value
 let rotAngleFine = 0, rotAngleCloud = 0, rotAngleSpark = 0; // properly integrated rotation angles
+let sunSpinAngle = 0; // integrated the same way — speed*dt each frame, not time*speed
 
 function timeline(){
   // T is set externally from Theatre playhead before this call
@@ -2294,17 +2359,19 @@ function tick(){
     rotAngleFine  += fineMat.uniforms.rotSpeed.value  * dt;
     rotAngleCloud += cloudMat.uniforms.rotSpeed.value * dt;
     rotAngleSpark += sparkMat.uniforms.rotSpeed.value * dt;
+    sunSpinAngle  += tVals.sunSpinSpeed * dt;
   }
   fineMat.uniforms.rotAngle.value  = rotAngleFine;
   cloudMat.uniforms.rotAngle.value = rotAngleCloud;
   sparkMat.uniforms.rotAngle.value = rotAngleSpark;
+  sunMesh.rotation.y = sunSpinAngle;
 
   // ── Ignition trigger ──────────────────────────────────────────────────────
   if(!ignitionTriggered && fineMat.uniforms.collapseT.value >= 1.0) {
     ignitionTriggered = true;
     sunMesh.visible   = true;
     flashMesh.visible = true;
-    sunMesh.scale.setScalar(22.0 * tVals.ballRadius);
+    sunMesh.scale.setScalar(22.0 * tVals.ballRadius * tVals.sunSizeMult);
     sunMat.uniforms.emergence.value = 0;
     sunMat.uniforms.distort.value   = 0;
     coreWhite.material.opacity = 0; coreAmber.material.opacity  = 0;
@@ -2328,7 +2395,7 @@ function tick(){
     if(!ignitionDone) {
       const pct = ignitionT / IGNITE_DUR_CUR;
 
-      sunMesh.scale.setScalar((1.0 + 21.0 * Math.exp(-pct * 5.2)) * tVals.ballRadius);
+      sunMesh.scale.setScalar((1.0 + 21.0 * Math.exp(-pct * 5.2)) * tVals.ballRadius * tVals.sunSizeMult);
       const distBell = Math.max(0, Math.sin(Math.PI * Math.min(1.0, pct / 0.78)));
       sunMat.uniforms.distort.value = Math.pow(distBell, 0.75);
       const eStart = tVals.emergenceStart;
@@ -2393,7 +2460,7 @@ function tick(){
       galaxyDiscMat.uniforms.gAlpha.value = Math.min(1.0, gtCurve * 1.5);
       galaxyDiscMat.uniforms.time.value = postIgnitionT;
       cloudMat.uniforms.gAlpha.value = Math.max(0, 1.0 - gtCurve * 2.5);
-      sunMesh.scale.setScalar(1.0 + gtCurve * 3.5);
+      sunMesh.scale.setScalar((1.0 + gtCurve * 3.5) * tVals.sunSizeMult);
       if(gt < 0.96) {
         sphTarget.r = 95 + gtCurve * 210;
         sphTarget.phi += (1.10 - sphTarget.phi) * 0.006;
@@ -2425,22 +2492,26 @@ function tick(){
   }
 
   // Theatre overrides — applied last so they always win
-  fineMat.uniforms.brightMult.value  = tVals.nebulaBright;
-  cloudMat.uniforms.brightMult.value = tVals.nebulaBright;
+  // Once ignition completes, GalaxyCloud takes over driving these same four
+  // uniforms instead of CollapseCloud/Nebula — otherwise they'd just freeze at
+  // whichever value their last keyframe left them at (those groups' windows
+  // both end at/before 74s) for the rest of the scene, including the galaxy phase.
+  fineMat.uniforms.brightMult.value  = ignitionDone ? tVals.galaxyCloudBright : tVals.nebulaBright;
+  cloudMat.uniforms.brightMult.value = ignitionDone ? tVals.galaxyCloudBright : tVals.nebulaBright;
   drainMat.uniforms.gAlpha.value    *= tVals.collapseBright;
   cvortMat.uniforms.gAlpha.value    *= tVals.collapseBright;
-  fineMat.uniforms.warmBias.value    = Math.max(autoWarmBias, tVals.nebulaWarm);
-  cloudMat.uniforms.warmBias.value   = Math.max(autoWarmBias, tVals.collapseWarm);
+  fineMat.uniforms.warmBias.value    = ignitionDone ? tVals.galaxyCloudWarm : Math.max(autoWarmBias, tVals.nebulaWarm);
+  cloudMat.uniforms.warmBias.value   = ignitionDone ? tVals.galaxyCloudWarm : Math.max(autoWarmBias, tVals.collapseWarm);
   fineMat.uniforms.turbMult.value    = tVals.cloudTurb;
   cloudMat.uniforms.turbMult.value   = tVals.cloudTurb;
   fineMat.uniforms.spiralMult.value  = tVals.cloudSpiral;
   cloudMat.uniforms.spiralMult.value = tVals.cloudSpiral;
   fineMat.uniforms.coreMult.value    = tVals.cloudCore;
   cloudMat.uniforms.coreMult.value   = tVals.cloudCore;
-  fineMat.uniforms.hotHue.value      = tVals.cloudHotHue;
-  cloudMat.uniforms.hotHue.value     = tVals.cloudHotHue;
-  fineMat.uniforms.satMult.value     = tVals.cloudSat;
-  cloudMat.uniforms.satMult.value    = tVals.cloudSat;
+  fineMat.uniforms.hotHue.value      = ignitionDone ? tVals.galaxyCloudHue : tVals.cloudHotHue;
+  cloudMat.uniforms.hotHue.value     = ignitionDone ? tVals.galaxyCloudHue : tVals.cloudHotHue;
+  fineMat.uniforms.satMult.value     = ignitionDone ? tVals.galaxyCloudSat : tVals.cloudSat;
+  cloudMat.uniforms.satMult.value    = ignitionDone ? tVals.galaxyCloudSat : tVals.cloudSat;
   fineMat.uniforms.cloudScale.value  = tVals.cloudScale;
   cloudMat.uniforms.cloudScale.value = tVals.cloudScale;
   fineMat.uniforms.ballForm.value  = tVals.cloudBallForm;
@@ -2454,6 +2525,7 @@ function tick(){
     sunMat.uniforms.distort.value   *= tVals.distortAmt;
     sunMat.uniforms.distFreqMult.value = tVals.ballFreq;
     sunMat.uniforms.distAmpMult.value  = tVals.ballAmp;
+    sunMat.uniforms.rippleStr.value    = tVals.sunRipple;
     flashMat.uniforms.opacity.value  *= tVals.flashIntensity;
   }
 
