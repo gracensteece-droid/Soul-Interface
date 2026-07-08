@@ -45,6 +45,7 @@ const sunObj = sheet.object('Sun', {
   spinSpeed:          types.number(0.0, { range: [-15, 15] }), // rotates the sun mesh on its own axis — negative = reverse direction
   sizeMult:           types.number(1.0, { range: [0.01, 6] }), // multiplies the sun's scale on top of its own growth/shrink animation
   ripple:             types.number(0.0, { range: [0, 3] }),    // traveling surface-wave crests, ported from sun-prototype.html
+  dissolve:           types.number(0.0, { range: [0, 1] }),    // 0 = solid sun, 1 = fully broken apart into drifting particles
 });
 
 // Galaxy Cloud — takes over driving the shared cloud particle materials' color/warmth/
@@ -91,7 +92,7 @@ let tVals = {
   collapseBright: 1, collapseWarm: 0, collapseLock: -1,
   igniteDuration: 4, flashIntensity: 1, distortAmt: 1, emergenceStart: 0.68, coreGlow: 1,
   sunHue: 0, coronaGlow: 1, coronaHueShift: 0, coronaFlareStrength: 1, coronaSpread: 1, sunSpinSpeed: 0,
-  sunSizeMult: 1, sunRipple: 0,
+  sunSizeMult: 1, sunRipple: 0, sunDissolve: 0,
   flashHue: 0.08, flashTint: 0, bgTintAmount: 1,
   cloudTurb: 1, cloudSpiral: 1, cloudCore: 1, cloudHotHue: 0.07, cloudSat: 1,
   cloudSpin: 1, cloudSpinCurve: 3, cloudScale: 1, coreHue: 0, cloudBallForm: 0, coreGlowSize: 1,
@@ -102,7 +103,7 @@ playbackObj.onValuesChange(v  => { tVals.speed           = v.speed; });
 nebulaObj.onValuesChange(v    => { tVals.nebulaBright = v.brightMult; tVals.nebulaWarm = v.warmBias; tVals.formLock = v.formLock; });
 collapseObj.onValuesChange(v  => { tVals.collapseBright = v.brightMult; tVals.collapseWarm = v.warmBias; tVals.collapseLock = v.collapseLock; });
 ignitionObj.onValuesChange(v  => { tVals.igniteDuration = v.duration; tVals.flashIntensity = v.flashIntensity; tVals.distortAmt = v.distortAmt; tVals.emergenceStart = v.emergenceStart; tVals.coreGlow = v.coreGlow; });
-sunObj.onValuesChange(v       => { tVals.sunHue = v.hueMode; tVals.coronaGlow = v.coronaGlow; tVals.coronaHueShift = v.coronaHueShift; tVals.coronaFlareStrength = v.coronaFlareStrength; tVals.coronaSpread = v.coronaSpread; tVals.sunSpinSpeed = v.spinSpeed; tVals.sunSizeMult = v.sizeMult; tVals.sunRipple = v.ripple; });
+sunObj.onValuesChange(v       => { tVals.sunHue = v.hueMode; tVals.coronaGlow = v.coronaGlow; tVals.coronaHueShift = v.coronaHueShift; tVals.coronaFlareStrength = v.coronaFlareStrength; tVals.coronaSpread = v.coronaSpread; tVals.sunSpinSpeed = v.spinSpeed; tVals.sunSizeMult = v.sizeMult; tVals.sunRipple = v.ripple; tVals.sunDissolve = v.dissolve; });
 galaxyCloudObj.onValuesChange(v => { tVals.galaxyCloudHue = v.hue; tVals.galaxyCloudSat = v.satMult; tVals.galaxyCloudWarm = v.warmBias; tVals.galaxyCloudBright = v.brightMult; });
 cloudShapeObj.onValuesChange(v => { tVals.cloudTurb = v.turbulence; tVals.cloudSpiral = v.spiralTight; tVals.cloudCore = v.coreSize; tVals.cloudHotHue = v.hotHue; tVals.cloudSat = v.satMult; tVals.cloudSpin = v.spinSpeed; tVals.cloudSpinCurve = v.spinRampShape; tVals.cloudScale = v.cloudSize; tVals.coreHue = v.coreLightHue; tVals.cloudBallForm = v.ballForm; tVals.coreGlowSize = v.coreGlowSize; });
 ballObj.onValuesChange(v      => { tVals.ballRadius = v.radius; tVals.ballFreq = v.distortFreq; tVals.ballAmp = v.distortAmp; tVals.ballAsym = v.asymmetry; tVals.ballBlend = v.blendWidth; tVals.ballCoronaStart = v.coronaStart; tVals.igniteLock = v.igniteLock; tVals.flashHue = v.flashHue; tVals.flashTint = v.flashTint; tVals.bgTintAmount = v.bgTintAmount; });
@@ -374,6 +375,7 @@ const CONTROL_GROUPS = [
     { key:'sunSpinSpeed',       label:'spinSpeed',         min:-15, max:15, step:0.05 },
     { key:'sunSizeMult',        label:'size',              min:0.01, max:6, step:0.01, log:true },
     { key:'sunRipple',          label:'ripple',            min:0,   max:3, step:0.01 },
+    { key:'sunDissolve',        label:'dissolve',          min:0,   max:1, step:0.01 },
   ]},
   // The collapse cloud's own color controls (CollapseCloud group) only keyframe
   // within 56-74s — past that their last value just freezes and keeps silently
@@ -1055,6 +1057,8 @@ function resetScene() {
   });
 
   sunMesh.visible    = false;
+  sunMat.uniforms.dissolve.value = 0;
+  sunDustMat.uniforms.dissolve.value = 0;
   flashMesh.visible  = false;
   flashMesh.material.uniforms.opacity.value = 0;
   coronaGroup.visible = false;
@@ -1895,7 +1899,7 @@ scene.add(new THREE.Points(galaxyDiscGeo, galaxyDiscMat));
 // ── Sun ───────────────────────────────────────────────────────────────────────
 const SUN_R = 2.4;
 const sunMat = new THREE.ShaderMaterial({
-  uniforms:{ time:{value:0}, hueMode:{value:0.0}, emergence:{value:0}, distort:{value:0}, distFreqMult:{value:1.0}, distAmpMult:{value:1.0}, rippleStr:{value:0.0} },
+  uniforms:{ time:{value:0}, hueMode:{value:0.0}, emergence:{value:0}, distort:{value:0}, distFreqMult:{value:1.0}, distAmpMult:{value:1.0}, rippleStr:{value:0.0}, dissolve:{value:0.0} },
   vertexShader:`
     varying vec3 vPos; varying vec3 vNormal;
     uniform float time, distort, distFreqMult, distAmpMult, rippleStr;
@@ -1929,7 +1933,7 @@ const sunMat = new THREE.ShaderMaterial({
   `,
   fragmentShader:`
     varying vec3 vPos; varying vec3 vNormal;
-    uniform float time,hueMode,emergence,distort,distFreqMult,distAmpMult,rippleStr;
+    uniform float time,hueMode,emergence,distort,distFreqMult,distAmpMult,rippleStr,dissolve;
     float crestGlow(vec3 pn, vec3 c, float t, float off){
       float p    = fract(t + off);
       float cosA = clamp(dot(pn, normalize(c)), -1.0, 1.0);
@@ -1991,6 +1995,10 @@ const sunMat = new THREE.ShaderMaterial({
         rg += crestGlow(rpn, vec3( 0.30, 0.85,-0.43), rt, 0.80);
         col += rg * getBright(m) * 5.0 * rippleStr;
       }
+      if(dissolve>0.001){
+        float erosion=fbm(vPos*2.2+vec3(37.2,11.4,5.8));
+        if(erosion<dissolve) discard;
+      }
       vec3 whiteHot=vec3(1.8,1.5,1.0);
       gl_FragColor=vec4(mix(whiteHot,col,emergence),1.0);
     }
@@ -2001,6 +2009,84 @@ const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(SUN_R,64,64), sunMat);
 sunMesh.scale.setScalar(0.001);
 sunMesh.visible = false;
 scene.add(sunMesh);
+
+// ── Sun Dissolve Particles ──────────────────────────────────────────────────────
+// Released from the sun's own surface as Sun.dissolve ramps 0→1 — each particle
+// starts at a fixed point on the unit sphere (matching sunMat's erosion pattern in
+// spirit, not literally coupled to it) and drifts outward, fading as it spreads so
+// the sun reads as breaking apart into the surrounding cloud rather than just
+// shrinking away. Idle (alpha 0, discarded) whenever dissolve is 0.
+const SUN_DISSOLVE_N = 4000;
+let sunDustMat;
+{
+  const geo = new THREE.BufferGeometry();
+  const dir = new Float32Array(SUN_DISSOLVE_N*3);
+  const seed = new Float32Array(SUN_DISSOLVE_N);
+  for(let i=0;i<SUN_DISSOLVE_N;i++){
+    // Uniform sphere-surface sample (Fibonacci sphere — even coverage, no clustering at poles)
+    const t = (i+0.5)/SUN_DISSOLVE_N;
+    const phi = Math.acos(1-2*t);
+    const golden = Math.PI*(1+Math.sqrt(5));
+    const theta = golden*i;
+    const x = Math.sin(phi)*Math.cos(theta), y = Math.sin(phi)*Math.sin(theta), z = Math.cos(phi);
+    dir[i*3]=x; dir[i*3+1]=y; dir[i*3+2]=z;
+    seed[i]=rand();
+  }
+  geo.setAttribute('dir', new THREE.BufferAttribute(dir,3));
+  geo.setAttribute('seed',new THREE.BufferAttribute(seed,1));
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(SUN_DISSOLVE_N*3),3)); // unused, required by THREE.Points
+
+  sunDustMat = new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0}, dissolve:{value:0}, hueMode:{value:0}, baseRadius:{value:SUN_R} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader:`
+      attribute vec3 dir;
+      attribute float seed;
+      uniform float time, dissolve, baseRadius;
+      varying float vAlpha;
+      varying float vSeed;
+      void main(){
+        float speed  = 0.5 + seed*1.5;
+        float travel = dissolve * speed;
+        vec3 jitter = vec3(
+          sin(time*1.3+seed*61.0),
+          sin(time*1.7+seed*37.0+1.5),
+          sin(time*1.1+seed*83.0+3.0)
+        ) * 0.12 * dissolve;
+        vec3 pos = dir*baseRadius*(1.0+travel*3.2) + jitter*baseRadius;
+        float fadeIn  = smoothstep(0.0, 0.10, dissolve);
+        float fadeOut = pow(1.0-dissolve, 0.7);
+        vAlpha = fadeIn * fadeOut;
+        vSeed  = seed;
+        vec4 mvPos = modelViewMatrix*vec4(pos,1.0);
+        gl_PointSize = (2.0+seed*3.5) * (320.0/-mvPos.z);
+        gl_Position = projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader:`
+      uniform float hueMode;
+      varying float vAlpha;
+      varying float vSeed;
+      vec3 getHot(float m){
+        if(m<1.0)return mix(vec3(1.0,0.88,0.08),vec3(1.0,0.15,0.03),m);
+        if(m<2.0)return mix(vec3(1.0,0.15,0.03),vec3(0.06,0.95,0.88),m-1.0);
+        if(m<3.0)return mix(vec3(0.06,0.95,0.88),vec3(0.14,0.52,1.0),m-2.0);
+        if(m<4.0)return mix(vec3(0.14,0.52,1.0),vec3(0.68,0.14,1.0),m-3.0);
+        return mix(vec3(0.68,0.14,1.0),vec3(1.0,0.88,0.08),m-4.0);
+      }
+      void main(){
+        if(vAlpha<0.004) discard;
+        vec2 c=gl_PointCoord-0.5; float d=length(c)*2.0;
+        if(d>1.0) discard;
+        float m=mod(hueMode,5.0);
+        vec3 col=getHot(m)*(1.1+vSeed*0.4);
+        float glow=smoothstep(0.5,0.0,d);
+        gl_FragColor=vec4(col, vAlpha*glow);
+      }
+    `,
+  });
+  scene.add(new THREE.Points(geo, sunDustMat));
+}
 
 // ── Corona ────────────────────────────────────────────────────────────────────
 const coronaGroup = new THREE.Group();
@@ -2304,6 +2390,8 @@ function tick(){
   if (T < prevT - 0.1) {
     ignitionTriggered = false;
     sunMesh.visible   = false;
+    sunMat.uniforms.dissolve.value = 0;
+    sunDustMat.uniforms.dissolve.value = 0;
     flashMesh.visible = false;
     flashMesh.material.uniforms.opacity.value = 0;
     coronaGroup.visible = false;
@@ -2438,18 +2526,19 @@ function tick(){
       sunMat.uniforms.hueMode.value = (colorCycleT / COLOR_PERIOD) * 5.0;
       const mode = sunMat.uniforms.hueMode.value % 5;
       const mi = Math.floor(mode), mf = mode - mi;
+      const dissolveFade = 1.0 - tVals.sunDissolve;
       coronaMats.forEach((mat, ci) => {
         const c1 = CORONA_HUES_RGB[mi % 5][ci];
         const c2 = CORONA_HUES_RGB[(mi+1) % 5][ci];
         mat.uniforms.glowColor.value.lerpColors(c1, c2, mf);
         mat.uniforms.globalAlpha.value = 1.0;
-        mat.uniforms.baseGlowStrength.value = CORONA_BASE_GLOW[ci] * tVals.coronaGlow;
-        mat.uniforms.flareStrength.value    = CORONA_BASE_FLARE[ci] * tVals.coronaFlareStrength;
+        mat.uniforms.baseGlowStrength.value = CORONA_BASE_GLOW[ci] * tVals.coronaGlow * dissolveFade;
+        mat.uniforms.flareStrength.value    = CORONA_BASE_FLARE[ci] * tVals.coronaFlareStrength * dissolveFade;
         mat.uniforms.radialFalloff.value    = CORONA_BASE_RADIAL[ci] * tVals.coronaSpread;
         mat.uniforms.flareFalloff.value     = CORONA_BASE_FLAREFALLOFF[ci] * tVals.coronaSpread;
       });
       applyCoronaHueShift(tVals.coronaHueShift);
-      coreLight.intensity = 8 + 4 * Math.sin(colorCycleT * 0.3);
+      coreLight.intensity = (8 + 4 * Math.sin(colorCycleT * 0.3)) * dissolveFade;
       if(!drag) sphTarget.theta += 0.00042;
       updateLoops(sunMat.uniforms.time.value, SUN_R * sunMesh.scale.x);
 
@@ -2460,7 +2549,13 @@ function tick(){
       galaxyDiscMat.uniforms.gAlpha.value = Math.min(1.0, gtCurve * 1.5);
       galaxyDiscMat.uniforms.time.value = postIgnitionT;
       cloudMat.uniforms.gAlpha.value = Math.max(0, 1.0 - gtCurve * 2.5);
-      sunMesh.scale.setScalar((1.0 + gtCurve * 3.5) * tVals.sunSizeMult);
+      const sunNaturalScale = (1.0 + gtCurve * 3.5) * tVals.sunSizeMult;
+      sunMesh.scale.setScalar(sunNaturalScale * dissolveFade);
+      sunMat.uniforms.dissolve.value = tVals.sunDissolve;
+      sunDustMat.uniforms.time.value      = sunMat.uniforms.time.value;
+      sunDustMat.uniforms.dissolve.value  = tVals.sunDissolve;
+      sunDustMat.uniforms.hueMode.value   = sunMat.uniforms.hueMode.value;
+      sunDustMat.uniforms.baseRadius.value= SUN_R * sunNaturalScale;
       if(gt < 0.96) {
         sphTarget.r = 95 + gtCurve * 210;
         sphTarget.phi += (1.10 - sphTarget.phi) * 0.006;
