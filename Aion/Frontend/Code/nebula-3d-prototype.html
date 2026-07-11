@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Nebula — 3D Sculpt Prototype (Pillars of Creation reference)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{position:fixed;inset:0}
+#info{
+  position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+  font-family:monospace;font-size:9px;letter-spacing:0.25em;
+  color:rgba(200,175,135,0.16);pointer-events:none;
+  text-align:center;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="info">DRAG · SCROLL TO ZOOM<br/>3D SCULPT — REFERENCED FROM THE PILLARS OF CREATION PHOTO</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+window.onerror = function(msg,src,line){
+  document.body.innerHTML += `<div style="position:fixed;bottom:20px;left:20px;right:20px;background:#1a0000;color:#ff8080;font-family:monospace;font-size:12px;padding:16px;z-index:9999;border:1px solid #660000;">JS Error (line ${line}): ${msg}</div>`;
+};
+
+const canvas   = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000308, 1);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 2000);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+
+// ── Spherical camera (same rig as the other two prototypes) ──────────────────
+const sph       = { r:340, theta:0.30, phi:0.46 };
+const sphTarget = { r:340, theta:0.30, phi:0.46 };
+
+function applyCamera(){
+  camera.position.set(
+    sph.r*Math.sin(sph.phi)*Math.sin(sph.theta),
+    sph.r*Math.cos(sph.phi),
+    sph.r*Math.sin(sph.phi)*Math.cos(sph.theta)
+  );
+  camera.lookAt(0,0,0);
+}
+
+let drag=false, prev={x:0,y:0};
+canvas.addEventListener('mousedown', e=>{ drag=true; prev={x:e.clientX,y:e.clientY}; });
+window.addEventListener('mouseup', ()=>drag=false);
+window.addEventListener('mousemove', e=>{
+  if(!drag) return;
+  sphTarget.theta -= (e.clientX-prev.x)*0.004;
+  sphTarget.phi    = clamp(sphTarget.phi+(e.clientY-prev.y)*0.004, 0.05, Math.PI*0.88);
+  prev={x:e.clientX,y:e.clientY};
+  sph.theta=sphTarget.theta; sph.phi=sphTarget.phi;
+});
+window.addEventListener('wheel', e=>{
+  sphTarget.r = clamp(sphTarget.r+e.deltaY*0.20, 60, 800);
+  sph.r=sphTarget.r;
+},{passive:true});
+
+// ── Shared hsl2rgb GLSL ───────────────────────────────────────────────────────
+const HSL_GLSL = `
+  vec3 hsl2rgb(float h,float s,float l){
+    vec3 rgb=clamp(abs(mod(h*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
+    return l+s*(rgb-0.5)*(1.0-abs(2.0*l-1.0));
+  }
+`;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYER 1 — PILLAR SCULPT
+// Three tapered, leaning columns built from scattered particles, rim-lit at the
+// silhouette edge (ionization front) and warm/dusty in the core — the read of
+// the real photo, but as an actual 3D volume you can orbit around.
+// ═══════════════════════════════════════════════════════════════════════════════
+function buildPillar(opts){
+  const {n, baseX, baseZ, height, baseR, topR, bendX, bendZ, roughness, fingerFrac, fingerSpread, seedOff} = opts;
+  const pos  = new Float32Array(n*3);
+  const rim  = new Float32Array(n);
+  const hgt  = new Float32Array(n);
+  const seed = new Float32Array(n);
+
+  for(let i=0;i<n;i++){
+    const hFrac = Math.pow(Math.random(), 0.85);
+    let radiusAtH = baseR + (topR-baseR)*hFrac;
+    const bump = 1 + roughness*(Math.sin(hFrac*11+seedOff*0.7)*0.5+Math.sin(hFrac*23+seedOff*1.3)*0.3);
+    radiusAtH *= Math.max(0.25, bump);
+
+    const ang = Math.random()*Math.PI*2;
+    const rr  = radiusAtH*Math.sqrt(Math.random());
+    let x = baseX + Math.cos(ang)*rr;
+    let z = baseZ + Math.sin(ang)*rr;
+    let y = hFrac*height;
+
+    // Lean as it rises
+    x += bendX*Math.pow(hFrac,1.4);
+    z += bendZ*Math.pow(hFrac,1.4);
+
+    // Fraying fingers near the tip
+    if(hFrac>0.82 && Math.random()<fingerFrac){
+      const fi = Math.floor(Math.random()*3);
+      const fAngle = fi*2.4 + seedOff*0.3;
+      const extra = (hFrac-0.82)/0.18;
+      x += Math.cos(fAngle)*extra*fingerSpread;
+      z += Math.sin(fAngle)*extra*fingerSpread;
+      y += extra*height*0.10;
+    }
+
+    pos[i*3]   = x;
+    pos[i*3+1] = y - height*0.5; // center vertically on origin
+    pos[i*3+2] = z;
+    rim[i]  = clamp(rr/Math.max(radiusAtH,0.001), 0, 1);
+    hgt[i]  = hFrac;
+    seed[i] = Math.random();
+  }
+  return {pos,rim,hgt,seed};
+}
+
+{
+  const pillars = [
+    buildPillar({ n:6000, baseX:-45, baseZ:-10, height:170, baseR:16, topR:7,  bendX:-18, bendZ:6,  roughness:0.35, fingerFrac:0.35, fingerSpread:14, seedOff:1.3 }),
+    buildPillar({ n:7500, baseX:5,   baseZ:5,   height:190, baseR:24, topR:10, bendX:8,   bendZ:-4, roughness:0.40, fingerFrac:0.45, fingerSpread:22, seedOff:4.7 }),
+    buildPillar({ n:4500, baseX:52,  baseZ:-4,  height:120, baseR:20, topR:9,  bendX:10,  bendZ:8,  roughness:0.30, fingerFrac:0.30, fingerSpread:12, seedOff:8.1 }),
+  ];
+  const total = pillars.reduce((a,p)=>a+p.rim.length,0);
+  const pos=new Float32Array(total*3), rim=new Float32Array(total), hgt=new Float32Array(total), seed=new Float32Array(total);
+  let off=0, offV=0;
+  for(const p of pillars){
+    pos.set(p.pos, offV);
+    rim.set(p.rim, off); hgt.set(p.hgt, off); seed.set(p.seed, off);
+    off += p.rim.length; offV += p.pos.length;
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('rimF',     new THREE.BufferAttribute(rim,1));
+  geo.setAttribute('hFrac',    new THREE.BufferAttribute(hgt,1));
+  geo.setAttribute('nSeed',    new THREE.BufferAttribute(seed,1));
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0} },
+    transparent:true, depthWrite:true, depthTest:true, blending:THREE.NormalBlending,
+    vertexShader: HSL_GLSL + `
+      attribute float rimF;
+      attribute float hFrac;
+      attribute float nSeed;
+      uniform float time;
+      varying vec3  vColor;
+      varying float vAlpha;
+      void main(){
+        float s=nSeed;
+        // Gentle life-like drift — small amplitude so the sculpt holds its shape
+        float amp=0.4+rimF*0.9;
+        float t1=time*(0.06+s*0.04)+s*6.2832;
+        float t2=time*(0.05+s*0.03)+s*4.1888;
+        vec3 drift=vec3(sin(t1)*amp, cos(t2)*amp*0.4, cos(t1*0.8)*amp);
+        vec3 pos=position+drift;
+
+        // Dark dusty rust core (silhouette) → bright cyan ionized rim.
+        // rimF is area-weighted (most particles sit near the outer radius), so
+        // the core/rim split has to happen late — most of the body reads dark.
+        // Blend the two RGB colors directly rather than lerping hue — lerping
+        // hue from rust(0.06) to cyan(0.58) sweeps straight through yellow/green.
+        vec3 coreColor=hsl2rgb(0.06,0.65,0.14+hFrac*0.03);
+        vec3 rimColor =hsl2rgb(0.58,0.75,0.72+hFrac*0.03);
+        float edge=smoothstep(0.90,0.995,rimF);
+        vColor=mix(coreColor,rimColor,edge);
+        vAlpha=mix(0.85,0.97,edge)*(0.85+0.15*s);
+
+        vec4 mvPos=modelViewMatrix*vec4(pos,1.0);
+        float ptSz=mix(4.6,2.4,edge)*(0.7+s*0.7)*640.0/-mvPos.z;
+        gl_PointSize=clamp(ptSz,1.4,14.0);
+        gl_Position=projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader:`
+      varying vec3  vColor;
+      varying float vAlpha;
+      void main(){
+        vec2  c=gl_PointCoord-0.5;
+        float d=length(c)*2.0;
+        if(d>1.0) discard;
+        float alpha=smoothstep(1.0,0.25,d)*vAlpha;
+        if(alpha<0.05) discard;
+        gl_FragColor=vec4(vColor,alpha);
+      }
+    `,
+  });
+
+  scene.add(new THREE.Points(geo, mat));
+  window._pillarMat = mat;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYER 2 — BACKGROUND GAS
+// Soft diffuse teal/rose puffs behind and around the pillars, static in place
+// (no orbit-rotation of the sculpt itself) — just a slow internal shimmer.
+// ═══════════════════════════════════════════════════════════════════════════════
+{
+  const N=700;
+  const geo=new THREE.BufferGeometry();
+  const pos=new Float32Array(N*3), seed=new Float32Array(N);
+  for(let i=0;i<N;i++){
+    const a=Math.random()*Math.PI*2, b=Math.acos(2*Math.random()-1);
+    const r=140+Math.random()*160;
+    pos[i*3]   = Math.sin(b)*Math.cos(a)*r*1.4;
+    pos[i*3+1] = Math.cos(b)*r*0.7;
+    pos[i*3+2] = Math.sin(b)*Math.sin(a)*r - 70; // pushed well behind the pillars
+    seed[i]=Math.random();
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader: HSL_GLSL + `
+      attribute float nSeed;
+      uniform float time;
+      varying vec3  vColor;
+      varying float vAlpha;
+      varying vec2  vSeedOff;
+      void main(){
+        float s=nSeed;
+        float t1=time*(0.02+s*0.01)+s*6.2832;
+        float t2=time*(0.017+s*0.008)+s*4.1888;
+        vec3 drift=vec3(sin(t1)*6.0, cos(t2)*3.0, cos(t1*0.7)*6.0);
+        vec3 pos=position+drift;
+
+        float hue=mix(0.50,0.92,step(0.6,fract(s*3.71)))+sin(time*0.01+s*5.0)*0.02;
+        float lum=0.20+s*0.10;
+        vColor=hsl2rgb(hue,0.55,lum)*0.55;
+        vAlpha=0.5;
+        vSeedOff=vec2(s*17.3+time*0.02, s*11.7+time*0.015);
+
+        vec4 mvPos=modelViewMatrix*vec4(pos,1.0);
+        float baseSize=16.0+s*24.0;
+        float ptSz=baseSize*0.9*640.0/-mvPos.z;
+        gl_PointSize=clamp(ptSz,3.0,260.0);
+        gl_Position=projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader: HSL_GLSL + `
+      varying vec3  vColor;
+      varying float vAlpha;
+      varying vec2  vSeedOff;
+      float h2(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+      float n2(vec2 p){
+        vec2 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+        return mix(mix(h2(i),h2(i+vec2(1,0)),u.x),
+                   mix(h2(i+vec2(0,1)),h2(i+vec2(1,1)),u.x),u.y);
+      }
+      float fbm(vec2 p){
+        float v=0.0,a=0.5;
+        for(int i=0;i<4;i++){v+=a*n2(p);p=p*2.1+vec2(1.3,7.9);a*=0.5;}
+        return v;
+      }
+      void main(){
+        vec2  c=gl_PointCoord-0.5;
+        float d=length(c);
+        if(d>0.52) discard;
+        float n=fbm(c*4.5+vSeedOff);
+        float edge=d - n*0.32 + 0.04;
+        float shape=smoothstep(0.48,0.06,edge);
+        float detail=fbm(c*9.0+vSeedOff*1.8)*0.45+0.55;
+        float alpha=shape*detail*vAlpha*0.30;
+        if(alpha<0.002) discard;
+        gl_FragColor=vec4(vColor*detail, alpha);
+      }
+    `,
+  });
+
+  scene.add(new THREE.Points(geo, mat));
+  window._gasMat = mat;
+}
+
+// ── Volumetric atmosphere haze — large-scale mood, Hubble-ish rust/teal ──────
+function haze(col,r,op){
+  const m=new THREE.Mesh(new THREE.SphereGeometry(r,24,24),
+    new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:op,
+      side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
+  scene.add(m);
+}
+haze(0x0a2a33, 220, 0.045);
+haze(0x3a1808, 190, 0.035);
+
+// ── Star field, with a handful of bright twinkling "EGG" points at the tips ──
+{
+  const N=3500,geo=new THREE.BufferGeometry();
+  const p=new Float32Array(N*3),c=new Float32Array(N*3);
+  const pal=[[0.88,0.94,1],[1,1,0.88],[0.68,0.80,1],[1,0.82,0.62]];
+  for(let i=0;i<N;i++){
+    const a=Math.random()*Math.PI*2,b=Math.acos(2*Math.random()-1),r=700+Math.random()*300;
+    p[i*3]=r*Math.sin(b)*Math.cos(a); p[i*3+1]=r*Math.sin(b)*Math.sin(a); p[i*3+2]=r*Math.cos(b);
+    const sc=pal[Math.floor(Math.random()*pal.length)];
+    c[i*3]=sc[0]; c[i*3+1]=sc[1]; c[i*3+2]=sc[2];
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+  geo.setAttribute('color',new THREE.BufferAttribute(c,3));
+  scene.add(new THREE.Points(geo,new THREE.PointsMaterial({
+    size:2.0,sizeAttenuation:true,vertexColors:true,
+    transparent:true,opacity:0.48,depthWrite:false,blending:THREE.AdditiveBlending
+  })));
+}
+{
+  const N=90,geo=new THREE.BufferGeometry();
+  const p=new Float32Array(N*3), seed=new Float32Array(N);
+  for(let i=0;i<N;i++){
+    p[i*3]  =(Math.random()-0.5)*130;
+    p[i*3+1]=Math.random()*90-10;
+    p[i*3+2]=(Math.random()-0.5)*70;
+    seed[i]=Math.random();
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+  geo.setAttribute('nSeed',new THREE.BufferAttribute(seed,1));
+  const mat=new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader:`
+      attribute float nSeed;
+      uniform float time;
+      varying float vTwinkle;
+      void main(){
+        vTwinkle=0.5+0.5*sin(time*(1.2+nSeed*2.0)+nSeed*30.0);
+        vec4 mvPos=modelViewMatrix*vec4(position,1.0);
+        gl_PointSize=clamp((2.0+vTwinkle*2.5)*640.0/-mvPos.z,1.0,6.0);
+        gl_Position=projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader:`
+      varying float vTwinkle;
+      void main(){
+        vec2 c=gl_PointCoord-0.5;
+        float d=length(c)*2.0;
+        if(d>1.0) discard;
+        float alpha=(0.4+vTwinkle*0.6)*smoothstep(1.0,0.0,d);
+        gl_FragColor=vec4(0.85,0.95,1.0,alpha);
+      }
+    `,
+  });
+  scene.add(new THREE.Points(geo,mat));
+  window._eggMat = mat;
+}
+
+// ── Render loop ───────────────────────────────────────────────────────────────
+let last=performance.now();
+function tick(){
+  requestAnimationFrame(tick);
+  const now=performance.now();
+  const dt=(now-last)/1000; last=now;
+  window._pillarMat.uniforms.time.value += dt;
+  window._gasMat.uniforms.time.value    += dt;
+  window._eggMat.uniforms.time.value    += dt;
+  if(!drag) sphTarget.theta+=0.00038;
+  sph.r     +=(sphTarget.r-sph.r)*0.08;
+  sph.theta +=(sphTarget.theta-sph.theta)*0.08;
+  sph.phi   +=(sphTarget.phi-sph.phi)*0.08;
+  applyCamera();
+  renderer.render(scene,camera);
+}
+tick();
+</script>
+</body>
+</html>
