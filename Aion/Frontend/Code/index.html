@@ -1,0 +1,3611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Soul Interface</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Cinzel:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+/* ── Reset ── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;background:#000000;overflow:hidden;font-family:'Cormorant Garamond',serif;color:#e8e2f4;}
+
+/* ── Nebula canvas ── */
+canvas#nebula{position:fixed;inset:0;z-index:0;opacity:1;}
+
+/* ── Canvas ── */
+canvas#scene{position:fixed;inset:0;z-index:1;}
+
+/* ── Root tokens ── */
+:root{
+  --gold-bright: #e8dfc8;
+  --gold-mid:    rgba(220,190,120,0.6);
+  --gold-dim:    rgba(200,175,130,0.45);
+  --ink:         #010008;
+  --panel-max:   1100px;
+  --ease-out-quart: cubic-bezier(0.22,0.61,0.36,1);
+}
+
+/* ── Begin screen ── */
+#cosmo-begin{
+  position:fixed;inset:0;z-index:20;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  background:#000000;
+  transition:opacity 1.2s ease;
+  pointer-events:all;
+  cursor:pointer;
+}
+#cosmo-begin:hover .begin-btn{
+  color:rgba(232,223,200,0.95);
+  border-color:rgba(220,190,120,0.6);
+  text-shadow:0 0 20px rgba(220,190,120,0.6);
+}
+.begin-title{
+  font-family:'Cinzel',serif;
+  font-size:clamp(22px,3vw,40px);
+  font-weight:300;
+  letter-spacing:0.45em;
+  color:rgba(232,223,200,0.85);
+  text-transform:uppercase;
+  margin-bottom:14px;
+  text-shadow:0 0 40px rgba(220,190,120,0.3);
+}
+.begin-sub{
+  font-family:'Cormorant Garamond',serif;
+  font-style:italic;
+  font-size:clamp(13px,1.3vw,17px);
+  color:rgba(200,175,130,0.45);
+  letter-spacing:0.08em;
+  margin-bottom:52px;
+}
+.begin-btn{
+  font-family:'Cinzel',serif;
+  font-size:9px;
+  letter-spacing:0.45em;
+  text-transform:uppercase;
+  color:rgba(200,185,155,0.50);
+  border:1px solid rgba(200,185,155,0.20);
+  padding:12px 28px;
+  background:none;
+  cursor:pointer;
+  transition:color 0.4s, border-color 0.4s, text-shadow 0.4s;
+  border-radius:1px;
+}
+
+/* ── Cosmogenesis overlay ── */
+#cosmo{
+  position:fixed;inset:0;z-index:5;
+  pointer-events:none;
+}
+#cosmo-text{
+  position:fixed;
+  top:clamp(38px,5vh,64px);
+  max-width:min(380px, 32vw);
+  opacity:0;
+  transition:opacity 2.2s ease;
+  z-index:8;
+  pointer-events:none;
+}
+#cosmo-text.side-left  { left:clamp(32px,4vw,64px); text-align:left; }
+#cosmo-text.side-right { right:clamp(32px,4vw,64px); text-align:right; left:auto; }
+#cosmo-phase{
+  font-family:'Cinzel',serif;
+  font-size:clamp(6px,0.52vw,7.5px);
+  letter-spacing:0.7em;
+  text-transform:uppercase;
+  color:rgba(200,185,155,0.25);
+  margin-bottom:4px;
+}
+#cosmo-narration{
+  display:none; /* Aion panel handles narration now */
+}
+#cosmo-skip{
+  position:fixed;
+  bottom:28px;right:32px;
+  z-index:10;
+  font-family:'Cinzel',serif;
+  font-size:8px;
+  letter-spacing:0.28em;
+  text-transform:uppercase;
+  color:rgba(200,185,155,0.30);
+  background:none;border:none;cursor:pointer;
+  pointer-events:all;
+  transition:color 0.3s;
+  opacity:0;
+  animation:fadeIn 2s 3s ease forwards;
+}
+#cosmo-skip:hover{color:rgba(200,185,155,0.75);}
+
+/* ── Planet label overlay ── */
+#planet-labels{
+  position:fixed;inset:0;z-index:6;
+  pointer-events:none;
+  opacity:0;
+  transition:opacity 1.2s ease;
+}
+#planet-labels.active{
+  pointer-events:none; /* overlay itself never blocks — only child labels do */
+}
+.planet-label{
+  position:absolute;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  pointer-events:none; /* off until visible */
+  transform:translate(-50%,-50%);
+  white-space:nowrap;
+}
+.planet-label.visible{
+  pointer-events:all; /* only clickable once the label has appeared */
+  cursor:pointer;
+}
+.planet-label-name{
+  font-family:'Cinzel',serif;
+  font-size:clamp(7px,0.7vw,10px);
+  letter-spacing:0.42em;
+  text-transform:uppercase;
+  color:var(--label-color, rgba(200,185,155,0.75));
+  text-shadow:0 0 12px var(--label-glow, rgba(200,185,155,0.4)), 0 0 30px rgba(0,0,0,0.9);
+  opacity:0;
+  transform:translateY(4px);
+  transition:opacity 1.8s ease, transform 1.8s ease;
+  margin-bottom:3px;
+}
+.planet-label-desc{
+  display:none; /* descriptions moved to planet detail page */
+}
+.planet-label.visible .planet-label-name{
+  opacity:1;
+  transform:translateY(0);
+}
+/* clickable — pointer cursor + hover brighten */
+.planet-label{
+  cursor:pointer;
+}
+.planet-label:hover .planet-label-name{
+  color:rgba(255,255,255,0.95);
+  text-shadow:0 0 18px var(--label-glow, rgba(200,185,155,0.7)), 0 0 40px rgba(0,0,0,0.9);
+}
+.planet-label:hover .planet-label-line{
+  opacity:0.8 !important;
+}
+.planet-label-line{
+  width:1px;
+  background:linear-gradient(to bottom, transparent, var(--label-color, rgba(200,185,155,0.3)));
+  margin-bottom:2px;
+  opacity:0;
+  transition:opacity 1.8s ease;
+}
+.planet-label.visible .planet-label-line{opacity:1;}
+
+/* ── Aion narration panel — corner-anchored, alternating sides ── */
+#aion-narration{
+  position:fixed;
+  top:clamp(56px,7vh,90px);
+  left:clamp(32px,4vw,64px);
+  z-index:7;
+  max-width:min(480px,38vw);
+  text-align:left;
+  pointer-events:none; /* never block clicks */
+  opacity:0;
+  transition:opacity 2s ease;
+}
+#aion-narration.side-right{
+  left:auto;
+  right:clamp(32px,4vw,64px);
+  text-align:right;
+}
+/* Special bottom-center placement for outer reaches final lines */
+#aion-narration.side-center{
+  left:50%;
+  right:auto;
+  transform:translateX(-50%);
+  text-align:center;
+  max-width:min(600px,58vw);
+}
+#aion-narration .aion-line{
+  font-family:'Cormorant Garamond',serif;
+  font-style:italic;
+  font-size:clamp(11.5px,1.05vw,15px);
+  line-height:1.95;
+  color:rgba(232,224,210,0.75);
+  text-shadow:0 1px 14px rgba(0,0,0,1), 0 0 40px rgba(0,0,0,0.9);
+  display:block;
+  opacity:0;
+  animation:none;
+}
+#aion-narration .aion-line.show{
+  animation:lineReveal 1.4s ease forwards;
+}
+#aion-narration .aion-line.final-line{
+  font-family:'Cinzel',serif;
+  font-style:normal;
+  font-size:clamp(10px,0.95vw,13.5px);
+  letter-spacing:0.35em;
+  color:rgba(212,195,158,0.92);
+  text-shadow:
+    0 0 30px rgba(200,175,120,0.55),
+    0 1px 14px rgba(0,0,0,1);
+  margin-top:0.8em;
+}
+@keyframes lineReveal{
+  from{opacity:0;transform:translateY(7px);}
+  to{opacity:1;transform:translateY(0);}
+}
+
+/* ── Vignette ── */
+#vignette{
+  position:fixed;inset:0;z-index:3;
+  pointer-events:none;
+  background:radial-gradient(ellipse 80% 75% at 50% 50%, transparent 55%, rgba(0,0,0,0.72) 100%);
+}
+
+/* ── Letterbox cinematic bars ── */
+#letterbox-top,#letterbox-bot{
+  position:fixed;left:0;right:0;z-index:8;
+  background:#000;
+  height:clamp(28px,4vh,52px);
+  transition:height 1.8s cubic-bezier(0.22,0.61,0.36,1);
+  pointer-events:none; /* never block clicks */
+}
+#letterbox-top{ top:0; }
+#letterbox-bot{ bottom:0; }
+.letterbox-open #letterbox-top,
+.letterbox-open #letterbox-bot{ height:0; }
+
+/* ── UI layer — hidden until council reveal ── */
+#ui{position:fixed;inset:0;z-index:4;pointer-events:none;opacity:0;transition:opacity 0s;}
+#ui.council-revealed{
+  opacity:1;
+  transition:opacity 0s;
+  /* pointer-events:none stays — only interactive children get pointer-events:all */
+}
+/* Only make specific interactive children clickable, not the whole layer */
+#ui.council-revealed .seer-panel,
+#ui.council-revealed .watch-again-btn{
+  pointer-events:all;
+}
+
+/* ── Title block ── */
+.title-block{
+  position:absolute;top:0;left:0;right:0;
+  display:flex;flex-direction:column;align-items:center;
+  padding-top:22px;gap:6px;
+  opacity:0;
+  transition:opacity 2.4s ease;
+}
+.title-block.show{ opacity:1; }
+.title-main{
+  font-family:'Cinzel',serif;
+  font-size:clamp(16px,2vw,26px);
+  font-weight:600;
+  letter-spacing:0.28em;
+  color:var(--gold-bright);
+  text-transform:uppercase;
+  display:flex;gap:0;
+}
+.title-main .l{
+  display:inline-block;
+  color:var(--gold-bright);
+  text-shadow:0 0 20px rgba(220,190,120,0.4);
+  animation:letterShimmer 4s ease-in-out infinite;
+  animation-delay:var(--ld,0s);
+}
+.title-main .sp{ display:inline-block; width:0.28em; }
+@keyframes letterShimmer{
+  0%,100%{
+    color:var(--gold-bright);
+    text-shadow:0 0 12px rgba(220,190,120,0.4),0 0 30px rgba(220,190,120,0.1);
+  }
+  50%{
+    color:#fff8e8;
+    text-shadow:
+      0 0 8px rgba(255,248,220,0.95),
+      0 0 20px rgba(240,210,130,0.80),
+      0 0 45px rgba(220,180,80,0.55),
+      0 0 80px rgba(200,150,50,0.25);
+  }
+}
+.title-rule{
+  width:160px;height:1px;
+  background:linear-gradient(to right,transparent,var(--gold-mid),transparent);
+}
+.title-sub{
+  font-family:'Cormorant Garamond',serif;
+  font-style:italic;font-size:11.5px;
+  letter-spacing:0.20em;
+  color:var(--gold-dim);
+}
+
+/* ── Seer panel — hidden until council reveal ── */
+.seer-panel{
+  position:absolute;bottom:0;left:0;right:0;
+  display:flex;justify-content:center;
+  pointer-events:all;
+  opacity:0;
+  transition:opacity 2.6s ease;
+  transform:translateY(20px);
+  transition:opacity 2.6s ease, transform 2.6s cubic-bezier(0.22,0.61,0.36,1);
+}
+.seer-panel.show{
+  opacity:1;
+  transform:translateY(0);
+}
+.seer-row{
+  display:flex;justify-content:center;align-items:stretch;
+  width:100%;max-width:var(--panel-max);
+  background:linear-gradient(
+    to top,
+    rgba(1,0,8,1)    0%,
+    rgba(1,0,8,0.97) 22%,
+    rgba(1,0,8,0.88) 45%,
+    rgba(1,0,8,0.60) 68%,
+    rgba(1,0,8,0.25) 85%,
+    transparent      100%
+  );
+  border-top:none;
+}
+
+/* ── Individual seer card ── */
+.seer-btn{
+  flex:1;
+  padding:22px 18px 32px;
+  cursor:pointer;text-align:center;
+  border:none;background:none;
+  position:relative;
+  opacity:0;
+  border-right:none;
+  transition:transform 0.5s var(--ease-out-quart), opacity 0.9s ease;
+  overflow:hidden;
+}
+.seer-btn.rise{
+  opacity:1;
+  animation:cardRise 0.9s var(--ease-out-quart) forwards;
+}
+.seer-btn::before{
+  content:'';
+  position:absolute;inset:0;
+  background:radial-gradient(ellipse 70% 60% at 50% 110%, rgba(var(--bc-rgb),0.07) 0%, transparent 70%);
+  opacity:0;
+  transition:opacity 0.5s ease;
+  pointer-events:none;
+}
+.seer-btn:hover::before{opacity:1;}
+.seer-btn:last-child{border-right:none;}
+.seer-btn.aion{flex:1.3;}
+
+.seer-btn:hover{transform:translateY(-8px);}
+.seer-btn.aion:hover{transform:translateY(-12px);}
+
+.seer-btn:hover .bstem{opacity:1;height:calc(var(--stem-h) + 6px);}
+.seer-btn:hover .bname{color:var(--bc);}
+.seer-btn:hover .bsigil{
+  filter:drop-shadow(0 0 10px var(--bc)) drop-shadow(0 0 22px var(--bc));
+  animation:sigilSpinFast 3s linear infinite;
+}
+.seer-btn:hover .benter{
+  opacity:1;
+  transform:translateY(0);
+}
+
+/* ── Stem line ── */
+.bstem{
+  width:1px;
+  height:var(--stem-h, 28px);
+  background:linear-gradient(to top,var(--bc),transparent);
+  margin:0 auto 14px;
+  opacity:0.25;
+  transition:opacity 0.45s ease, height 0.45s var(--ease-out-quart);
+}
+.aion .bstem{--stem-h:42px;opacity:0.40;}
+.maren .bstem{--stem-h:28px;}
+.arya .bstem{--stem-h:28px;}
+
+/* ── Sigil ── */
+.bsigil-wrap{
+  display:block;
+  margin:0 auto 9px;
+  width:32px;height:32px;
+  perspective:200px;
+}
+.aion .bsigil-wrap{width:40px;height:40px;}
+.bsigil{
+  display:block;
+  width:100%;height:100%;
+  color:var(--bc);
+  filter:drop-shadow(0 0 5px var(--bc));
+  transition:filter 0.45s ease;
+  animation:sigilTumble3D 14s linear infinite;
+  transform-style:preserve-3d;
+  font-size:inherit;
+  line-height:32px;
+  text-align:center;
+}
+.aion .bsigil{line-height:40px;}
+.seer-btn:hover .bsigil{
+  filter:drop-shadow(0 0 10px var(--bc)) drop-shadow(0 0 22px var(--bc));
+  animation:sigilTumble3D 2.8s linear infinite;
+}
+@keyframes sigilTumble3D{
+  from{ transform: rotateY(0deg);   }
+  to  { transform: rotateY(360deg); }
+}
+
+/* ── Label (discipline) ── */
+.blabel{
+  font-family:'Cinzel',serif;
+  font-size:7px;
+  letter-spacing:0.30em;
+  color:rgba(120,110,150,0.55);
+  text-transform:uppercase;
+  margin-bottom:5px;
+}
+.aion .blabel{color:rgba(212,184,150,0.28);}
+
+/* ── Name ── */
+.bname{
+  font-family:'Cinzel',serif;
+  font-size:clamp(15px,1.7vw,22px);
+  font-weight:500;
+  letter-spacing:0.18em;
+  color:#ccc4e0;
+  transition:color 0.45s ease;
+  margin-bottom:7px;
+}
+.aion .bname{
+  font-size:clamp(18px,2.1vw,27px);
+  letter-spacing:0.22em;
+}
+
+/* ── Description ── */
+.bdesc{
+  font-style:italic;
+  font-size:12px;
+  color:rgba(180,168,210,0.68);
+  line-height:1.65;
+  margin-bottom:12px;
+}
+.aion .bdesc{
+  color:rgba(212,184,150,0.52);
+  font-size:12.5px;
+}
+
+/* ── Enter CTA ── */
+.benter{
+  font-family:'Cinzel',serif;
+  font-size:7.5px;
+  letter-spacing:0.28em;
+  color:var(--bc);
+  text-transform:uppercase;
+  opacity:0 !important;
+  transform:translateY(5px);
+  transition:opacity 0.4s ease, transform 0.4s var(--ease-out-quart);
+}
+.seer-btn:hover .benter{
+  opacity:1 !important;
+  transform:translateY(0);
+}
+
+/* ── Veil ── */
+#veil{
+  position:fixed;inset:0;
+  background:var(--ink);
+  z-index:60;
+  opacity:0;pointer-events:none;
+  transition:opacity 0.8s ease;
+}
+#veil.on{opacity:1;pointer-events:all;}
+
+/* ── Keyframes ── */
+@keyframes fadeIn{
+  from{opacity:0;}
+  to{opacity:1;}
+}
+@keyframes cardRise{
+  from{opacity:0;transform:translateY(14px);}
+  to{opacity:1;transform:translateY(0);}
+}
+/* ── Pause / Resume button ── */
+#cosmo-pause{
+  position:fixed;
+  bottom:28px;left:32px;
+  z-index:30;
+  font-family:'Cinzel',serif;
+  font-size:8px;
+  letter-spacing:0.28em;
+  text-transform:uppercase;
+  color:rgba(200,185,155,0.55);
+  background:none;
+  border:1px solid rgba(200,185,155,0.18);
+  cursor:pointer;
+  padding:8px 16px;
+  border-radius:1px;
+  pointer-events:all;
+  display:none; /* shown by JS when sequence starts */
+  align-items:center;gap:8px;
+  transition:color 0.3s ease, border-color 0.3s ease;
+}
+#cosmo-pause:hover{
+  color:rgba(200,185,155,0.90);
+  border-color:rgba(200,185,155,0.45);
+}
+#pause-icon{
+  width:10px;height:10px;
+  display:flex;align-items:center;gap:3px;
+  flex-shrink:0;
+}
+#pause-icon span{
+  display:block;width:2.5px;height:10px;
+  background:currentColor;
+  border-radius:1px;
+}
+/* paused state — show ▶ */
+#cosmo-pause.paused #pause-icon span:first-child{
+  width:0;height:0;
+  background:transparent;
+  border-style:solid;
+  border-width:5px 0 5px 9px;
+  border-color:transparent transparent transparent currentColor;
+  border-radius:0;
+}
+#cosmo-pause.paused #pause-icon span:last-child{
+  display:none;
+}
+#pause-label{ line-height:1; }
+.watch-again-wrap{
+  margin-top:18px;
+  opacity:0;
+  transition:opacity 0s;
+}
+.title-block.show .watch-again-wrap{
+  opacity:1;
+  transition:opacity 1.4s ease 1.2s;
+}
+.watch-again-btn{
+  font-family:'Cinzel',serif;
+  font-size:8.5px;
+  letter-spacing:0.42em;
+  text-transform:uppercase;
+  color:rgba(200,185,155,0.58);
+  background:none;
+  border:1px solid rgba(200,185,155,0.20);
+  cursor:pointer;
+  padding:10px 22px;
+  border-radius:1px;
+  pointer-events:all;
+  transition:color 0.35s ease, border-color 0.35s ease, text-shadow 0.35s ease;
+}
+.watch-again-btn:hover{
+  color:rgba(232,223,200,0.92);
+  border-color:rgba(200,185,155,0.50);
+  text-shadow:0 0 20px rgba(200,175,120,0.55);
+}
+</style>
+</head>
+<body>
+<div id="letterbox-top"></div>
+<div id="letterbox-bot"></div>
+<div id="vignette"></div>
+<canvas id="nebula"></canvas>
+<canvas id="scene"></canvas>
+
+<div id="cosmo-begin" onclick="beginCosmo()">
+  <div class="begin-title">Soul Interface</div>
+  <div class="begin-sub">A council of seers. An origin before them.</div>
+  <button class="begin-btn">Begin ↗</button>
+</div>
+
+<div id="cosmo">
+  <div id="cosmo-text" class="side-left">
+    <div id="cosmo-phase"></div>
+    <div id="cosmo-narration"></div>
+  </div>
+</div>
+<button id="cosmo-skip" onclick="skipCosmo()">Skip ↗</button>
+<button id="cosmo-pause" class="playing" onclick="togglePause()">
+  <span id="pause-icon"><span></span><span></span></span>
+  <span id="pause-label">Pause</span>
+</button>
+
+<div id="planet-labels"></div>
+<div id="aion-narration"></div>
+
+<div id="ui">
+  <div class="title-block">
+    <div class="title-main">
+      <span class="l" style="--ld:0.00s">S</span>
+      <span class="l" style="--ld:0.08s">O</span>
+      <span class="l" style="--ld:0.16s">U</span>
+      <span class="l" style="--ld:0.24s">L</span>
+      <span class="sp"></span>
+      <span class="l" style="--ld:0.36s">I</span>
+      <span class="l" style="--ld:0.44s">N</span>
+      <span class="l" style="--ld:0.52s">T</span>
+      <span class="l" style="--ld:0.60s">E</span>
+      <span class="l" style="--ld:0.68s">R</span>
+      <span class="l" style="--ld:0.76s">F</span>
+      <span class="l" style="--ld:0.84s">A</span>
+      <span class="l" style="--ld:0.92s">C</span>
+      <span class="l" style="--ld:1.00s">E</span>
+    </div>
+    <div class="title-rule"></div>
+    <div class="title-sub">The council awaits.</div>
+    <div class="watch-again-wrap">
+      <button class="watch-again-btn" onclick="watchAgain()">↺ watch the origin</button>
+    </div>
+  </div>
+
+</div>
+
+<div id="veil"></div>
+
+<script>
+// ── Council reveal — called after cosmogenesis completes (or skipped) ─────────
+function revealCouncil() {
+  // Mark sequence as seen in localStorage
+  try { localStorage.setItem('soulinterface_cosmo_done', '1'); } catch(e){}
+
+  // Open letterbox bars
+  document.body.classList.add('letterbox-open');
+
+  // Reveal UI layer
+  const ui = document.getElementById('ui');
+  ui.classList.add('council-revealed');
+
+  // Stagger: title first, then seer panel, then each card
+  const tb = ui.querySelector('.title-block');
+  const sp = ui.querySelector('.seer-panel');
+  const btns = ui.querySelectorAll('.seer-btn');
+
+  setTimeout(() => { if(tb) tb.classList.add('show'); }, 200);
+  setTimeout(() => { if(sp) sp.classList.add('show'); }, 600);
+  btns.forEach((btn, i) => {
+    setTimeout(() => {
+      btn.style.animationDelay = '0s';
+      btn.classList.add('rise');
+    }, 900 + i * 280);
+  });
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function go(seer) {
+  document.getElementById('veil').classList.add('on');
+  setTimeout(() => { window.location.href = `seer_chat.html?seer=${seer}`; }, 800);
+}
+
+// ── Watch again — clears seen flag, reloads to begin screen ──────────────────
+// Uses reload so Three.js reinitialises cleanly; localStorage cleared so
+// begin screen shows again. User can watch as many times as they want.
+function watchAgain() {
+  try { localStorage.removeItem('soulinterface_cosmo_done'); } catch(e){}
+  // Veil fade then reload
+  document.getElementById('veil').classList.add('on');
+  setTimeout(() => { window.location.reload(); }, 700);
+}
+
+// ── Debug: Ctrl+Shift+R to reset sequence ─────────────────────────────────────
+document.addEventListener('keydown', function(e) {
+  if (e.ctrlKey && e.shiftKey && e.key === 'R') {
+    e.preventDefault();
+    watchAgain();
+  }
+});
+
+// ── Check if user has already seen the sequence ──────────────────────────────
+(function checkPreviouslySeen() {
+  let seen = false;
+  try { seen = localStorage.getItem('soulinterface_cosmo_done') === '1'; } catch(e){}
+
+  if (seen) {
+    // Hide all intro elements immediately
+    const beginEl = document.getElementById('cosmo-begin');
+    if (beginEl) { beginEl.style.display = 'none'; }
+    const cosmoEl = document.getElementById('cosmo');
+    if (cosmoEl) cosmoEl.style.display = 'none';
+    const skipBtn = document.getElementById('cosmo-skip');
+    if (skipBtn) skipBtn.style.display = 'none';
+    const narPanel = document.getElementById('aion-narration');
+    if (narPanel) narPanel.style.display = 'none';
+    const labelsDiv = document.getElementById('planet-labels');
+    if (labelsDiv) labelsDiv.style.display = 'none';
+    const pauseBtn = document.getElementById('cosmo-pause');
+    if (pauseBtn) pauseBtn.style.display = 'none';
+
+    // Signal Three.js engine to skip cosmo + snap to final state
+    window._cosmoAlreadySeen = true;
+
+    // Three.js signals it's ready via window._threeReady = true
+    // Poll for it rather than using a fixed timer — handles slow texture generation
+    let polls = 0;
+    const waitForThree = setInterval(() => {
+      polls++;
+      if (window._threeReady || polls > 80) { // max 4s wait (80 × 50ms)
+        clearInterval(waitForThree);
+        revealCouncil();
+      }
+    }, 50);
+  }
+})();
+</script>
+
+<script>
+// ── Nebula clouds — slow fade, all edges, no strobe ───────────────────────────
+(function () {
+  const canvas = document.getElementById('nebula');
+  const ctx    = canvas.getContext('2d');
+
+  function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // One cloud per edge position, spread all around the border
+  // phase offsets ensure they're never all bright or all dark at once
+  const clouds = [
+    { x:-0.06, y: 0.08, rx:0.32, ry:0.28, hue:270, phase:0.00, spd:0.00018 }, // top-left
+    { x: 0.50, y:-0.07, rx:0.36, ry:0.22, hue:220, phase:1.10, spd:0.00015 }, // top-center
+    { x: 1.07, y: 0.10, rx:0.30, ry:0.26, hue:185, phase:2.20, spd:0.00020 }, // top-right
+    { x: 1.09, y: 0.52, rx:0.25, ry:0.34, hue:140, phase:3.30, spd:0.00017 }, // right
+    { x: 1.06, y: 0.92, rx:0.32, ry:0.24, hue:310, phase:4.40, spd:0.00019 }, // bottom-right
+    { x: 0.50, y: 1.08, rx:0.40, ry:0.20, hue: 30, phase:0.70, spd:0.00016 }, // bottom-center
+    { x:-0.06, y: 0.90, rx:0.30, ry:0.24, hue: 80, phase:1.85, spd:0.00021 }, // bottom-left
+    { x:-0.09, y: 0.50, rx:0.24, ry:0.32, hue:340, phase:3.00, spd:0.00018 }, // left
+  ];
+
+  // Each cloud gets its own offscreen canvas — drawn once, composited at varying opacity
+  const W = () => window.innerWidth;
+  const H = () => window.innerHeight;
+
+  function makeOffscreen(c) {
+    const oc   = document.createElement('canvas');
+    oc.width   = W();
+    oc.height  = H();
+    const octx = oc.getContext('2d');
+    const cx   = c.x * oc.width;
+    const cy   = c.y * oc.height;
+    const rx   = c.rx * oc.width;
+    const ry   = c.ry * oc.height;
+
+    [
+      { s:1.00, a:0.90 },
+      { s:0.55, a:0.70 },
+      { s:0.25, a:0.50 },
+    ].forEach(({ s, a }) => {
+      const r  = rx * s;
+      const r2 = ry * s;
+      const g  = octx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      g.addColorStop(0,    `hsla(${c.hue},80%,55%,${a})`);
+      g.addColorStop(0.35, `hsla(${c.hue},75%,40%,${a * 0.5})`);
+      g.addColorStop(0.70, `hsla(${c.hue},70%,28%,0.12)`);
+      g.addColorStop(1,    `hsla(${c.hue},65%,18%,0)`);
+
+      octx.save();
+      octx.translate(cx, cy);
+      octx.scale(1, r2 / Math.max(r, 1));
+      octx.beginPath();
+      octx.arc(0, 0, r, 0, Math.PI * 2);
+      octx.fillStyle = g;
+      octx.globalAlpha = 1;
+      octx.fill();
+      octx.restore();
+    });
+
+    return oc;
+  }
+
+  // Build offscreens — rebuild on resize
+  let offscreens = clouds.map(c => makeOffscreen(c));
+  window.addEventListener('resize', () => {
+    offscreens = clouds.map(c => makeOffscreen(c));
+  });
+
+  // Smooth current alpha per cloud — lerp toward target to eliminate any jump
+  const currentAlpha = clouds.map(() => 0);
+
+  function frame(ts) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    clouds.forEach((c, i) => {
+      // Target alpha: slow sine, 0 → 0.55 — modulated by cosmogenesis brightness
+      const cosmoMod = (window.nebulaBrightness !== undefined) ? window.nebulaBrightness : 1;
+      const target = (0.5 + 0.5 * Math.sin(ts * c.spd + c.phase)) * 0.55 * cosmoMod;
+      currentAlpha[i] += (target - currentAlpha[i]) * 0.012;
+
+      // Slowly shift hue, rebuild offscreen
+      c.hue = (c.hue + 0.004) % 360;
+      offscreens[i] = makeOffscreen(c);
+
+      if (currentAlpha[i] > 0.002) {
+        ctx.globalAlpha = currentAlpha[i];
+        ctx.drawImage(offscreens[i], 0, 0);
+      }
+    });
+
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+})();
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+'use strict';
+
+const canvas   = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000, 0);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(44, window.innerWidth / window.innerHeight, 0.1, 3000);
+
+// ── Lighting ──────────────────────────────────────────────────────────────────
+const sunLight = new THREE.PointLight(0xfff4e0, 14.0, 600);
+scene.add(sunLight);
+scene.add(new THREE.AmbientLight(0x04030e, 0.4)); // darker ambient = more dramatic shadows
+const rimA = new THREE.DirectionalLight(0x112244, 0.35);
+rimA.position.set(-100, 50, -80);
+scene.add(rimA);
+const rimB = new THREE.DirectionalLight(0x220811, 0.15);
+rimB.position.set(80, -40, 100);
+scene.add(rimB);
+
+// ── Canvas texture factory ────────────────────────────────────────────────────
+function ctex(size, fn) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  fn(c.getContext('2d'), size);
+  return new THREE.CanvasTexture(c);
+}
+
+// ── Plasma swirl helper ───────────────────────────────────────────────────────
+function plasmaSwirl(ctx, s, colors, layers = 8, freq = 0.018, speed = 1) {
+  for (let L = 0; L < layers; L++) {
+    const ox  = Math.random() * s;
+    const oy  = Math.random() * s;
+    const r   = s * 0.25 + Math.random() * s * 0.45;
+    const col = colors[L % colors.length];
+    const g   = ctx.createRadialGradient(ox, oy, 0, ox, oy, r);
+    g.addColorStop(0,    col + 'ee');
+    g.addColorStop(0.35, col + '88');
+    g.addColorStop(0.7,  col + '33');
+    g.addColorStop(1,    'transparent');
+    ctx.fillStyle = g;
+    ctx.save();
+    ctx.translate(ox, oy);
+    ctx.rotate(L * Math.PI / layers * speed + Math.random() * Math.PI);
+    ctx.scale(1 + Math.random() * 0.8, 0.3 + Math.random() * 0.5);
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ── Wave distortion overlay ───────────────────────────────────────────────────
+function waveLayer(ctx, s, color, count = 12, amplitude = 22, freq = 0.022) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  ctx.globalAlpha = 0.18;
+  for (let i = 0; i < count; i++) {
+    const y0 = Math.random() * s;
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 2 + Math.random() * 8;
+    ctx.beginPath();
+    ctx.moveTo(0, y0);
+    for (let x = 0; x < s; x += 3) {
+      ctx.lineTo(x, y0 + Math.sin(x * freq + i * 1.1) * amplitude + Math.sin(x * freq * 2.3 + i) * amplitude * 0.4);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+
+
+// ── Realistic procedural planet textures ─────────────────────────────────────
+// Built on value noise + fractal brownian motion — no cartoon swirls
+
+function ctex(size, fn) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  fn(c.getContext('2d'), size);
+  return new THREE.CanvasTexture(c);
+}
+
+// ── Noise foundation ──────────────────────────────────────────────────────────
+// Permutation table for coherent noise
+const _perm = new Uint8Array(512);
+(function seedPerm() {
+  const p = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) p[i] = i;
+  for (let i = 255; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [p[i], p[j]] = [p[j], p[i]];
+  }
+  for (let i = 0; i < 512; i++) _perm[i] = p[i & 255];
+})();
+
+function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+function lerp(a, b, t) { return a + t * (b - a); }
+function grad(h, x, y) {
+  const g = h & 3;
+  return (g < 2 ? (g & 1 ? -x : x) : (g & 1 ? -y : y));
+}
+
+function noise2(x, y) {
+  const xi = Math.floor(x) & 255, yi = Math.floor(y) & 255;
+  const xf = x - Math.floor(x), yf = y - Math.floor(y);
+  const u = fade(xf), v = fade(yf);
+  const aa = _perm[_perm[xi]   + yi],   ab = _perm[_perm[xi]   + yi+1];
+  const ba = _perm[_perm[xi+1] + yi],   bb = _perm[_perm[xi+1] + yi+1];
+  return lerp(lerp(grad(aa,xf,yf), grad(ba,xf-1,yf),u),
+              lerp(grad(ab,xf,yf-1), grad(bb,xf-1,yf-1),u), v);
+}
+
+// Fractal Brownian Motion — stacks octaves of noise for natural detail
+function fbm(x, y, octaves=6, persistence=0.5, lacunarity=2.0) {
+  let val = 0, amp = 0.5, freq = 1, max = 0;
+  for (let i = 0; i < octaves; i++) {
+    val += noise2(x * freq, y * freq) * amp;
+    max += amp; amp *= persistence; freq *= lacunarity;
+  }
+  return val / max; // normalise to ~[-1,1]
+}
+
+// Domain-warped fbm — makes organic shapes instead of straight blobs
+function warpedFbm(x, y, strength=1.2) {
+  const wx = fbm(x + 1.7, y + 9.2) * strength;
+  const wy = fbm(x + 8.3, y + 2.8) * strength;
+  return fbm(x + wx, y + wy);
+}
+
+// Map value from [inMin,inMax] to [outMin,outMax]
+function remap(v, i0, i1, o0, o1) {
+  return o0 + (o1 - o0) * Math.max(0, Math.min(1, (v - i0) / (i1 - i0)));
+}
+
+// Lerp between two hex colors by t [0,1]
+function lerpColor(c1, c2, t) {
+  const p = (h) => parseInt(h, 16);
+  const r1=p(c1.slice(1,3)), g1=p(c1.slice(3,5)), b1=p(c1.slice(5,7));
+  const r2=p(c2.slice(1,3)), g2=p(c2.slice(3,5)), b2=p(c2.slice(5,7));
+  const r=Math.round(r1+(r2-r1)*t), g=Math.round(g1+(g2-g1)*t), b=Math.round(b1+(b2-b1)*t);
+  return `rgb(${r},${g},${b})`;
+}
+
+// ── Per-pixel texture painter ─────────────────────────────────────────────────
+function paintPixels(size, pixelFn) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(size, size);
+  const d   = img.data;
+  for (let py = 0; py < size; py++) {
+    for (let px = 0; px < size; px++) {
+      const [r, g, b] = pixelFn(px / size, py / size);
+      const idx = (py * size + px) * 4;
+      d[idx]=r; d[idx+1]=g; d[idx+2]=b; d[idx+3]=255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return new THREE.CanvasTexture(c);
+}
+
+// ── MERCURY — cratered grey rock ──────────────────────────────────────────────
+function mercuryTex() {
+  return paintPixels(1024, (u, v) => {
+    const n  = warpedFbm(u * 4, v * 4, 0.8);
+    const n2 = fbm(u * 12, v * 12, 4, 0.4);
+    const base = remap(n, -0.5, 0.5, 0, 1);
+    // Grey rock with slight warm tint on highland areas
+    const lo = [58, 48, 42], hi = [155, 138, 122], crack = [28, 22, 18];
+    const t = base + n2 * 0.15;
+    // Dark cracks at low values
+    if (t < 0.22) return crack;
+    const f = Math.min(1, (t - 0.22) / 0.78);
+    return [
+      Math.round(lo[0] + (hi[0]-lo[0]) * f),
+      Math.round(lo[1] + (hi[1]-lo[1]) * f),
+      Math.round(lo[2] + (hi[2]-lo[2]) * f),
+    ];
+  });
+}
+
+// ── VENUS — dense sulphur cloud bands ────────────────────────────────────────
+function venusTex() {
+  return paintPixels(1024, (u, v) => {
+    const band = fbm(u * 2, v * 8, 5, 0.55); // horizontal band structure
+    const swirl = warpedFbm(u * 3 + 0.5, v * 3, 1.5);
+    const n = band * 0.6 + swirl * 0.4;
+    const t = remap(n, -0.4, 0.5, 0, 1);
+    // Sulphuric yellows, ambers, burnt orange
+    const cols = [
+      [200,155, 60], // deep amber
+      [218,178, 88], // warm gold
+      [232,200,120], // pale yellow
+      [210,165, 72], // mid amber
+      [185,130, 50], // dark amber
+    ];
+    const ci = Math.min(cols.length - 1, Math.floor(t * cols.length));
+    const cf = t * cols.length - ci;
+    const c1 = cols[ci], c2 = cols[Math.min(ci+1, cols.length-1)];
+    return [
+      Math.round(c1[0]+(c2[0]-c1[0])*cf),
+      Math.round(c1[1]+(c2[1]-c1[1])*cf),
+      Math.round(c1[2]+(c2[2]-c1[2])*cf),
+    ];
+  });
+}
+
+// ── EARTH — oceans, continents, icecaps ───────────────────────────────────────
+function earthTex() {
+  return paintPixels(1024, (u, v) => {
+    const topo  = warpedFbm(u * 3.5, v * 3.5, 1.0);
+    const detail = fbm(u * 14, v * 14, 4, 0.45);
+    const t = remap(topo + detail * 0.18, -0.45, 0.55, 0, 1);
+
+    // Polar icecaps
+    const pole = Math.abs(v - 0.5) * 2; // 0 at equator, 1 at poles
+    const ice  = Math.max(0, (pole - 0.78) / 0.22);
+    if (ice > 0.1) {
+      const w = Math.round(220 + ice * 35);
+      return [w, w, w];
+    }
+
+    if (t < 0.42) {
+      // Deep ocean
+      const d = remap(t, 0, 0.42, 0, 1);
+      return [Math.round(10+d*28), Math.round(40+d*75), Math.round(100+d*80)];
+    } else if (t < 0.46) {
+      // Shallow water / coast
+      return [42, 140, 120];
+    } else if (t < 0.54) {
+      // Lowland — green/forest
+      const d = remap(t, 0.46, 0.54, 0, 1);
+      return [Math.round(32+d*22), Math.round(90+d*28), Math.round(28+d*12)];
+    } else if (t < 0.70) {
+      // Highland — brown/savanna
+      const d = remap(t, 0.54, 0.70, 0, 1);
+      return [Math.round(120+d*55), Math.round(90+d*30), Math.round(45+d*20)];
+    } else {
+      // Mountain peaks — grey rock to snow
+      const d = remap(t, 0.70, 1.0, 0, 1);
+      return [Math.round(155+d*90), Math.round(145+d*90), Math.round(130+d*90)];
+    }
+  });
+}
+
+// ── MARS — rusty desert with polar caps ───────────────────────────────────────
+function marsTex() {
+  return paintPixels(1024, (u, v) => {
+    const topo   = warpedFbm(u * 3, v * 3, 1.1);
+    const detail = fbm(u * 10, v * 10, 5, 0.5);
+    const dust   = fbm(u * 22, v * 22, 3, 0.35);
+    const t = remap(topo + detail * 0.2, -0.5, 0.6, 0, 1);
+
+    // Polar caps
+    const pole = Math.abs(v - 0.5) * 2;
+    if (pole > 0.88) {
+      const ice = remap(pole, 0.88, 1.0, 0, 1);
+      const w = Math.round(200 + ice * 45);
+      return [w, Math.round(w*0.95), Math.round(w*0.88)];
+    }
+
+    // Dust variation
+    const dv = dust * 0.12;
+    if (t < 0.30) {
+      // Dark volcanic plains (Syrtis Major style)
+      return [Math.round(90+dv*40), Math.round(45+dv*20), Math.round(28+dv*12)];
+    } else if (t < 0.55) {
+      // Typical rusty red plains
+      const d = remap(t, 0.30, 0.55, 0, 1);
+      return [Math.round(155+d*38+dv*25), Math.round(78+d*20+dv*12), Math.round(42+d*10+dv*8)];
+    } else if (t < 0.75) {
+      // Highlands — darker rust
+      return [Math.round(145+dv*20), Math.round(68+dv*10), Math.round(38+dv*8)];
+    } else {
+      // High ridges — lighter pink-tan
+      const d = remap(t, 0.75, 1.0, 0, 1);
+      return [Math.round(175+d*22), Math.round(118+d*18), Math.round(88+d*14)];
+    }
+  });
+}
+
+// ── JUPITER — turbulent banded atmosphere ────────────────────────────────────
+function jupiterTex() {
+  return paintPixels(1024, (u, v) => {
+    // Primary band structure — strong horizontal
+    const band = Math.sin(v * Math.PI * 18) * 0.5 + 0.5;
+    // Turbulent distortion of bands — Kelvin-Helmholtz instability
+    const turb1 = fbm(u * 6 + band * 2, v * 4, 6, 0.6);
+    const turb2 = fbm(u * 12, v * 2, 4, 0.5);
+    const n = band * 0.55 + turb1 * 0.3 + turb2 * 0.15;
+    const t = remap(n, 0.0, 1.0, 0, 1);
+
+    // Great Red Spot region (approximate UV position)
+    const grsU = Math.abs(u - 0.38), grsV = Math.abs(v - 0.60);
+    const grs  = Math.max(0, 1 - Math.sqrt(grsU*grsU*25 + grsV*grsV*80));
+    if (grs > 0.3) {
+      const g = remap(grs, 0.3, 1.0, 0, 1);
+      return [
+        Math.round(200 - g*50),
+        Math.round(88 - g*30),
+        Math.round(55 - g*20),
+      ];
+    }
+
+    // Band color palette — Jupiter's actual bands
+    const cols = [
+      [200,168,110], // zone (pale cream)
+      [172,120, 72], // belt (warm brown)
+      [210,180,130], // bright zone
+      [155, 98, 58], // dark belt
+      [190,155, 95], // mid zone
+      [138, 82, 48], // NEB style dark
+    ];
+    const ci = Math.floor(t * cols.length) % cols.length;
+    const cf = t * cols.length - Math.floor(t * cols.length);
+    const c1 = cols[ci], c2 = cols[(ci+1)%cols.length];
+    return [
+      Math.round(c1[0]+(c2[0]-c1[0])*cf),
+      Math.round(c1[1]+(c2[1]-c1[1])*cf),
+      Math.round(c1[2]+(c2[2]-c1[2])*cf),
+    ];
+  });
+}
+
+// ── SATURN — subtler bands, golden ───────────────────────────────────────────
+function saturnTex() {
+  return paintPixels(1024, (u, v) => {
+    const band  = Math.sin(v * Math.PI * 14 + 0.3) * 0.5 + 0.5;
+    const turb  = fbm(u * 5, v * 3, 5, 0.5);
+    const n = band * 0.65 + turb * 0.35;
+    const t = remap(n, 0.0, 1.0, 0, 1);
+    // Golden cream palette
+    const cols = [
+      [210,185,128],
+      [195,165,105],
+      [222,200,148],
+      [182,155, 95],
+      [215,190,135],
+    ];
+    const ci = Math.floor(t * cols.length) % cols.length;
+    const cf = t * cols.length - Math.floor(t * cols.length);
+    const c1 = cols[ci], c2 = cols[(ci+1)%cols.length];
+    return [
+      Math.round(c1[0]+(c2[0]-c1[0])*cf),
+      Math.round(c1[1]+(c2[1]-c1[1])*cf),
+      Math.round(c1[2]+(c2[2]-c1[2])*cf),
+    ];
+  });
+}
+
+// ── URANUS — pale cyan methane atmosphere ────────────────────────────────────
+function uranusTex() {
+  return paintPixels(512, (u, v) => {
+    const band = fbm(u * 2, v * 6, 4, 0.4);
+    const haze = fbm(u * 8, v * 8, 3, 0.3);
+    const t = remap(band * 0.7 + haze * 0.3, -0.3, 0.4, 0, 1);
+    // Pale cyan-teal — methane absorption
+    return [
+      Math.round(130 + t*45),
+      Math.round(195 + t*30),
+      Math.round(210 + t*25),
+    ];
+  });
+}
+
+// ── NEPTUNE — deep blue with storm bands ─────────────────────────────────────
+function neptuneTex() {
+  return paintPixels(512, (u, v) => {
+    const band  = Math.sin(v * Math.PI * 10) * 0.4 + 0.4;
+    const storm = warpedFbm(u * 4, v * 4, 1.2);
+    const n = band * 0.5 + storm * 0.5;
+    const t = remap(n, -0.2, 0.7, 0, 1);
+    // Great Dark Spot
+    const gdsU = Math.abs(u - 0.35), gdsV = Math.abs(v - 0.45);
+    const gds  = Math.max(0, 1 - Math.sqrt(gdsU*gdsU*30 + gdsV*gdsV*60));
+    if (gds > 0.4) {
+      const g = remap(gds, 0.4, 1.0, 0, 1);
+      return [Math.round(10+g*8), Math.round(18+g*12), Math.round(55+g*20)];
+    }
+    return [
+      Math.round(18 + t*30),
+      Math.round(42 + t*55),
+      Math.round(148 + t*52),
+    ];
+  });
+}
+
+// ── PLUTO — dark reddish-brown with bright heart ─────────────────────────────
+function plutoTex() {
+  return paintPixels(512, (u, v) => {
+    const topo = warpedFbm(u * 4, v * 4, 0.9);
+    const t = remap(topo, -0.5, 0.5, 0, 1);
+    // Tombaugh Regio (the heart) — nitrogen ice plain
+    const hU = u - 0.50, hV = v - 0.52;
+    const heart = Math.max(0, 1 - Math.sqrt(hU*hU*18 + hV*hV*28));
+    if (heart > 0.25) {
+      const h = remap(heart, 0.25, 1.0, 0, 1);
+      const w = Math.round(200 + h*42);
+      return [w, Math.round(w*0.96), Math.round(w*0.90)];
+    }
+    // Dark reddish terrain — tholins
+    return [
+      Math.round(88 + t*55),
+      Math.round(52 + t*35),
+      Math.round(42 + t*28),
+    ];
+  });
+}
+
+// ── Earth cloud layer ─────────────────────────────────────────────────────────
+function earthCloudTex() {
+  const size = 1024;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(size, size);
+  const d   = img.data;
+  for (let py = 0; py < size; py++) {
+    for (let px = 0; px < size; px++) {
+      const u = px/size, v = py/size;
+      const n  = warpedFbm(u * 4 + 3.1, v * 4 + 1.7, 1.4);
+      const n2 = fbm(u * 10, v * 10, 4, 0.45);
+      const cloud = remap(n * 0.7 + n2 * 0.3, 0.0, 0.55, 0, 1);
+      const a = Math.round(Math.pow(Math.max(0, cloud), 1.4) * 220);
+      const idx = (py * size + px) * 4;
+      d[idx]=255; d[idx+1]=255; d[idx+2]=255; d[idx+3]=a;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return new THREE.CanvasTexture(c);
+}
+
+// Generate all textures (done once, cached)
+console.time('textures');
+const textures = [
+  mercuryTex(), venusTex(), earthTex(), marsTex(),
+  jupiterTex(), saturnTex(), uranusTex(), neptuneTex(), plutoTex()
+];
+const cloudTex = earthCloudTex();
+console.timeEnd('textures');
+
+window._planetMaterials = [];
+
+
+// ── Stars ─────────────────────────────────────────────────────────────────────
+function starLayer(n, spread, sz, op) {
+  const g = new THREE.BufferGeometry();
+  const p = new Float32Array(n * 3);
+  for (let i = 0; i < n * 3; i++) p[i] = (Math.random() - 0.5) * spread;
+  g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  return new THREE.Points(g, new THREE.PointsMaterial({
+    color: 0xffffff, size: sz, sizeAttenuation: true,
+    transparent: true, opacity: op, depthWrite: false
+  }));
+}
+scene.add(starLayer(8000, 1800, 0.18, 0.90));
+scene.add(starLayer(3000,  900, 0.12, 0.65));
+scene.add(starLayer( 800,  350, 0.08, 0.40));
+// Bright foreground stars — a few that actually pop
+scene.add(starLayer(  60,  400, 0.55, 0.95));
+scene.add(starLayer(  20,  600, 0.80, 1.00));
+
+// ── Milky way band ────────────────────────────────────────────────────────────
+{
+  const g = new THREE.BufferGeometry();
+  const n = 3000;
+  const p = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 400 + Math.random() * 200;
+    const b = Math.random() * 0.18 - 0.09;
+    p[i*3]   = r * Math.cos(a);
+    p[i*3+1] = r * Math.sin(b * 8) * 60;
+    p[i*3+2] = r * Math.sin(a);
+  }
+  g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({
+    color: 0xaaaacc, size: 0.22, sizeAttenuation: true,
+    transparent: true, opacity: 0.20, depthWrite: false
+  })));
+}
+
+// ── Sun ── Procedural FBM shader — animated lava-like surface (SDO amber palette)
+const sunMaterial = new THREE.ShaderMaterial({
+  uniforms: {
+    time:                 { value: 0 },
+    deepColor:            { value: new THREE.Color(0.22, 0.04, 0.0)  },
+    hotColor:             { value: new THREE.Color(1.0,  0.88, 0.08) },
+    baseColor:            { value: new THREE.Color(1.0,  0.78, 0.28) },
+    emissiveColor:        { value: new THREE.Color(1.6,  0.90, 0.28) },
+    distortionStrength:   { value: 0.5  },
+    emissiveStrength:     { value: 1.2  },
+    fbmFrequency:         { value: 4.5  },
+    brightness:           { value: 1.0  },
+    contrastPower:        { value: 1.5  },
+    fbmScale:             { value: 1.8  },
+    fbmOffset:            { value: 0.2  },
+    emissiveThresholdMin: { value: 0.72 },
+    emissiveThresholdMax: { value: 1.0  },
+  },
+  vertexShader: `
+    varying vec3 vPosition;
+    void main() {
+      vPosition = position;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vPosition;
+    uniform float time;
+    uniform vec3  deepColor, hotColor, baseColor, emissiveColor;
+    uniform float distortionStrength, emissiveStrength, fbmFrequency;
+    uniform float brightness, contrastPower, fbmScale, fbmOffset;
+    uniform float emissiveThresholdMin, emissiveThresholdMax;
+
+    float hash(vec3 p) {
+      return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
+    }
+    float noise(vec3 p) {
+      vec3 i = floor(p), f = fract(p);
+      vec3 u = f * f * (3.0 - 2.0 * f);
+      return mix(
+        mix(mix(hash(i),              hash(i+vec3(1,0,0)), u.x),
+            mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)), u.x), u.y),
+        mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)), u.x),
+            mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), u.x), u.y),
+        u.z);
+    }
+    float fbm(vec3 p) {
+      float v = 0.0, a = 0.5;
+      for (int i = 0; i < 7; i++) { v += a * noise(p); p *= 2.1; a *= 0.48; }
+      return v;
+    }
+
+    void main() {
+      vec3 p = vPosition * fbmFrequency + vec3(time * 0.10, time * 0.07, time * 0.13);
+      p += vec3(time * distortionStrength * 0.1);
+      float n = fbm(p);
+      n = pow(n, contrastPower);
+      n = clamp(n * fbmScale + fbmOffset, 0.0, 1.0);
+      vec3 color = mix(deepColor, hotColor, n);
+      float em = smoothstep(emissiveThresholdMin, emissiveThresholdMax, n) * emissiveStrength;
+      color += em * emissiveColor;
+      color *= baseColor * brightness;
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `,
+  transparent: false,
+});
+const sunMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(2.4, 64, 64),
+  sunMaterial
+);
+scene.add(sunMesh);
+
+// ── Sun corona — billboard planes with animated radial flare shader ───────────
+function makeCoronaMaterial(color, flareStr, glowStr, falloff, flareFalloff, size, fadeStart=0.18, fadeEnd=0.50) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      time:             { value: 0 },
+      glowColor:        { value: new THREE.Color(color) },
+      flareStrength:    { value: flareStr  },
+      baseGlowStrength: { value: glowStr   },
+      radialFalloff:    { value: falloff   },
+      flareFalloff:     { value: flareFalloff },
+      edgeFadeStart:    { value: fadeStart },
+      edgeFadeEnd:      { value: fadeEnd   },
+      baseGlowThreshold:{ value: 0.38 },
+      animationSpeed:   { value: 0.6  },
+      pulseFrequency:   { value: 0.22 },
+      pulseAmplitude:   { value: 0.12 },
+    },
+    transparent: true, depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    vertexShader: `
+      varying vec2 vUv;
+      void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
+    `,
+    fragmentShader: `
+      varying vec2 vUv;
+      uniform float time, flareStrength, baseGlowStrength, radialFalloff, flareFalloff;
+      uniform float edgeFadeStart, edgeFadeEnd, baseGlowThreshold, animationSpeed;
+      uniform float pulseFrequency, pulseAmplitude;
+      uniform vec3 glowColor;
+      float hash(float n){ return fract(sin(n)*43758.5453); }
+      float noise(float x){ float i=floor(x),f=fract(x),u=f*f*(3.0-2.0*f); return mix(hash(i),hash(i+1.0),u); }
+      void main() {
+        vec2 uv = vUv - vec2(0.5);
+        float dist = length(uv);
+        float angle = atan(uv.y, uv.x);
+        float aNorm = (angle + 3.14159) / (6.28318);
+        float flareNoise = noise(aNorm * 40.0);
+        float flareAnim  = noise(aNorm * 40.0 + time * animationSpeed);
+        float flare = pow(flareNoise * flareAnim, flareFalloff);
+        float radFade = pow(max(0.0, 1.0 - dist), radialFalloff);
+        float baseGlow = smoothstep(baseGlowThreshold, 0.0, dist) * (0.9 + 0.1*sin(time*0.5));
+        float intensity = baseGlowStrength * baseGlow + flareStrength * flare * radFade;
+        intensity *= 1.0 + sin(time * pulseFrequency) * pulseAmplitude;
+        intensity *= 1.0 - smoothstep(edgeFadeStart, edgeFadeEnd, dist);
+        if (dist > 0.5 || intensity < 0.01) discard;
+        gl_FragColor = vec4(glowColor * intensity, intensity);
+      }
+    `,
+  });
+}
+
+// Four layered corona planes, each a different size/color/character
+const coronaGroup = new THREE.Group();
+scene.add(coronaGroup);
+const coronaLayers = [
+  // [color,    flare, glow, rFalloff, fFalloff, size ]
+  [0xfffacc,  1.8, 1.4,  2.2,  2.0,  6.5 ],
+  [0xffcc44,  2.4, 0.9,  1.8,  2.4,  10.0],
+  [0xff7700,  1.6, 0.5,  1.5,  2.8,  16.0],
+  [0xcc3300,  0.8, 0.3,  1.2,  3.0,  26.0],
+].map(([col, fs, gs, rf, ff, sz]) => {
+  const mat = makeCoronaMaterial(col, fs, gs, rf, ff, sz);
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(sz, sz), mat);
+  coronaGroup.add(mesh);
+  return mat;
+});
+
+// ── Sporadic solar flare — thin strand pairs, mirrored on both sides ──────────
+const solarFlareMat = new THREE.ShaderMaterial({
+  uniforms: {
+    progress:   { value: 0 },
+    flareColor: { value: new THREE.Color(1.0, 0.55, 0.1) },
+    seed:       { value: 0.0 },
+  },
+  transparent: true, depthWrite: false,
+  blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: `
+    varying vec2 vUv;
+    uniform float progress, seed;
+    uniform vec3 flareColor;
+    float h(float n){ return fract(sin(n)*43758.5453); }
+    const float PI = 3.14159265;
+    void main(){
+      vec2 uv = vUv - 0.5;
+      float ay = abs(uv.y);
+      if(ay < 0.03 || length(uv) > 0.495) discard;
+
+      // Two overlapping bell curves: +Y active over first 65%, -Y over last 65%
+      // They overlap in the middle so there's a smooth handoff, not a gap
+      float posPhase = clamp(progress / 0.65, 0.0, 1.0);
+      float negPhase = clamp((progress - 0.35) / 0.65, 0.0, 1.0);
+      float posOp = sin(posPhase * PI);   // 0→1→0 over +Y window
+      float negOp = sin(negPhase * PI);   // 0→1→0 over -Y window
+
+      float lenFade = smoothstep(0.03, 0.09, ay) * exp(-ay * 6.0);
+      float s = 0.0;
+
+      // +Y side: full strand set, grows then retracts
+      if(uv.y > 0.03 && posOp > 0.005){
+        float posS = 0.0;
+        for(int i = 0; i < 5; i++){
+          float fi = float(i);
+          float lean  = (h(fi*2.7 + seed) - 0.5) * 1.4;
+          float thick = h(fi*1.3 + seed + 1.0) * 0.024 + 0.007;
+          float brt   = max(0.0, h(fi*1.9 + seed + 2.0) - 0.2) * 1.25;
+          float cx = uv.x - lean * uv.y;
+          float w  = thick * ay + 0.003;
+          posS += exp(-cx*cx/(w*w)) * brt;
+        }
+        float tip = posOp * 0.47 + 0.01;
+        float wave = 1.0 - smoothstep(tip - 0.05, tip, uv.y);
+        s += posS * lenFade * wave * posOp;
+      }
+
+      // -Y side: fewer strands (different seed offset + higher threshold)
+      // only a subset of the energy makes it through
+      if(uv.y < -0.03 && negOp > 0.005){
+        float negS = 0.0;
+        for(int i = 0; i < 5; i++){
+          float fi = float(i);
+          float lean  = (h(fi*2.7 + seed) - 0.5) * 1.4;
+          float thick = h(fi*1.3 + seed + 1.0) * 0.024 + 0.007;
+          float brt   = max(0.0, h(fi*1.9 + seed + 9.0) - 0.48) * 1.92;
+          float cx = uv.x - lean * uv.y;
+          float w  = thick * ay + 0.003;
+          negS += exp(-cx*cx/(w*w)) * brt;
+        }
+        float tip = negOp * 0.47 + 0.01;
+        float wave = 1.0 - smoothstep(tip - 0.05, tip, -uv.y);
+        s += negS * lenFade * wave * negOp * 0.75;
+      }
+
+      float intensity = s * 2.2;
+      if(intensity < 0.005) discard;
+      gl_FragColor = vec4(flareColor * intensity, intensity * 0.85);
+    }
+  `,
+});
+const solarFlareMesh = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), solarFlareMat);
+coronaGroup.add(solarFlareMesh);
+
+// World-space depth flare — horizontal ecliptic plane, strand direction always aimed toward
+// camera, so from our elevated viewpoint they appear to shoot right toward the viewer
+const solarFlareDepthMesh = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), solarFlareMat);
+scene.add(solarFlareDepthMesh);
+
+const flareColors = [
+  new THREE.Color(1.0, 0.55, 0.10),  // orange
+  new THREE.Color(1.0, 0.92, 0.28),  // golden
+  new THREE.Color(0.28, 0.82, 1.0),  // electric blue
+  new THREE.Color(1.0, 0.28, 0.62),  // hot pink
+  new THREE.Color(0.68, 0.28, 1.0),  // violet
+  new THREE.Color(0.18, 1.0,  0.78), // cyan-teal
+];
+let flareActive = false, flareTimer = 0;
+function triggerSolarFlare() {
+  if (flareActive) return;
+  flareActive = true; flareTimer = 0;
+  solarFlareMesh.rotation.z = Math.random() * Math.PI * 2;
+  solarFlareMat.uniforms.seed.value = Math.random() * 100.0;
+  solarFlareMat.uniforms.flareColor.value.copy(
+    flareColors[Math.floor(Math.random() * flareColors.length)]
+  );
+}
+function scheduleFlare() {
+  setTimeout(() => { triggerSolarFlare(); scheduleFlare(); }, 8000 + Math.random() * 4000);
+}
+scheduleFlare();
+
+// ── Parker spiral — sun's rotating magnetic field arms ────────────────────────
+// The sun rotates, solar wind flows radially → field lines spiral outward
+const parkerGroup = new THREE.Group();
+scene.add(parkerGroup);
+(function() {
+  const N_ARMS = 4, N_PTS = 600, TURNS = 2.3, RMAX_P = 70, R0 = 2.8;
+  const k = (RMAX_P - R0) / (Math.PI * 2 * TURNS);
+
+  // Pulse that sweeps along spiral arms every 8 s as flickering line segments
+  window.parkerPulseMat = new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 } },
+    transparent: true, depthWrite: false, depthTest: false,
+    blending: THREE.AdditiveBlending,
+    vertexShader: `
+      attribute float tPos;
+      varying float vBright;
+      varying float vT;
+      uniform float time;
+      void main(){
+        float pulse = fract(time / 8.0);
+        float d     = tPos - pulse;
+        float zone  = exp(-d * d * 45.0);         // band around pulse front
+        // Quantise into ~55 short segments — each segment flickers on/off at 6 Hz
+        float seg   = floor(tPos * 80.0);
+        float flick = fract(sin(seg * 127.3 + floor(time * 6.0) * 0.317) * 43758.5);
+        float on    = step(0.42, flick);           // ~58% of segments lit → readable lines
+        float trail = d < 0.0 ? exp(d * 38.0) * 0.22 : 0.0;
+        vBright = zone * on * (0.4 + flick * 0.65) + trail;
+        vT = tPos;
+        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = max(1.0, vBright * 1.8 * 130.0 / -mvPos.z);
+        gl_Position  = projectionMatrix * mvPos;
+      }
+    `,
+    fragmentShader: `
+      varying float vBright;
+      varying float vT;
+      void main(){
+        vec2 c = gl_PointCoord - 0.5;
+        if(length(c) > 0.5) discard;
+        float alpha = vBright * (1.0 - length(c) * 2.0);
+        if(alpha < 0.005) discard;
+        vec3 col = mix(vec3(1.0, 0.88, 0.55), vec3(0.38, 0.80, 1.0), vT);
+        gl_FragColor = vec4(col * alpha, alpha);
+      }
+    `,
+  });
+
+  for (let arm = 0; arm < N_ARMS; arm++) {
+    const geo = new THREE.BufferGeometry();
+    const pos  = new Float32Array(N_PTS * 3);
+    const col  = new Float32Array(N_PTS * 3);
+    const tArr = new Float32Array(N_PTS);
+    const armOffset = (arm / N_ARMS) * Math.PI * 2;
+    for (let i = 0; i < N_PTS; i++) {
+      const t = i / (N_PTS - 1);
+      const theta = t * Math.PI * 2 * TURNS + armOffset;
+      const r     = R0 + k * t * Math.PI * 2 * TURNS;
+      pos[i*3]   = r * Math.cos(theta);
+      pos[i*3+1] = 0;
+      pos[i*3+2] = r * Math.sin(theta);
+      const fade = Math.pow(1 - t, 0.55) * 0.18; // faint ghost — spiral always legible
+      col[i*3]   = (1.0 - t * 0.7) * fade;
+      col[i*3+1] = (0.72 - t * 0.38) * fade;
+      col[i*3+2] = (0.08 + t * 0.65) * fade;
+      tArr[i] = t;
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+    geo.setAttribute('tPos',     new THREE.BufferAttribute(tArr, 1));
+    // Ghost line — barely visible, pulse reveals the path
+    parkerGroup.add(new THREE.Line(geo, new THREE.LineBasicMaterial({
+      vertexColors: true, transparent: true, opacity: 1,
+      blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
+    })));
+    // Flickering pulse dots along the spiral path
+    parkerGroup.add(new THREE.Points(geo, window.parkerPulseMat));
+  }
+})();
+
+// ── Zodiacal light — interplanetary dust scattering sunlight ──────────────────
+// Soft warm cone glow in the ecliptic, bright near sun, cool at edge
+const zodiacalMat = new THREE.ShaderMaterial({
+  uniforms: {
+    planeSize: { value: 160.0 },
+    sunR:      { value: 3.0  },
+    maxR:      { value: 74.0 },
+    warmCol:   { value: new THREE.Color(1.0, 0.78, 0.28) },
+    coolCol:   { value: new THREE.Color(0.22, 0.44, 0.82) },
+  },
+  transparent: true, depthWrite: false, depthTest: false,
+  blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: `
+    varying vec2 vUv;
+    uniform float planeSize, sunR, maxR;
+    uniform vec3 warmCol, coolCol;
+    void main(){
+      vec2 c = vUv - 0.5;
+      float dist = length(c) * planeSize;
+      if(dist < sunR || dist > maxR) discard;
+      float t = (dist - sunR) / (maxR - sunR);
+      float intensity = pow(1.0 - t, 2.2) * 0.09;
+      if(intensity < 0.002) discard;
+      gl_FragColor = vec4(mix(warmCol, coolCol, pow(t, 0.7)) * intensity, intensity);
+    }
+  `,
+});
+const zodiacalDisc = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), zodiacalMat);
+zodiacalDisc.rotation.x = -Math.PI / 2;
+scene.add(zodiacalDisc);
+
+// ── Interplanetary medium — turbulent animated plasma haze ────────────────────
+// FBM noise disc: warm near sun, cool blue-violet toward outer system
+const helioMat = new THREE.ShaderMaterial({
+  uniforms: {
+    time:      { value: 0 },
+    planeSize: { value: 160.0 },
+    sunR:      { value: 3.5 },
+    maxR:      { value: 72.0 },
+  },
+  transparent: true, depthWrite: false, depthTest: false,
+  blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: `
+    varying vec2 vUv;
+    uniform float time, planeSize, sunR, maxR;
+    float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+    float noise(vec2 p){
+      vec2 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+      return mix(mix(hash(i),hash(i+vec2(1,0)),u.x),
+                 mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),u.y);
+    }
+    float fbm(vec2 p){ float v=0.,a=0.5; for(int i=0;i<5;i++){v+=a*noise(p);p*=2.1;a*=0.48;} return v; }
+    void main(){
+      vec2 c = vUv - 0.5;
+      float dist = length(c) * planeSize;
+      if(dist < sunR || dist > maxR) discard;
+      float t = (dist - sunR) / (maxR - sunR);
+      float angle = atan(c.y, c.x);
+      vec2 polar = vec2(angle / 6.28318 + 0.5, dist / maxR);
+      vec2 p = polar * vec2(7.0, 4.0) + vec2(time * 0.018, -time * 0.012);
+      float n = fbm(p) * fbm(p * 1.7 + vec2(3.1, 1.7));
+      float fade = pow(1.0 - t, 1.4) * smoothstep(0.0, 0.12, t);
+      float intensity = n * fade * 0.065;
+      if(intensity < 0.003) discard;
+      vec3 warm = vec3(1.0, 0.60, 0.18);
+      vec3 cool = vec3(0.18, 0.45, 0.88);
+      vec3 mid  = vec3(0.28, 0.78, 0.62);
+      vec3 col  = t < 0.5 ? mix(warm, mid, t*2.0) : mix(mid, cool, (t-0.5)*2.0);
+      gl_FragColor = vec4(col * intensity, intensity);
+    }
+  `,
+});
+const helioDisc = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), helioMat);
+helioDisc.rotation.x = -Math.PI / 2;
+scene.add(helioDisc);
+
+// ── Solar radiation waves — expanding rings across the ecliptic ───────────────
+const WAVE_PLANE = 150;  // covers full system + margin
+const waveDiscMat = new THREE.ShaderMaterial({
+  uniforms: {
+    time:       { value: 0 },
+    planeSize:  { value: WAVE_PLANE },
+    sunR:       { value: 3.0 },
+    maxR:       { value: 72.0 },
+    waveCount:  { value: 5.0 },
+    speed:      { value: 5.0 },   // world units per second
+    ringColor:  { value: new THREE.Color(1.0, 0.80, 0.25) },
+    ringColor2: { value: new THREE.Color(0.55, 0.75, 1.0) }, // faint blue outer edge
+  },
+  transparent: true, depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  side: THREE.DoubleSide,
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
+  `,
+  fragmentShader: `
+    varying vec2 vUv;
+    uniform float time, planeSize, sunR, maxR, waveCount, speed;
+    uniform vec3 ringColor, ringColor2;
+    void main() {
+      vec2 c = vUv - 0.5;
+      float dist = length(c) * planeSize;
+      if (dist < sunR || dist > maxR) discard;
+
+      float waveLen = maxR / waveCount;
+      float phase = fract((dist - time * speed) / waveLen);
+
+      // Smooth pulse — sin arch, sharpened with power
+      float wave = pow(max(0.0, sin(phase * 3.14159)), 2.5);
+
+      // Radial fade: strong near sun, fade toward outer edge
+      float fade = pow(1.0 - dist / maxR, 0.7);
+
+      // Near-sun fade so rings don't overlap the corona
+      float nearFade = smoothstep(sunR, sunR + waveLen * 0.4, dist);
+
+      // Color shifts warm→cool from inner to outer system
+      float outerMix = pow(dist / maxR, 1.8);
+      vec3 col = mix(ringColor, ringColor2, outerMix * 0.45);
+
+      float intensity = wave * fade * nearFade * 0.16;
+      if (intensity < 0.004) discard;
+
+      gl_FragColor = vec4(col * intensity, intensity);
+    }
+  `,
+});
+const waveDisc = new THREE.Mesh(
+  new THREE.PlaneGeometry(WAVE_PLANE, WAVE_PLANE),
+  waveDiscMat
+);
+waveDisc.rotation.x = -Math.PI / 2;
+scene.add(waveDisc);
+
+// ── Planets ───────────────────────────────────────────────────────────────────
+const pData = [
+  { r:0.26, d: 5.8,  ei:0.12, spd:3.40, rgh:0.90, met:0.12, em:0x181510 },
+  { r:0.52, d: 9.5,  ei:0.08, spd:2.20, rgh:0.78, met:0.05, em:0x3a1a08 },
+  { r:0.56, d:13.5,  ei:0.06, spd:1.55, rgh:0.55, met:0.08, em:0x061020 },
+  { r:0.35, d:18.0,  ei:0.10, spd:1.08, rgh:0.85, met:0.04, em:0x280a04 },
+  { r:1.10, d:26.0,  ei:0.04, spd:0.54, rgh:0.50, met:0.02, em:0x201008 },
+  { r:0.92, d:34.5,  ei:0.04, spd:0.34, rgh:0.58, met:0.02, em:0x181208 },
+  { r:0.60, d:42.0,  ei:0.08, spd:0.19, rgh:0.48, met:0.05, em:0x081420 },
+  { r:0.56, d:49.5,  ei:0.10, spd:0.13, rgh:0.50, met:0.05, em:0x060c22 },
+  { r:0.22, d:57.0,  ei:0.06, spd:0.09, rgh:0.88, met:0.02, em:0x140c08 },
+];
+
+const orbitCols = [0x997755,0xddaa44,0x4488cc,0xdd5522,0xddaa66,0xccaa55,0x66aacc,0x4455ee,0x886644];
+const orbitOps  = [0.50,    0.62,   0.72,   0.65,   0.55,   0.52,   0.48,   0.50,   0.38];
+
+const planets = pData.map((pd, i) => {
+  const ot = new THREE.Mesh(
+    new THREE.TorusGeometry(pd.d, 0.042, 8, 300),
+    new THREE.ShaderMaterial({
+      uniforms: {
+        time:    { value: 0 },
+        opacity: { value: orbitOps[i] },
+        col:     { value: new THREE.Color(orbitCols[i]) },
+        speed:   { value: 0.08 + pd.d * 0.0026 },
+      },
+      transparent: true, depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `
+        varying vec2 vUv;
+        uniform float time, opacity, speed;
+        uniform vec3 col;
+        void main(){
+          float a = vUv.x;
+          float w1 = sin((a - time * speed) * 6.28318) * 0.5 + 0.5;
+          float w2 = sin((a - time * speed * 0.6) * 18.84954 + 1.7) * 0.5 + 0.5;
+          float shimmer = w1 * 0.65 + w2 * 0.40;
+          float alpha = opacity * shimmer * 1.35;
+          if(alpha < 0.004) discard;
+          gl_FragColor = vec4(col * alpha, alpha);
+        }
+      `,
+    })
+  );
+  ot.rotation.x = Math.PI / 2;
+  scene.add(ot);
+
+  const og = new THREE.Mesh(
+    new THREE.TorusGeometry(pd.d, 0.16, 8, 300),
+    new THREE.MeshBasicMaterial({
+      color: orbitCols[i], transparent: true, opacity: 0.065,
+      blending: THREE.AdditiveBlending, depthWrite: false
+    })
+  );
+  og.rotation.x = Math.PI / 2;
+  scene.add(og);
+
+  const mat = new THREE.MeshStandardMaterial({
+    map:               textures[i] || fallbackTex(fallbackColors[i]),
+    emissive:          new THREE.Color(pd.em),
+    emissiveIntensity: pd.ei,
+    roughness:         pd.rgh,
+    metalness:         pd.met,
+    bumpMap:           textures[i] || fallbackTex(fallbackColors[i]),
+    bumpScale:         0.8,
+  });
+  // Register so NASA texture onload can hot-swap
+  window._planetMaterials[i] = mat;
+
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(pd.r, 64, 64), mat);
+  scene.add(mesh);
+
+  // Earth cloud layer — separate sphere slightly above surface
+  if (i === 2) {
+    const cloudMat = new THREE.MeshStandardMaterial({
+      map:         cloudTex,
+      alphaMap:    cloudTex,
+      transparent: true,
+      opacity:     0.65,
+      roughness:   0.9,
+      metalness:   0,
+      depthWrite:  false,
+    });
+    const clouds = new THREE.Mesh(new THREE.SphereGeometry(pd.r * 1.008, 64, 64), cloudMat);
+    mesh.add(clouds);
+    // Clouds rotate slightly faster than planet
+    mesh.userData.clouds = clouds;
+
+    // Moon — NOT parented to the Earth mesh, since a child would inherit Earth's own
+    // day/night spin and wobble around at spin speed instead of a real independent
+    // orbit. Instead it's a top-level pivot whose position is copied from Earth's
+    // mesh each frame in animate() (same pattern as solarFlareDepthMesh below).
+    // Leaving the moon's own rotation untouched relative to its pivot is what
+    // produces a real tidal lock — same face always toward Earth — for free.
+    const moonMat = new THREE.MeshStandardMaterial({
+      color: 0x999999, roughness: 1.0, metalness: 0,
+    });
+    const moon = new THREE.Mesh(new THREE.SphereGeometry(pd.r * 0.27, 48, 48), moonMat);
+    moon.position.set(pd.r * 3.0, 0, 0);
+    const moonPivot = new THREE.Object3D();
+    moonPivot.add(moon);
+    scene.add(moonPivot);
+    mesh.userData.moonPivot = moonPivot;
+    window._moonMaterial = moonMat;
+  }
+
+  // ── Atmospheric rim glow ──────────────────────────────────────────────────
+  // A slightly-larger sphere with BackSide + additive blend fakes a real atmosphere
+  const atmColors = [
+    0x9966ff, 0xff8833, 0x44aaff, 0xff4422,
+    0xffaa44, 0xddcc88, 0x44ddcc, 0x4466ff, 0xaa88cc
+  ];
+  const atm = new THREE.Mesh(
+    new THREE.SphereGeometry(pd.r * 1.18, 32, 32),
+    new THREE.MeshBasicMaterial({
+      color: atmColors[i] || 0x4466aa,
+      transparent: true,
+      opacity: 0.12,
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    })
+  );
+  mesh.add(atm); // child of planet so it moves with it
+
+  if (i === 5) {
+    [
+      [1.45, 1.70, 0xd4c090, 0.60],
+      [1.75, 2.10, 0xc8b070, 0.45],
+      [2.15, 2.75, 0xb8a060, 0.35],
+      [2.80, 3.10, 0xa09050, 0.20],
+    ].forEach(([ri, ro, col, op]) => {
+      const sr = new THREE.Mesh(
+        new THREE.RingGeometry(pd.r * ri, pd.r * ro, 80),
+        new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide, transparent: true, opacity: op })
+      );
+      sr.rotation.x = Math.PI / 2.4;
+      mesh.add(sr);
+    });
+    const sg = new THREE.Mesh(
+      new THREE.RingGeometry(pd.r * 1.3, pd.r * 3.2, 80),
+      new THREE.MeshBasicMaterial({
+        color: 0xeeddaa, side: THREE.DoubleSide,
+        transparent: true, opacity: 0.06,
+        blending: THREE.AdditiveBlending, depthWrite: false
+      })
+    );
+    sg.rotation.x = Math.PI / 2.4;
+    mesh.add(sg);
+  }
+
+  return { mesh, orbitMesh: ot, orbitHalo: og, d: pd.d, spd: pd.spd, angle: Math.random() * Math.PI * 2, inc: (Math.random() - 0.5) * 0.13 };
+});
+
+// ── Real photographic textures — hot-swap Earth once loaded ────────────────────
+// Earth starts out on the same procedural CanvasTexture as every other planet
+// (window._planetMaterials[2]) so there's no blank/loading gap. Whichever of these
+// finish loading just swap in over top — if a file is missing (textures/ not
+// populated via download_textures.py), that piece silently stays procedural.
+{
+  const texLoader = new THREE.TextureLoader();
+  const earthMat  = window._planetMaterials[2];
+  const cloudMesh = planets[2].mesh.userData.clouds;
+  const moonMesh  = planets[2].mesh.userData.moonPivot.children[0];
+
+  texLoader.load('textures/tex_earth.jpg', tex => {
+    earthMat.map = tex;
+    earthMat.bumpMap = tex;
+    earthMat.needsUpdate = true;
+  });
+  texLoader.load('textures/tex_earth_night.jpg', tex => {
+    earthMat.emissiveMap = tex;
+    earthMat.emissive.set(0xffffff);
+    earthMat.emissiveIntensity = 1.0;
+    earthMat.needsUpdate = true;
+  });
+  if (cloudMesh) {
+    texLoader.load('textures/tex_earth_clouds.jpg', tex => {
+      cloudMesh.material.map = tex;
+      cloudMesh.material.alphaMap = tex;
+      cloudMesh.material.needsUpdate = true;
+    });
+  }
+  if (moonMesh) {
+    texLoader.load('textures/tex_moon.jpg', tex => {
+      moonMesh.material.map = tex;
+      moonMesh.material.needsUpdate = true;
+    });
+  }
+}
+
+// ── Asteroid belt ─────────────────────────────────────────────────────────────
+const beltMats = []; // stored so we can hide during early cosmo phases
+{
+  const g = new THREE.BufferGeometry();
+  const n = 2500;
+  const p = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const r = 21.0 + Math.random() * 3.8, a = Math.random() * Math.PI * 2;
+    p[i*3] = r * Math.cos(a); p[i*3+1] = (Math.random() - 0.5) * 0.7; p[i*3+2] = r * Math.sin(a);
+  }
+  g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  const bm1 = new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 }, baseOp: { value: 0 } },
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: `
+      uniform float time;
+      varying vec3 vColor;
+      vec3 hsl2rgb(float h, float s, float l){
+        vec3 rgb = clamp(abs(mod(h*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
+        return l + s*(rgb-0.5)*(1.0-abs(2.0*l-1.0));
+      }
+      void main(){
+        float tCol  = fract(position.x * 0.231 + position.z * 0.157);
+        float angle = atan(position.z, position.x) / 6.28318;
+        float w1    = sin((angle - time * 0.07) * 6.28318) * 0.5 + 0.5;
+        float w2    = sin((angle - time * 0.04) * 18.84954 + 1.3) * 0.5 + 0.5;
+        float fade  = w1 * 0.65 + w2 * 0.40;
+        float hue   = fract(tCol * 0.6 + angle * 0.3 + time * 0.04);
+        hue = hue < 0.5 ? hue * 0.30 : 0.55 + (hue - 0.5) * 0.70;
+        vec3 base   = hsl2rgb(hue, 0.70, 0.42);
+        vColor = base * (0.05 + fade * 1.1);
+        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = max(1.0, (0.09 + fade * 0.07) * 960.0 / -mvPos.z);
+        gl_Position  = projectionMatrix * mvPos;
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vColor;
+      uniform float baseOp;
+      void main(){
+        vec2 c = gl_PointCoord - 0.5;
+        if(length(c) > 0.5) discard;
+        if(baseOp < 0.005) discard;
+        gl_FragColor = vec4(vColor * baseOp, baseOp);
+      }
+    `,
+  });
+  window._beltMat = bm1;
+  beltMats.push({ mat: bm1, finalOp: 0.88 });
+  scene.add(new THREE.Points(g, bm1));
+}
+{
+  const g = new THREE.BufferGeometry();
+  const n = 1800;
+  const p = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const r = 20.2 + Math.random() * 5.5, a = Math.random() * Math.PI * 2;
+    p[i*3] = r * Math.cos(a); p[i*3+1] = (Math.random() - 0.5) * 1.3; p[i*3+2] = r * Math.sin(a);
+  }
+  g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  const bm2 = new THREE.PointsMaterial({
+    color: 0xff8833, size: 0.28, sizeAttenuation: true,
+    transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false
+  });
+  beltMats.push({ mat: bm2, finalOp: 0.16 });
+  scene.add(new THREE.Points(g, bm2));
+}
+const beltGlow = new THREE.Mesh(
+  new THREE.TorusGeometry(22.8, 1.4, 8, 300),
+  new THREE.MeshBasicMaterial({
+    color: 0xdd7722, transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false
+  })
+);
+beltGlow.rotation.x = Math.PI / 2;
+scene.add(beltGlow);
+
+// ── Orbit controls ────────────────────────────────────────────────────────────
+let drag = false, prev = { x: 0, y: 0 };
+let sph       = { theta: 0.22, phi: 0.65, r: 76 };
+let sphTarget = { theta: 0.22, phi: 0.65, r: 76, lookX: 0, lookY: 0, lookZ: 0 };
+// lookX/Y/Z let us point camera at a planet during surface shots
+// When all zero, camera looks at origin (normal behavior)
+const RMIN = 18, RMAX = 280;
+
+function updateCamera() {
+  camera.position.set(
+    sph.r * Math.sin(sph.phi) * Math.sin(sph.theta),
+    sph.r * Math.cos(sph.phi),
+    sph.r * Math.sin(sph.phi) * Math.cos(sph.theta)
+  );
+  camera.lookAt(sphTarget.lookX, sphTarget.lookY, sphTarget.lookZ);
+}
+
+// Lerp sph toward sphTarget — called every frame during cosmo
+function lerpCamera(speed = 0.035) {
+  const s = Math.min(1, speed);
+  sph.r     += (sphTarget.r     - sph.r)     * s;
+  sph.theta += (sphTarget.theta - sph.theta) * s;
+  sph.phi   += (sphTarget.phi   - sph.phi)   * s;
+  updateCamera();
+}
+
+canvas.addEventListener('mousedown', e => { drag = true; prev = { x: e.clientX, y: e.clientY }; });
+window.addEventListener('mouseup',   ()  => drag = false);
+window.addEventListener('mousemove', e  => {
+  if (!drag) return;
+  sphTarget.theta -= (e.clientX - prev.x) * 0.004;
+  sphTarget.phi    = Math.max(0.08, Math.min(Math.PI * 0.82, sphTarget.phi + (e.clientY - prev.y) * 0.004));
+  prev = { x: e.clientX, y: e.clientY };
+});
+window.addEventListener('wheel', e => {
+  sphTarget.r = Math.max(RMIN, Math.min(RMAX, sphTarget.r + e.deltaY * 0.05));
+}, { passive: true });
+
+let lastTD = 0, lastTch = null;
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) { drag = true; lastTch = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }
+  else if (e.touches.length === 2) { drag = false; lastTD = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); }
+}, { passive: true });
+canvas.addEventListener('touchmove', e => {
+  if (e.touches.length === 1 && drag) {
+    sphTarget.theta -= (e.touches[0].clientX - lastTch.x) * 0.004;
+    sphTarget.phi    = Math.max(0.08, Math.min(Math.PI * 0.82, sphTarget.phi + (e.touches[0].clientY - lastTch.y) * 0.004));
+    lastTch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  } else if (e.touches.length === 2) {
+    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    sphTarget.r = Math.max(RMIN, Math.min(RMAX, sphTarget.r - (d - lastTD) * 0.08));
+    lastTD = d;
+  }
+}, { passive: true });
+canvas.addEventListener('touchend', () => drag = false);
+
+let autoRot = true, autoTimer;
+canvas.addEventListener('mousedown', () => { autoRot = false; clearTimeout(autoTimer); });
+window.addEventListener('mouseup',   () => { autoTimer = setTimeout(() => autoRot = true, 4000); });
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ── Cosmogenesis — epic visual sequence ──────────────────────────────────────
+
+// Hide everything at start
+sunMesh.scale.setScalar(0);
+sunLight.intensity = 0;
+planets.forEach(p => {
+  p.mesh.scale.setScalar(0);
+  p.orbitMesh.material.opacity = 0;
+  p.orbitHalo.material.opacity = 0;
+});
+beltGlow.material.opacity = 0;
+window.nebulaBrightness = 0;
+
+// ── Particle system for nebula/collapse/coalesce effects ──────────────────────
+const PARTICLE_COUNT = 6000;
+const pGeo  = new THREE.BufferGeometry();
+const pPos  = new Float32Array(PARTICLE_COUNT * 3);
+const pCol  = new Float32Array(PARTICLE_COUNT * 3);
+const pVel  = new Float32Array(PARTICLE_COUNT * 3); // velocity
+const pHome = new Float32Array(PARTICLE_COUNT * 3); // home orbital positions
+
+// Colors: nebula palette — cool blues, purples, teals dominant, very little warm
+const particleColors = [
+  [0.15,0.25,0.95], // deep blue
+  [0.45,0.10,0.90], // violet
+  [0.05,0.65,0.85], // cyan-teal
+  [0.25,0.05,0.80], // indigo
+  [0.60,0.15,0.85], // purple
+  [0.05,0.80,0.70], // teal-green
+  [0.70,0.25,0.95], // bright violet
+  [0.10,0.40,1.00], // sky blue
+];
+
+for (let i = 0; i < PARTICLE_COUNT; i++) {
+  // Asymmetric nebula — use noise-displaced cloud lobes, NOT a sphere
+  // Three overlapping lobes offset from center like a real nebula
+  const lobe   = Math.floor(Math.random() * 3);
+  const offX   = [60, -80, 20][lobe];
+  const offY   = [10, -20, -40][lobe];
+  const offZ   = [-30, 40, 70][lobe];
+  const spread = [120, 100, 90][lobe];
+
+  const theta  = Math.random() * Math.PI * 2;
+  const phi    = Math.acos(2 * Math.random() - 1);
+  // Flattened — nebulae are disk-like along one axis
+  const r      = spread * 0.3 + Math.random() * spread;
+  pPos[i*3]   = offX + r * Math.sin(phi) * Math.cos(theta);
+  pPos[i*3+1] = offY + r * Math.sin(phi) * Math.sin(theta) * 0.18; // very flat
+  pPos[i*3+2] = offZ + r * Math.cos(phi);
+
+  // Bias toward cooler colors — 80% cool, 20% warm accent
+  const cIdx = Math.random() < 0.80
+    ? Math.floor(Math.random() * 6)       // cool range
+    : 6 + Math.floor(Math.random() * 2);  // bright accent
+  const c = particleColors[cIdx];
+  pCol[i*3] = c[0]; pCol[i*3+1] = c[1]; pCol[i*3+2] = c[2];
+  pVel[i*3] = 0; pVel[i*3+1] = 0; pVel[i*3+2] = 0;
+
+  // Home = assign to a random orbit ring
+  const pIdx2  = Math.floor(Math.random() * pData.length);
+  const pAngle = Math.random() * Math.PI * 2;
+  pHome[i*3]   = pData[pIdx2].d * Math.cos(pAngle);
+  pHome[i*3+1] = (Math.random() - 0.5) * 0.5;
+  pHome[i*3+2] = pData[pIdx2].d * Math.sin(pAngle);
+}
+
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+pGeo.setAttribute('color',    new THREE.BufferAttribute(pCol, 3));
+
+// ── Round particle sprite (canvas circle — eliminates square appearance) ──────
+const _pSprite = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 32;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(16,16,0,16,16,16);
+  g.addColorStop(0,   'rgba(255,255,255,1.0)');
+  g.addColorStop(0.4, 'rgba(255,255,255,0.8)');
+  g.addColorStop(1,   'rgba(255,255,255,0.0)');
+  x.fillStyle = g; x.beginPath(); x.arc(16,16,16,0,Math.PI*2); x.fill();
+  return new THREE.CanvasTexture(c);
+})();
+
+const pMat = new THREE.PointsMaterial({
+  size: 0.55, sizeAttenuation: true, vertexColors: true,
+  transparent: true, opacity: 0, depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  map: _pSprite,
+  alphaTest: 0.01,
+});
+const particles = new THREE.Points(pGeo, pMat);
+scene.add(particles);
+
+// ── Flash mesh for Sun Ignition ───────────────────────────────────────────────
+const flashMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(80, 32, 32),
+  new THREE.MeshBasicMaterial({
+    color: 0xfffef0, transparent: true, opacity: 0,
+    side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false
+  })
+);
+scene.add(flashMesh);
+
+// ── Frost line ring ───────────────────────────────────────────────────────────
+const frostRing = new THREE.Mesh(
+  new THREE.TorusGeometry(22.0, 0.08, 8, 300),
+  new THREE.MeshBasicMaterial({
+    color: 0x88ccff, transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false
+  })
+);
+frostRing.rotation.x = Math.PI / 2;
+scene.add(frostRing);
+
+// ── Impact flash points for bombardment ──────────────────────────────────────
+const impactFlashes = [];
+for (let i = 0; i < 8; i++) {
+  const f = new THREE.Mesh(
+    new THREE.SphereGeometry(0.8, 16, 16),
+    new THREE.MeshBasicMaterial({
+      color: 0xff6600, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false
+    })
+  );
+  scene.add(f);
+  impactFlashes.push(f);
+}
+
+// ── Oort cloud particle ring ──────────────────────────────────────────────────
+const oortGeo = new THREE.BufferGeometry();
+const oortN   = 2000;
+const oortP   = new Float32Array(oortN * 3);
+for (let i = 0; i < oortN; i++) {
+  const a = Math.random() * Math.PI * 2;
+  const r = 70 + Math.random() * 30;
+  oortP[i*3]   = r * Math.cos(a);
+  oortP[i*3+1] = (Math.random() - 0.5) * 40;
+  oortP[i*3+2] = r * Math.sin(a);
+}
+oortGeo.setAttribute('position', new THREE.BufferAttribute(oortP, 3));
+const oortCloud = new THREE.Points(oortGeo, new THREE.PointsMaterial({
+  color: 0xaaccff, size: 0.18, sizeAttenuation: true,
+  transparent: true, opacity: 0, depthWrite: false,
+  blending: THREE.AdditiveBlending
+}));
+scene.add(oortCloud);
+
+
+// ── Ease functions ─────────────────────────────────────────────────────────────
+const easeIn    = t => t * t * t;
+const easeOut   = t => 1 - Math.pow(1 - t, 3);
+const easeInOut = t => t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
+
+// ── Surface shot state ────────────────────────────────────────────────────────
+const surfaceShot = { active: false, planetIdx: -1 };
+
+// ── Phase definitions ─────────────────────────────────────────────────────────
+const PHASES = [
+  {
+    name: 'THE VOID',
+    duration: 22000,
+    narration: ['Before light, before form, before the first distinction — this.', 'Not empty. Seething with potential.', 'The void is not nothing. It is everything that has not yet chosen.'],
+    enter: () => {
+      window._voidPulse = 0;
+      sphTarget.r = 145; sphTarget.phi = 0.40; sphTarget.theta = 0.22;
+      sphTarget.lookX = 0; sphTarget.lookY = 0; sphTarget.lookZ = 0;
+      setTimeout(() => { if (window.cosmoSFX) window.cosmoSFX.voidRumble(); }, 800);
+    },
+    fn: (pct, dt) => {
+      window._voidPulse = (window._voidPulse || 0) + dt * 0.8;
+      const pulse = Math.sin(window._voidPulse) * 0.5 + 0.5;
+      sunLight.intensity = pulse * 0.15;
+      sunMesh.scale.setScalar(pulse * 0.05);
+      // Slow continuous rotation — never freeze
+      sphTarget.theta = 0.22 + pct * 0.6;
+      sphTarget.phi   = 0.40 + Math.sin(pct * Math.PI) * 0.08;
+    }
+  },
+  {
+    name: 'THE NEBULA',
+    duration: 22000,
+    narration: ['The cloud gathers.', 'Hydrogen and helium — the first elements, forged in the universe\'s first three minutes — finding each other across the dark.', 'Dust grains no larger than smoke particles. And within them: carbon. Oxygen. The iron that will become your blood.', 'This is the womb before ignition. Everything you are is here, uncommitted, waiting.'],
+    enter: () => {
+      sphTarget.r = 280; sphTarget.phi = 0.55; sphTarget.theta = 0.22;
+      sphTarget.lookX = 0; sphTarget.lookY = 0; sphTarget.lookZ = 0;
+      setTimeout(() => { if (window.cosmoSFX) window.cosmoSFX.nebulaWhoosh(); }, 400);
+    },
+    fn: (pct) => {
+      pMat.opacity = easeOut(pct) * 0.75;
+      pMat.size    = 0.4 + easeOut(pct) * 0.3;
+      window.nebulaBrightness = easeOut(pct);
+      const pos = pGeo.attributes.position.array;
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const d = 0.008 + Math.sin(i * 0.017 + pct * 2) * 0.004;
+        pos[i*3]   += (Math.random()-0.5) * d;
+        pos[i*3+1] += (Math.random()-0.5) * d * 0.2;
+        pos[i*3+2] += (Math.random()-0.5) * d;
+      }
+      pGeo.attributes.position.needsUpdate = true;
+      sphTarget.theta = 0.22 + pct * 0.4;
+    }
+  },
+  {
+    name: 'THE COLLAPSE',
+    duration: 18000,
+    narration: ['The cloud hears a call it cannot refuse.', 'Gravity — the weakest force, and the most patient — begins its work.', 'This is not a catastrophe. This is a calling. The cloud answers the universe\'s first question: What will you become?', 'The choice to incarnate is not gentle. It is a falling. A commitment. An end to undifferentiation.'],
+    enter: () => {
+      setTimeout(() => { if (window.cosmoSFX) window.cosmoSFX.collapseRumble(); }, 200);
+    },
+    fn: (pct) => {
+      const speed = easeIn(pct) * 0.32;
+      const pos   = pGeo.attributes.position.array;
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const ix = pos[i*3], iy = pos[i*3+1], iz = pos[i*3+2];
+        const dist = Math.sqrt(ix*ix + iy*iy + iz*iz) || 1;
+        pos[i*3]   -= (ix / dist) * speed;
+        pos[i*3+1] -= (iy / dist) * speed * 0.4;
+        pos[i*3+2] -= (iz / dist) * speed;
+      }
+      pGeo.attributes.position.needsUpdate = true;
+      pMat.opacity = 0.75 - pct * 0.35;
+      window.nebulaBrightness = 1 - pct * 0.75;
+      sphTarget.r     = 280 - easeIn(pct) * 240;
+      sphTarget.phi   = 0.55 - pct * 0.18;
+      sphTarget.theta = 0.62 + pct * 0.5; // continue rotating from nebula end
+    }
+  },
+  {
+    name: 'THE SUN IGNITES',
+    duration: 20000,
+    narration: ['The center catches fire.', 'Hydrogen fuses to helium. Mass becomes light. The universe, for the first time in this corner of itself, finds its voice.', 'This is not a metaphor. You are looking at the engine that will drive everything — every orbit, every season, every photon that ever touches a living eye.', 'For ten billion years, this fire will burn. You arrived in the middle of its life. So did everything you have ever loved.'],
+    enter: () => {
+      window._igniteFlash = 0;
+      sphTarget.r = 45; sphTarget.phi = 0.38;
+      sphTarget.lookX = 0; sphTarget.lookY = 0; sphTarget.lookZ = 0;
+      setTimeout(() => { if (window.cosmoSFX) window.cosmoSFX.sunBoom(); }, 3000);
+    },
+    fn: (pct) => {
+      if (pct < 0.25) {
+        const sub = pct / 0.25;
+        pMat.opacity = 0.4 - sub * 0.4;
+        sunMesh.scale.setScalar(sub * 0.3);
+        sunLight.intensity = sub * 2;
+        flashMesh.material.opacity = 0;
+        window.nebulaBrightness = 0.25 - sub * 0.25;
+      } else if (pct < 0.42) {
+        const sub = (pct - 0.25) / 0.17;
+        flashMesh.material.opacity = easeOut(sub) * 0.92;
+        sunMesh.scale.setScalar(0.3 + sub * 2.2);
+        sunLight.intensity = 2 + sub * 40;
+        pMat.opacity = 0;
+        sphTarget.r = 45 + sub * 15;
+      } else {
+        const sub = (pct - 0.42) / 0.58;
+        flashMesh.material.opacity = (1 - easeOut(sub)) * 0.92;
+        sunMesh.scale.setScalar(2.5 - sub * 1.5);
+        sunLight.intensity = 42 - sub * 33;
+        sphTarget.r     = 60 - sub * 5;
+        sphTarget.theta = 1.12 + sub * 0.4; // keep rotating as sun settles
+      }
+    }
+  },
+  {
+    name: 'THE PLANETS COALESCE',
+    duration: 24000,
+    narration: ['From the accretion disk, centers of gravity assert themselves.', 'Each world a different answer to the same dust. Each one a voice finding its orbit.', 'The solar system is not a random scattering. It is a symphony — bodies in resonance, a gravitational harmony that will persist for 4.5 billion years.'],
+    enter: () => {
+      sphTarget.r = 70; sphTarget.phi = 0.42; sphTarget.theta = 0.22;
+      sphTarget.lookX = 0; sphTarget.lookY = 0; sphTarget.lookZ = 0;
+      window._shotsFired  = new Set(); // track which planets have had their shot
+      window._inSurfShot  = false;
+      window._surfShotEnd = 0; // pct when current shot ends
+      planets.forEach((_, i) => {
+        const delay = (i / planets.length) * 24000 * 0.88;
+        setTimeout(() => { if (window.cosmoSFX) window.cosmoSFX.planetPing(i); }, delay);
+      });
+      // Reveal planet labels panel — individual labels appear as planets form
+      setTimeout(() => {
+        const ld = document.getElementById('planet-labels');
+        ld.style.opacity = '1';
+        ld.classList.add('active');
+      }, 3000);
+    },
+    fn: (pct) => {
+      const pos   = pGeo.attributes.position.array;
+      const lerpV = easeInOut(Math.min(pct * 2.2, 1)) * 0.055;
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        pos[i*3]   += (pHome[i*3]   - pos[i*3])   * lerpV;
+        pos[i*3+1] += (pHome[i*3+1] - pos[i*3+1]) * lerpV;
+        pos[i*3+2] += (pHome[i*3+2] - pos[i*3+2]) * lerpV;
+      }
+      pGeo.attributes.position.needsUpdate = true;
+      pMat.opacity = Math.max(0, 0.4 - pct * 0.45);
+
+      const perPlanet = 1 / planets.length;
+      planets.forEach((p, i) => {
+        const start = i * perPlanet * 0.88;
+        const local = easeOut(Math.max(0, Math.min(1, (pct - start) / (perPlanet * 1.15))));
+        p.mesh.scale.setScalar(local);
+        p.orbitMesh.material.opacity = local * orbitOps[i];
+        p.orbitHalo.material.opacity = local * 0.065;
+      });
+      sunLight.intensity = 9.0 + Math.sin(pct * Math.PI * 3) * 0.4;
+
+      // ── Surface shots ────────────────────────────────────────────────────
+      // Fire one shot per planet, only once, only after planet is formed.
+      // Between shots: slow continuous orbital rotation — never freeze.
+      const SHOT_DUR = 0.060; // fraction of total phase duration per shot
+
+      // Check if current shot has ended
+      if (window._inSurfShot && pct >= window._surfShotEnd) {
+        window._inSurfShot = false;
+        // Sync sph back so lerp resumes smoothly from camera's current position
+        const cp = camera.position;
+        const len = cp.length() || 1;
+        sph.r     = len;
+        sph.theta = Math.atan2(cp.x, cp.z);
+        sph.phi   = Math.acos(Math.max(-1, Math.min(1, cp.y / len)));
+        sphTarget.r     = 72;
+        sphTarget.phi   = 0.42;
+        sphTarget.lookX = 0; sphTarget.lookY = 0; sphTarget.lookZ = 0;
+      }
+
+      // Try to trigger a new shot for the next unshot planet
+      if (!window._inSurfShot) {
+        for (let i = 0; i < planets.length; i++) {
+          const p = planets[i];
+          if (window._shotsFired.has(i)) continue;
+          if (p.mesh.scale.x < 0.55) continue; // not formed enough
+          // Fire this shot at the right moment — staggered across the phase
+          const triggerPct = (i / planets.length) * 0.85 + 0.08;
+          if (pct < triggerPct) continue;
+
+          // FIRE — mark it, record end pct
+          window._shotsFired.add(i);
+          window._inSurfShot  = true;
+          window._surfShotEnd = pct + SHOT_DUR;
+          window._surfPlanetIdx = i;
+          window._surfShotStart = pct;
+          break;
+        }
+      }
+
+      if (window._inSurfShot) {
+        const i       = window._surfPlanetIdx;
+        const p       = planets[i];
+        const shotPct = (pct - window._surfShotStart) / SHOT_DUR;
+        const pm      = p.mesh.position;
+
+        // Low-angle surface view — camera just above the terrain, slow lateral drift
+        const surfR     = pData[i].r * 1.35;
+        const driftAngle = i * 1.8 + shotPct * 0.5;
+        const camX = pm.x + surfR * Math.cos(driftAngle);
+        const camY = pm.y + pData[i].r * 0.12; // horizon level
+        const camZ = pm.z + surfR * Math.sin(driftAngle);
+        // Look along the surface toward the lit horizon
+        const lookX = pm.x + surfR * 1.8 * Math.cos(driftAngle + 0.6);
+        const lookY = pm.y + pData[i].r * 0.25;
+        const lookZ = pm.z + surfR * 1.8 * Math.sin(driftAngle + 0.6);
+
+        camera.position.set(camX, camY, camZ);
+        camera.lookAt(lookX, lookY, lookZ);
+      } else {
+        // Between shots — continuously rotate around the system, never idle
+        sphTarget.theta = 0.22 + pct * 1.4; // full slow rotation across the phase
+        sphTarget.r     = 68 + Math.sin(pct * Math.PI * 2) * 10;
+        sphTarget.phi   = 0.38 + Math.sin(pct * Math.PI) * 0.12;
+        sphTarget.lookX = 0; sphTarget.lookY = 0; sphTarget.lookZ = 0;
+      }
+    }
+  },
+  {
+    name: 'THE FROST LINE',
+    duration: 16000,
+    narration: ['Inside this line: Mercury, Venus, Earth, Mars. The personal planets. The energies you can touch.', 'Outside the line: Jupiter, Saturn, Uranus, Neptune, Pluto. The forces that shape generations, that move through history, that use your life for purposes larger than your life.', 'You are made of both. The personal and the transpersonal are not opposites. They are octaves of the same music.'],
+    enter: () => {
+      sphTarget.r = 70; sphTarget.phi = 0.30; sphTarget.theta = 0.22;
+      sphTarget.lookX = 0; sphTarget.lookY = 0; sphTarget.lookZ = 0;
+      setTimeout(() => { if (window.cosmoSFX) window.cosmoSFX.frostSweep(); }, 300);
+    },
+    fn: (pct) => {
+      if (pct < 0.5) {
+        const sub = pct / 0.5;
+        frostRing.scale.setScalar(0.1 + sub * 0.9);
+        frostRing.material.opacity = easeOut(sub) * 0.7;
+      } else {
+        const sub = (pct - 0.5) / 0.5;
+        frostRing.material.opacity = 0.7 - sub * 0.5;
+        frostRing.scale.setScalar(1 + sub * 0.1);
+      }
+      beltGlow.material.opacity = easeOut(pct) * 0.055;
+      beltMats.forEach(b => { b.mat.opacity = b.finalOp * easeOut(pct); });
+      for (let i = 4; i < planets.length; i++) {
+        if (planets[i]) planets[i].mesh.material.emissiveIntensity = pData[i].ei + easeOut(pct) * 0.08;
+      }
+      sphTarget.theta = 0.22 + pct * 0.5;
+    }
+  },
+  {
+    name: 'THE LATE HEAVY BOMBARDMENT',
+    duration: 20000,
+    narration: ['The young solar system was not at peace.', 'For two hundred million years, the inner worlds were bombarded — debris from the outer reaches, falling inward as the giant planets shifted in their orbits.', 'And yet. The comets that struck also delivered. Water. Carbon compounds. The raw materials for everything that would come to call itself alive.', 'You will not arrive unmarked. No one does. The question is not whether you will be struck, but what you will become in the aftermath.'],
+    enter: () => {
+      window._bombT = 0;
+      sphTarget.r = 55; sphTarget.phi = 0.45; sphTarget.theta = 0.22;
+      sphTarget.lookX = 0; sphTarget.lookY = 0; sphTarget.lookZ = 0;
+      [400,1200,2100,2800,3900,4700,5600,6200,7100,8000,9200].forEach(t => {
+        setTimeout(() => { if (window.cosmoSFX) window.cosmoSFX.impactThud(); }, t);
+      });
+    },
+    fn: (pct, dt) => {
+      window._bombT = (window._bombT || 0) + dt;
+      frostRing.material.opacity = Math.max(0, 0.2 - pct * 0.2);
+      impactFlashes.forEach((f, fi) => {
+        const flashCycle = (window._bombT * 2.2 + fi * 0.7) % 1;
+        if (flashCycle < 0.12) {
+          const pi = fi % 4;
+          if (planets[pi]) {
+            const pm = planets[pi].mesh;
+            f.position.copy(pm.position);
+            f.position.x += (Math.random()-0.5) * pData[pi].r * 3;
+            f.position.y += (Math.random()-0.5) * pData[pi].r * 3;
+            f.position.z += (Math.random()-0.5) * pData[pi].r * 3;
+            f.material.opacity = (1 - flashCycle / 0.12) * 0.9;
+            f.scale.setScalar(1 + (1 - flashCycle / 0.12) * 3);
+          }
+        } else { f.material.opacity = 0; }
+        for (let i = 0; i < 4; i++) {
+          if (planets[i]) {
+            const flicker = 0.5 + 0.5 * Math.sin(window._bombT * (3+i) + i);
+            planets[i].mesh.material.emissiveIntensity = pData[i].ei + flicker * 0.25 * (1-pct);
+          }
+        }
+      });
+      // Slow drift, not random shake
+      sphTarget.theta = 0.22 + Math.sin(window._bombT * 0.4) * 0.06;
+      sphTarget.phi   = 0.45 + Math.sin(window._bombT * 0.3) * 0.04;
+    }
+  },
+  {
+    name: 'THE OUTER REACHES',
+    duration: 32000,
+    narration: ['Beyond Pluto: the Kuiper Belt. Icy worlds in slow orbits, remnants of the original cloud.', 'Beyond the Kuiper Belt: the Oort Cloud. A sphere of comets at the edge of the Sun\'s reach. Some have been falling inward since before your species existed.', 'You are not separate from what you have witnessed.', 'You are made of it.', 'The carbon in your cells was forged in a star that died before the Sun was born. The iron in your blood is stellar ash.', 'The cosmos prepared for 13.8 billion years. At one moment, in one place, you began.', 'Tell us when.'],
+    enter: () => {
+      for (let i = 0; i < 4; i++) {
+        if (planets[i]) planets[i].mesh.material.emissiveIntensity = pData[i].ei;
+      }
+      impactFlashes.forEach(f => { f.material.opacity = 0; });
+      sphTarget.lookX = 0; sphTarget.lookY = 0; sphTarget.lookZ = 0;
+      // Fade out planet labels as camera pulls back to outer reaches
+      const labelsDiv = document.getElementById('planet-labels');
+      if (labelsDiv) labelsDiv.style.transition = 'opacity 4s ease';
+      setTimeout(() => { if (labelsDiv) labelsDiv.style.opacity = '0'; }, 1000);
+      setTimeout(() => { if (window.cosmoSFX) window.cosmoSFX.outerFade(); }, 500);
+    },
+    fn: (pct) => {
+      sphTarget.r     = 65 + easeInOut(pct) * 80;
+      sphTarget.phi   = 0.45 - easeInOut(pct) * 0.12;
+      sphTarget.theta = 0.22 + pct * 0.3;
+      oortCloud.material.opacity = easeOut(pct) * 0.35;
+      window.nebulaBrightness    = easeOut(pct) * 0.22;
+      for (let i = 0; i < 4; i++) {
+        if (planets[i]) planets[i].mesh.material.emissiveIntensity = pData[i].ei;
+      }
+    }
+  },
+];
+
+// ── Sequencer state ───────────────────────────────────────────────────────────
+let cosmoActive = true;
+let cosmoPaused = false;
+let phaseIndex  = 0;
+let phaseStart  = null;
+let pausedAt    = null; // performance.now() when paused
+let lastNow     = performance.now();
+
+function togglePause() {
+  if (!cosmoActive) return;
+  const btn = document.getElementById('cosmo-pause');
+  const lbl = document.getElementById('pause-label');
+  if (!cosmoPaused) {
+    // Pause: freeze timer
+    cosmoPaused = true;
+    pausedAt = performance.now();
+    btn.classList.remove('playing');
+    btn.classList.add('paused');
+    lbl.textContent = 'Resume';
+    // Also pause any narration line timers — handled by cosmoPaused check
+    // Pause audio
+    if (window.cosmoAudio) {
+      try { window.cosmoAudio.AC.suspend(); } catch(e){}
+    }
+  } else {
+    // Resume: shift phaseStart forward by the paused duration
+    cosmoPaused = false;
+    const pauseDur = performance.now() - pausedAt;
+    if (phaseStart !== null) phaseStart += pauseDur;
+    pausedAt = null;
+    btn.classList.remove('paused');
+    btn.classList.add('playing');
+    lbl.textContent = 'Pause';
+    // Resume audio
+    if (window.cosmoAudio) {
+      try { window.cosmoAudio.AC.resume(); } catch(e){}
+    }
+  }
+}
+
+// Space bar also toggles pause
+document.addEventListener('keydown', function(e) {
+  if (e.code === 'Space' && cosmoActive && !e.target.matches('button,input')) {
+    e.preventDefault();
+    togglePause();
+  }
+});
+
+function showPhase(idx) {
+  if (idx >= PHASES.length) { endCosmo(); return; }
+  const phase = PHASES[idx];
+  if (phase.enter) phase.enter();
+
+  // ── Legacy top-corner phase label (chapter marker) ──
+  const el  = document.getElementById('cosmo-text');
+  const pEl = document.getElementById('cosmo-phase');
+  const nEl = document.getElementById('cosmo-narration');
+  el.style.opacity = '0';
+  setTimeout(() => {
+    pEl.textContent = phase.name;
+    nEl.textContent = '';
+    const onRight = (phase.name === 'THE OUTER REACHES') ? false : idx % 2 !== 0;
+    el.classList.toggle('side-left',  !onRight);
+    el.classList.toggle('side-right', onRight);
+    el.style.opacity = '1';
+  }, 1600);
+
+  // ── Aion multi-line narration panel ──
+  const narPanel = document.getElementById('aion-narration');
+  narPanel.style.opacity = '0';
+  narPanel.innerHTML = '';
+
+  // Determine side — alternating left/right per phase, center for outer reaches
+  narPanel.classList.remove('side-right','side-center');
+  if (phase.name === 'THE OUTER REACHES') {
+    narPanel.classList.add('side-center');
+    narPanel.style.top  = 'auto';
+    narPanel.style.bottom = 'clamp(90px,11vh,130px)';
+    narPanel.style.left = '50%';
+    narPanel.style.transform = 'translateX(-50%)';
+  } else if (idx % 2 !== 0) {
+    narPanel.classList.add('side-right');
+    narPanel.style.bottom = '';
+    narPanel.style.top    = 'clamp(56px,7vh,90px)';
+    narPanel.style.left   = 'auto';
+    narPanel.style.transform = '';
+  } else {
+    narPanel.style.bottom = '';
+    narPanel.style.top    = 'clamp(56px,7vh,90px)';
+    narPanel.style.left   = 'clamp(32px,4vw,64px)';
+    narPanel.style.transform = '';
+  }
+
+  // Determine lines — support both string and array
+  const lines = Array.isArray(phase.narration) ? phase.narration : [phase.narration];
+  const phaseDur = phase.duration;
+
+  // Space lines so each has at least 3.8 seconds to read
+  // Cap at 5.5s for phases with very few lines
+  const lineDelay = Math.min(5500, Math.max(3800, (phaseDur * 0.80) / Math.max(lines.length, 1)));
+
+  lines.forEach((txt, li) => {
+    const span = document.createElement('span');
+    span.className = 'aion-line';
+    // Special styling for certain lines
+    if (txt === 'Tell us when.' || txt === 'You are made of it.') {
+      span.classList.add('final-line');
+    }
+    span.textContent = txt;
+    narPanel.appendChild(span);
+  });
+
+  // Fade in panel then stagger each line
+  setTimeout(() => {
+    narPanel.style.opacity = '1';
+    lines.forEach((_, li) => {
+      setTimeout(() => {
+        const spans = narPanel.querySelectorAll('.aion-line');
+        if (spans[li]) {
+          spans[li].classList.add('show');
+          spans[li].style.animationDelay = '0s';
+        }
+      }, li * lineDelay);
+    });
+  }, 1800);
+}
+
+// ── Planet labels: data + screen projection ───────────────────────────────────
+const PLANET_DATA_LABELS = [
+  {
+    name: 'MERCURY',
+    color: 'rgba(192,192,200,0.85)',
+    glow:  'rgba(180,180,200,0.5)',
+    desc: 'The messenger. Closest to the fire, fastest in orbit. The mind\'s quicksilver movement: perception, language, how you make meaning from chaos.',
+    lineH: 14,
+  },
+  {
+    name: 'VENUS',
+    color: 'rgba(240,220,160,0.85)',
+    glow:  'rgba(240,200,120,0.5)',
+    desc: 'The mirror. What you desire, what you value, what beauty you create. The principle of attraction — drawing toward yourself what resonates.',
+    lineH: 16,
+  },
+  {
+    name: 'EARTH',
+    color: 'rgba(100,180,255,0.90)',
+    glow:  'rgba(80,160,255,0.5)',
+    desc: 'The ground of incarnation. The only planet not named for a god. The place where soul takes form. You are watching your home coalesce from the same dust that made the Sun.',
+    lineH: 18,
+  },
+  {
+    name: 'MARS',
+    color: 'rgba(220,100,60,0.85)',
+    glow:  'rgba(200,80,40,0.5)',
+    desc: 'The drive. Will in action. The capacity to assert, to fight, to want and pursue. Without Mars, nothing is attempted. Nothing begins.',
+    lineH: 14,
+  },
+  {
+    name: 'JUPITER',
+    color: 'rgba(220,185,120,0.90)',
+    glow:  'rgba(220,170,80,0.5)',
+    desc: 'The expansion. Growth, abundance, meaning. Where Jupiter falls in your chart is where you seek, where you teach, where you overflow the boundaries that contain everyone else.',
+    lineH: 16,
+  },
+  {
+    name: 'SATURN',
+    color: 'rgba(200,185,140,0.85)',
+    glow:  'rgba(180,165,110,0.45)',
+    desc: 'The limit. Time, structure, consequence, the teacher who does not spare you. Where mastery, if it comes, means something. The last planet the naked eye can see.',
+    lineH: 16,
+  },
+  {
+    name: 'URANUS',
+    color: 'rgba(130,220,240,0.85)',
+    glow:  'rgba(100,200,240,0.5)',
+    desc: 'The awakener. Discovered in 1781, at the dawn of revolution. The force that breaks what has calcified. Uranus transits do not ask permission.',
+    lineH: 14,
+  },
+  {
+    name: 'NEPTUNE',
+    color: 'rgba(80,120,255,0.85)',
+    glow:  'rgba(60,100,240,0.45)',
+    desc: 'The dissolver. The longing for what is beyond form. Mysticism, art, compassion so vast it erases the boundaries of self. Neptune does not distinguish between transcendence and escapism.',
+    lineH: 16,
+  },
+  {
+    name: 'PLUTO',
+    color: 'rgba(160,80,80,0.85)',
+    glow:  'rgba(120,40,40,0.45)',
+    desc: 'The transformer. Lord of what has been buried. Where Pluto falls is where you will be broken and remade — not once, but cyclically, until you stop resisting the death that is a metamorphosis.',
+    lineH: 18,
+  },
+];
+
+// Planet slug lookup for URL routing
+const PLANET_SLUGS = ['mercury','venus','earth','mars','jupiter','saturn','uranus','neptune','pluto'];
+
+// Build label DOM elements — name only, clickable
+const labelEls = PLANET_DATA_LABELS.map((ld, i) => {
+  const div = document.createElement('div');
+  div.className = 'planet-label';
+  div.style.setProperty('--label-color', ld.color);
+  div.style.setProperty('--label-glow', ld.glow);
+  div.innerHTML = `
+    <div class="planet-label-line" style="height:${ld.lineH}px;background:linear-gradient(to bottom,transparent,${ld.color})"></div>
+    <div class="planet-label-name">${ld.name}</div>
+  `;
+  div.addEventListener('click', () => {
+    navigateToPlanet(i);
+  });
+  document.getElementById('planet-labels').appendChild(div);
+  return div;
+});
+
+function navigateToPlanet(idx) {
+  const slug = PLANET_SLUGS[idx];
+  document.getElementById('veil').classList.add('on');
+  setTimeout(() => { window.location.href = `planet.html?p=${slug}`; }, 800);
+}
+
+// ── Raycasting — click on planet mesh also navigates ─────────────────────────
+const raycaster = new THREE.Raycaster();
+const mouse     = new THREE.Vector2();
+
+// ── Planet labels: names only, appear on hover/click in post-cosmo idle ──────
+// During sequence: labels appear as planets form (existing logic)
+// After sequence: labels are hidden; hover over planet to reveal name; click to navigate
+
+// We track which planet is currently hovered
+window._hoveredPlanetIdx = -1;
+window._labelsPostCosmo  = false; // true once cosmo ends
+
+// After cosmo, update hover label in the mousemove handler
+const _oldMouseMove = document.getElementById('scene').onmousemove;
+document.getElementById('scene').addEventListener('mousemove', function(e) {
+  if (!window._labelsPostCosmo) return;
+  mouse.x =  (e.clientX / window.innerWidth)  * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const meshes = planets.map(p => p.mesh);
+  const hits   = raycaster.intersectObjects(meshes, true);
+
+  if (hits.length > 0) {
+    let obj = hits[0].object;
+    while (obj.parent && !meshes.includes(obj)) obj = obj.parent;
+    const idx = meshes.indexOf(obj);
+    if (idx !== window._hoveredPlanetIdx) {
+      // Hide previous
+      if (window._hoveredPlanetIdx >= 0 && labelEls[window._hoveredPlanetIdx]) {
+        labelEls[window._hoveredPlanetIdx].classList.remove('visible');
+      }
+      window._hoveredPlanetIdx = idx;
+      if (labelEls[idx]) labelEls[idx].classList.add('visible');
+    }
+    document.getElementById('scene').style.cursor = 'pointer';
+  } else {
+    if (window._hoveredPlanetIdx >= 0 && labelEls[window._hoveredPlanetIdx]) {
+      labelEls[window._hoveredPlanetIdx].classList.remove('visible');
+    }
+    window._hoveredPlanetIdx = -1;
+    document.getElementById('scene').style.cursor = 'default';
+  }
+});
+
+document.getElementById('scene').addEventListener('click', function(e) {
+  // Active post-cosmo OR during planets coalesce when labels are shown
+  const labelsActive = document.getElementById('planet-labels').classList.contains('active');
+  if (cosmoActive && !labelsActive) return;
+  mouse.x =  (e.clientX / window.innerWidth)  * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const meshes = planets.map(p => p.mesh);
+  const hits   = raycaster.intersectObjects(meshes, true);
+  if (hits.length > 0) {
+    // Walk up to find the root planet mesh
+    let obj = hits[0].object;
+    while (obj.parent && !meshes.includes(obj)) obj = obj.parent;
+    const idx = meshes.indexOf(obj);
+    if (idx >= 0) navigateToPlanet(idx);
+  }
+});
+
+// Track which labels are currently shown
+const labelVisible = new Array(PLANET_DATA_LABELS.length).fill(false);
+
+// Project a THREE.js world position to CSS screen coordinates
+function worldToScreen(worldPos, cam, w, h) {
+  const v = worldPos.clone().project(cam);
+  return {
+    x: (v.x * 0.5 + 0.5) * w,
+    y: (-(v.y * 0.5) + 0.5) * h,
+    z: v.z // < 1 = in front of camera
+  };
+}
+
+// Update label positions every frame — only during cosmo coalesce phase
+window._updatePlanetLabels = function() {
+  if (window._labelsPostCosmo) return; // post-cosmo: hover handles visibility
+  const labelsDiv = document.getElementById('planet-labels');
+  if (!labelsDiv || labelsDiv.style.opacity === '0') return;
+  const W = window.innerWidth, H = window.innerHeight;
+  planets.forEach((p, i) => {
+    const lEl = labelEls[i];
+    if (!lEl) return;
+    // Only show if planet is visible (scale > 0.5) and in front of camera
+    const sc = worldToScreen(p.mesh.position, camera, W, H);
+    if (p.mesh.scale.x < 0.5 || sc.z >= 1) {
+      if (labelVisible[i]) {
+        lEl.classList.remove('visible');
+        labelVisible[i] = false;
+      }
+      return;
+    }
+    // Offset label above/beside the planet based on screen position
+    // Keep label on-screen: if planet is on right half, label goes left; else right
+    const onRight = sc.x > W * 0.55;
+    lEl.style.left = sc.x + 'px';
+    lEl.style.top  = (sc.y - 12) + 'px';
+    lEl.style.alignItems = onRight ? 'flex-end' : 'flex-start';
+    lEl.style.textAlign  = onRight ? 'right' : 'left';
+    lEl.style.transform  = onRight
+      ? `translate(-100%, -100%)`
+      : `translate(8px, -100%)`;
+
+    if (!labelVisible[i]) {
+      lEl.classList.add('visible');
+      labelVisible[i] = true;
+    }
+  });
+};
+
+function endCosmo() {
+  cosmoActive = false;
+  cosmoPaused = false;
+  document.getElementById('cosmo-skip').style.display = 'none';
+  document.getElementById('cosmo-pause').style.display = 'none';
+
+  // Hide narration panel
+  const narPanel = document.getElementById('aion-narration');
+  narPanel.style.opacity = '0';
+  setTimeout(() => { narPanel.innerHTML = ''; }, 2000);
+
+  // Hide planet labels during dissolve, then switch to hover-only mode
+  document.getElementById('planet-labels').style.opacity = '0';
+  setTimeout(() => {
+    // Switch label container to post-cosmo mode: visible but labels are hover-triggered
+    const ld = document.getElementById('planet-labels');
+    ld.style.opacity = '1';
+    ld.style.transition = 'opacity 0s'; // instant for hover responsiveness
+    ld.classList.remove('active'); // remove cosmo-mode active class
+    window._labelsPostCosmo = true;
+  }, 4500); // after dissolve completes
+
+  // Fade out cosmo phase label
+  document.getElementById('cosmo-text').style.transition = 'opacity 2s ease';
+  document.getElementById('cosmo-text').style.opacity = '0';
+
+  // ── Smooth dissolve over 4 seconds ────────────────────────────────────────
+  const dissolveStart = performance.now();
+  const dissolveDur   = 4000;
+
+  // Snapshot starting values
+  const startR   = sph.r;
+  const startPhi = sph.phi;
+  const targetR  = 76;
+  const targetPhi = 0.40;
+
+  // Fade cosmo text immediately
+  document.getElementById('cosmo-text').style.transition = 'opacity 2s ease';
+  document.getElementById('cosmo-text').style.opacity = '0';
+
+  // Fade music out
+  if (window.cosmoAudio) {
+    const { AC, master } = window.cosmoAudio;
+    master.gain.setValueAtTime(master.gain.value, AC.currentTime);
+    master.gain.linearRampToValueAtTime(0, AC.currentTime + 4);
+  }
+
+  function dissolveFrame() {
+    const now     = performance.now();
+    const elapsed = now - dissolveStart;
+    const pct     = Math.min(1, elapsed / dissolveDur);
+    const ease    = pct < 0.5 ? 2*pct*pct : -1+(4-2*pct)*pct;
+
+    // Lerp camera to idle position
+    sph.r   = startR   + (targetR   - startR)   * ease;
+    sph.phi = startPhi + (targetPhi - startPhi) * ease;
+    updateCamera();
+
+    // Fade out cosmo-only objects
+    const fadeOut = 1 - ease;
+    oortCloud.material.opacity    = fadeOut * 0.35;
+    flashMesh.material.opacity    = 0;
+    frostRing.material.opacity    = 0;
+    pMat.opacity                  = fadeOut * 0.3;
+    impactFlashes.forEach(f => { f.material.opacity = 0; });
+
+    // Fade nebula to idle brightness
+    window.nebulaBrightness = ease;
+
+    // Fade planets/orbits TO their final values
+    planets.forEach((p, i) => {
+      p.mesh.scale.setScalar(Math.max(p.mesh.scale.x, ease));
+      p.orbitMesh.material.opacity = Math.max(p.orbitMesh.material.opacity, ease * orbitOps[i]);
+      p.orbitHalo.material.opacity = Math.max(p.orbitHalo.material.opacity, ease * 0.065);
+      p.mesh.material.emissiveIntensity = pData[i].ei;
+    });
+    sunMesh.scale.setScalar(Math.max(sunMesh.scale.x, 0.5 + ease * 0.5));
+    sunLight.intensity = Math.max(sunLight.intensity, ease * 9.0);
+    beltGlow.material.opacity = ease * 0.055; beltMats.forEach(b => { b.mat.opacity = b.finalOp * ease; });
+
+    if (pct < 1) {
+      requestAnimationFrame(dissolveFrame);
+    } else {
+      // Fully resolved — snap everything to final state
+      oortCloud.material.opacity = 0;
+      pMat.opacity = 0;
+      planets.forEach((p, i) => {
+        p.mesh.scale.setScalar(1);
+        p.orbitMesh.material.opacity = orbitOps[i];
+        p.orbitHalo.material.opacity = 0.065;
+        p.mesh.material.emissiveIntensity = pData[i].ei;
+      });
+      sunMesh.scale.setScalar(1);
+      sunLight.intensity = 9.0;
+      beltGlow.material.opacity = 0.055; beltMats.forEach(b => { b.mat.opacity = b.finalOp; });
+      window.nebulaBrightness   = 1;
+      sph.r = targetR; sph.phi = targetPhi;
+      updateCamera();
+      // Reveal the council after the solar system settles
+      setTimeout(revealCouncil, 600);
+    }
+  }
+
+  requestAnimationFrame(dissolveFrame);
+}
+
+window.skipCosmo = function() {
+  endCosmo();
+};
+
+// ── If already seen: skip sequence, snap solar system to final state ──────────
+if (window._cosmoAlreadySeen) {
+  cosmoActive = false;
+  phaseStart  = null;
+  // Immediately set everything to final rendered state
+  sunMesh.scale.setScalar(1);
+  sunLight.intensity = 9.0;
+  planets.forEach((p, i) => {
+    p.mesh.scale.setScalar(1);
+    p.orbitMesh.material.opacity = orbitOps[i];
+    p.orbitHalo.material.opacity = 0.065;
+    p.mesh.material.emissiveIntensity = pData[i].ei;
+  });
+  beltGlow.material.opacity = 0.055;
+  beltMats.forEach(b => { b.mat.opacity = b.finalOp; });
+  window.nebulaBrightness = 1;
+  pMat.opacity = 0;
+  // Enable post-cosmo hover labels
+  const ld = document.getElementById('planet-labels');
+  ld.style.opacity  = '1';
+  ld.style.transition = 'opacity 0s';
+  window._labelsPostCosmo = true;
+  // Signal to checkPreviouslySeen poller that Three.js is ready
+  window._threeReady = true;
+}
+
+// Store original speeds
+planets.forEach(p => { p.spdFull = p.spd; });
+
+if (!window._cosmoAlreadySeen) {
+  showPhase(0);
+  phaseStart = null; // held until user clicks Begin
+}
+
+// ── Begin screen ──────────────────────────────────────────────────────────────
+// This gates both audio AND sequencer start behind user interaction,
+// which is required for browser AudioContext autoplay policy
+window._cosmoStarted = false;
+window.beginCosmo = function() {
+  if (window._cosmoStarted) return;
+  window._cosmoStarted = true;
+  const beginEl = document.getElementById('cosmo-begin');
+  beginEl.style.opacity = '0';
+  setTimeout(() => { beginEl.style.display = 'none'; }, 1200);
+  // Show pause button after 3s
+  setTimeout(() => {
+    const pb = document.getElementById('cosmo-pause');
+    pb.style.display = 'flex';
+  }, 3000);
+  // Start sequencer
+  phaseStart = performance.now();
+  // Start audio
+  if (window._startAudio) window._startAudio();
+};
+
+// ── Melodic Web Audio — lazy start after user gesture ────────────────────────
+window._startAudio = (function() {
+  let started = false;
+  return function() {
+    if (started) return;
+    started = true;
+
+  const AC = new (window.AudioContext || window.webkitAudioContext)();
+  AC.resume();
+
+  // ── Reverb impulse ──────────────────────────────────────────────────────────
+  function makeReverb(duration = 4.5, decay = 2.8) {
+    const len = AC.sampleRate * duration;
+    const buf = AC.createBuffer(2, len, AC.sampleRate);
+    for (let c = 0; c < 2; c++) {
+      const ch = buf.getChannelData(c);
+      for (let i = 0; i < len; i++) {
+        ch[i] = (Math.random()*2-1) * Math.pow(1 - i/len, decay);
+      }
+    }
+    const conv = AC.createConvolver();
+    conv.buffer = buf;
+    return conv;
+  }
+
+  // ── Master chain ────────────────────────────────────────────────────────────
+  const master  = AC.createGain();
+  const limiter = AC.createDynamicsCompressor();
+  limiter.threshold.value = -3;
+  limiter.ratio.value     = 12;
+  master.connect(limiter);
+  limiter.connect(AC.destination);
+  master.gain.setValueAtTime(0, AC.currentTime);
+  master.gain.linearRampToValueAtTime(0.22, AC.currentTime + 6);
+
+  const reverb     = makeReverb(5.5, 2.4);
+  const reverbGain = AC.createGain();
+  reverbGain.gain.value = 0.55;
+  reverb.connect(reverbGain);
+  reverbGain.connect(master);
+
+  // ── Pad synth — lush detuned sawtooth ──────────────────────────────────────
+  function makePad(freq, vol = 0.08) {
+    const g    = AC.createGain();
+    const filt = AC.createBiquadFilter();
+    filt.type            = 'lowpass';
+    filt.frequency.value = 600 + freq * 0.8;
+    filt.Q.value         = 0.8;
+    g.gain.value = vol;
+    g.connect(filt);
+    filt.connect(master);
+    filt.connect(reverb);
+
+    [-8, -4, 0, 4, 8].forEach(cents => {
+      const o = AC.createOscillator();
+      o.type            = 'sawtooth';
+      o.frequency.value = freq;
+      o.detune.value    = cents;
+      o.connect(g);
+      o.start();
+    });
+    return g;
+  }
+
+  // ── Piano-like pluck tone ────────────────────────────────────────────────────
+  function pluck(freq, when, dur = 3.5, vol = 0.12) {
+    const osc  = AC.createOscillator();
+    const osc2 = AC.createOscillator();
+    const env  = AC.createGain();
+    const filt = AC.createBiquadFilter();
+    osc.type  = 'sine';  osc.frequency.value  = freq;
+    osc2.type = 'sine';  osc2.frequency.value = freq * 2.001;
+    filt.type = 'lowpass'; filt.frequency.value = 3000; filt.Q.value = 0.5;
+    env.gain.setValueAtTime(0,   when);
+    env.gain.linearRampToValueAtTime(vol, when + 0.02);
+    env.gain.exponentialRampToValueAtTime(vol * 0.6, when + 0.3);
+    env.gain.exponentialRampToValueAtTime(0.0001,     when + dur);
+    osc.connect(filt);  osc2.connect(filt);
+    filt.connect(env);
+    env.connect(master);
+    env.connect(reverb);
+    osc.start(when);   osc2.start(when);
+    osc.stop(when + dur + 0.1);  osc2.stop(when + dur + 0.1);
+  }
+
+  // ── Sub bass drone ───────────────────────────────────────────────────────────
+  function makeDrone(freq, vol = 0.18) {
+    const osc  = AC.createOscillator();
+    const osc2 = AC.createOscillator();
+    const env  = AC.createGain();
+    const filt = AC.createBiquadFilter();
+    osc.type  = 'sine'; osc.frequency.value  = freq;
+    osc2.type = 'sine'; osc2.frequency.value = freq * 1.004;
+    filt.type = 'lowpass'; filt.frequency.value = 200;
+    env.gain.value = vol;
+    osc.connect(filt); osc2.connect(filt);
+    filt.connect(env); env.connect(master);
+    osc.start(); osc2.start();
+    return env;
+  }
+
+  // ── High shimmer ─────────────────────────────────────────────────────────────
+  function makeShimmer(freq, vol = 0.035) {
+    const osc  = AC.createOscillator();
+    const lfo  = AC.createOscillator();
+    const lfoG = AC.createGain();
+    const env  = AC.createGain();
+    osc.type = 'sine'; osc.frequency.value = freq;
+    lfo.frequency.value = 0.12 + Math.random() * 0.08;
+    lfoG.gain.value     = freq * 0.015;
+    env.gain.value = vol;
+    lfo.connect(lfoG); lfoG.connect(osc.frequency);
+    osc.connect(env); env.connect(reverb); env.connect(master);
+    osc.start(); lfo.start();
+    return env;
+  }
+
+  // ── A minor pentatonic scale: A C D E G ──────────────────────────────────────
+  // Frequencies across 3 octaves for melodic arpeggios
+  const A3=220, C4=261.63, D4=293.66, E4=329.63, G4=392.00;
+  const A4=440, C5=523.25, D5=587.33, E5=659.25, G5=783.99;
+  const A5=880, C6=1046.5;
+  const scale = [A3,C4,D4,E4,G4,A4,C5,D5,E5,G5,A5,C6];
+
+  // ── Layer 1: Sustained pads ──────────────────────────────────────────────────
+  makePad(A3,  0.06);
+  makePad(E4,  0.04);
+  makePad(A4,  0.04);
+  makePad(C5,  0.03);
+
+  // ── Layer 2: Sub drone ───────────────────────────────────────────────────────
+  makeDrone(55,  0.14);   // A1
+  makeDrone(110, 0.08);   // A2
+
+  // ── Layer 3: Shimmer ─────────────────────────────────────────────────────────
+  makeShimmer(A5, 0.03);
+  makeShimmer(E5, 0.025);
+
+  // ── Layer 4: Melodic arpeggios — the heart ───────────────────────────────────
+  // Three melodic phrases that loop slowly
+  // Phrase A: ascending wonder
+  const phraseA = [A3,E4,A4,C5,E5,A5,G5,E5,C5,A4,G4,E4];
+  // Phrase B: descending resolution
+  const phraseB = [A5,G5,E5,D5,C5,A4,G4,E4,D4,C4,A3];
+  // Phrase C: suspended longing (for bombardment/outer reaches)
+  const phraseC = [A4,C5,E5,G5,A5,G5,E5,D5,C5,D5,E5,A5];
+
+  const now = AC.currentTime + 2;
+
+  // Phrase A — plays during void/nebula/collapse
+  phraseA.forEach((f, i) => pluck(f, now + i * 2.8, 4.5, 0.10));
+  // Phrase B — plays during sun ignition/coalesce
+  phraseB.forEach((f, i) => pluck(f, now + 33 + i * 2.5, 4.0, 0.10));
+  // Phrase A again — frost line
+  phraseA.forEach((f, i) => pluck(f, now + 60 + i * 2.2, 3.8, 0.09));
+  // Phrase C — bombardment/outer reaches — slower, more haunting
+  phraseC.forEach((f, i) => pluck(f, now + 86 + i * 3.0, 5.0, 0.08));
+
+  // Continuous pad melody — slow notes every ~6s underlying everything
+  const G3 = 196;
+  [A3,C4,E4,A4,E4,C4,A3,G3,A3,C4,D4,E4].forEach((f,i) => {
+    pluck(f, now + i * 6.5, 7.0, 0.06);
+  });
+
+  window.cosmoAudio = { AC, master };
+
+  // ── Sound effects ─────────────────────────────────────────────────────────
+  window.cosmoSFX = {
+
+    // Deep sub rumble — void
+    voidRumble: () => {
+      const osc  = AC.createOscillator();
+      const env  = AC.createGain();
+      const filt = AC.createBiquadFilter();
+      osc.type = 'sine'; osc.frequency.value = 28;
+      filt.type = 'lowpass'; filt.frequency.value = 60;
+      env.gain.setValueAtTime(0, AC.currentTime);
+      env.gain.linearRampToValueAtTime(0.12, AC.currentTime + 3);
+      env.gain.linearRampToValueAtTime(0,    AC.currentTime + 8);
+      osc.connect(filt); filt.connect(env); env.connect(master);
+      osc.start(); osc.stop(AC.currentTime + 9);
+    },
+
+    // White noise whoosh — nebula
+    nebulaWhoosh: () => {
+      const buf  = AC.createBuffer(1, AC.sampleRate * 4, AC.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      const src  = AC.createBufferSource();
+      const filt = AC.createBiquadFilter();
+      const env  = AC.createGain();
+      src.buffer = buf;
+      filt.type = 'bandpass'; filt.frequency.value = 800; filt.Q.value = 0.3;
+      env.gain.setValueAtTime(0,    AC.currentTime);
+      env.gain.linearRampToValueAtTime(0.06, AC.currentTime + 1.5);
+      env.gain.linearRampToValueAtTime(0,    AC.currentTime + 4);
+      src.connect(filt); filt.connect(env); env.connect(reverb); env.connect(master);
+      src.start(); src.stop(AC.currentTime + 4.5);
+    },
+
+    // Gravity rumble — accelerating low frequency
+    collapseRumble: () => {
+      const osc  = AC.createOscillator();
+      const env  = AC.createGain();
+      const filt = AC.createBiquadFilter();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(40, AC.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(18, AC.currentTime + 10);
+      filt.type = 'lowpass'; filt.frequency.value = 80;
+      env.gain.setValueAtTime(0,    AC.currentTime);
+      env.gain.linearRampToValueAtTime(0.15, AC.currentTime + 2);
+      env.gain.linearRampToValueAtTime(0.22, AC.currentTime + 9);
+      env.gain.linearRampToValueAtTime(0,    AC.currentTime + 11);
+      osc.connect(filt); filt.connect(env); env.connect(master);
+      osc.start(); osc.stop(AC.currentTime + 11.5);
+      // Add noise crackle
+      const buf  = AC.createBuffer(1, AC.sampleRate * 4, AC.sampleRate);
+      const d    = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      const src  = AC.createBufferSource();
+      const nf   = AC.createBiquadFilter();
+      const ng   = AC.createGain();
+      src.buffer = buf; nf.type = 'highpass'; nf.frequency.value = 2000;
+      ng.gain.setValueAtTime(0, AC.currentTime);
+      ng.gain.linearRampToValueAtTime(0.04, AC.currentTime + 6);
+      ng.gain.linearRampToValueAtTime(0,    AC.currentTime + 11);
+      src.connect(nf); nf.connect(ng); ng.connect(master);
+      src.start(); src.stop(AC.currentTime + 11);
+    },
+
+    // Stellar ignition — subsonic shockwave + plasma roar
+    sunBoom: () => {
+      const t0 = AC.currentTime;
+
+      // Layer 1: Massive subsonic thud — the shockwave
+      const sub  = AC.createOscillator();
+      const subG = AC.createGain();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime(35, t0);
+      sub.frequency.exponentialRampToValueAtTime(8, t0 + 3.0);
+      subG.gain.setValueAtTime(0, t0);
+      subG.gain.linearRampToValueAtTime(1.2, t0 + 0.008); // instant slam
+      subG.gain.exponentialRampToValueAtTime(0.001, t0 + 4.0);
+      sub.connect(subG); subG.connect(master);
+      sub.start(t0); sub.stop(t0 + 4.5);
+
+      // Layer 2: Mid-range explosion body
+      const mid  = AC.createOscillator();
+      const midG = AC.createGain();
+      const midF = AC.createBiquadFilter();
+      mid.type = 'sawtooth';
+      mid.frequency.setValueAtTime(120, t0);
+      mid.frequency.exponentialRampToValueAtTime(30, t0 + 2.5);
+      midF.type = 'lowpass'; midF.frequency.value = 400;
+      midG.gain.setValueAtTime(0, t0);
+      midG.gain.linearRampToValueAtTime(0.6, t0 + 0.01);
+      midG.gain.exponentialRampToValueAtTime(0.001, t0 + 3.5);
+      mid.connect(midF); midF.connect(midG); midG.connect(master);
+      mid.start(t0); mid.stop(t0 + 4);
+
+      // Layer 3: Plasma roar — filtered white noise that tears
+      const nBuf = AC.createBuffer(2, AC.sampleRate * 6, AC.sampleRate);
+      for (let c = 0; c < 2; c++) {
+        const nd = nBuf.getChannelData(c);
+        for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+      }
+      const nSrc  = AC.createBufferSource();
+      const nFilt = AC.createBiquadFilter();
+      const nFilt2= AC.createBiquadFilter();
+      const nGain = AC.createGain();
+      nSrc.buffer = nBuf;
+      nFilt.type  = 'bandpass'; nFilt.frequency.value = 600;  nFilt.Q.value = 0.4;
+      nFilt2.type = 'highpass'; nFilt2.frequency.value = 200;
+      nGain.gain.setValueAtTime(0, t0);
+      nGain.gain.linearRampToValueAtTime(0.55, t0 + 0.015);
+      nGain.gain.linearRampToValueAtTime(0.35, t0 + 0.8);
+      nGain.gain.exponentialRampToValueAtTime(0.001, t0 + 6.0);
+      nSrc.connect(nFilt); nFilt.connect(nFilt2); nFilt2.connect(nGain);
+      nGain.connect(master); nGain.connect(reverb);
+      nSrc.start(t0); nSrc.stop(t0 + 6.5);
+
+      // Layer 4: Harmonic ring-out — the sun finding its resonant frequency
+      [110, 220, 330, 440, 660].forEach((f, i) => {
+        const o = AC.createOscillator();
+        const g = AC.createGain();
+        o.type = 'sine'; o.frequency.value = f;
+        const delay = 0.2 + i * 0.12;
+        g.gain.setValueAtTime(0, t0 + delay);
+        g.gain.linearRampToValueAtTime(0.12 - i*0.02, t0 + delay + 0.05);
+        g.gain.exponentialRampToValueAtTime(0.001, t0 + delay + 5 + i * 1.5);
+        o.connect(g); g.connect(reverb); g.connect(master);
+        o.start(t0 + delay); o.stop(t0 + delay + 6 + i * 2);
+      });
+    },
+
+    // Crystalline ping per planet
+    planetPing: (index) => {
+      const freqs = [1047, 880, 784, 659, 523, 440, 392, 330, 294];
+      const f     = freqs[index % freqs.length];
+      const osc   = AC.createOscillator();
+      const env   = AC.createGain();
+      osc.type = 'sine'; osc.frequency.value = f;
+      env.gain.setValueAtTime(0,    AC.currentTime);
+      env.gain.linearRampToValueAtTime(0.09, AC.currentTime + 0.02);
+      env.gain.exponentialRampToValueAtTime(0.001, AC.currentTime + 2.5);
+      osc.connect(env); env.connect(reverb); env.connect(master);
+      osc.start(); osc.stop(AC.currentTime + 3);
+    },
+
+    // Ice crystal shimmer sweep — frost line
+    frostSweep: () => {
+      const osc  = AC.createOscillator();
+      const env  = AC.createGain();
+      const filt = AC.createBiquadFilter();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(2000, AC.currentTime);
+      osc.frequency.linearRampToValueAtTime(4000, AC.currentTime + 3);
+      osc.frequency.linearRampToValueAtTime(1500, AC.currentTime + 6);
+      filt.type = 'bandpass'; filt.frequency.value = 3000; filt.Q.value = 2;
+      env.gain.setValueAtTime(0,    AC.currentTime);
+      env.gain.linearRampToValueAtTime(0.06, AC.currentTime + 1);
+      env.gain.linearRampToValueAtTime(0,    AC.currentTime + 6);
+      osc.connect(filt); filt.connect(env); env.connect(reverb); env.connect(master);
+      osc.start(); osc.stop(AC.currentTime + 6.5);
+    },
+
+    // Realistic impact — sharp crack + rumble + debris hiss
+    impactThud: () => {
+      const t0 = AC.currentTime;
+      const intensity = 0.5 + Math.random() * 0.5; // random intensity per hit
+
+      // Sharp transient crack — the moment of impact
+      const crackBuf = AC.createBuffer(1, AC.sampleRate * 0.05, AC.sampleRate);
+      const cd = crackBuf.getChannelData(0);
+      for (let i = 0; i < cd.length; i++) {
+        cd[i] = (Math.random()*2-1) * Math.pow(1 - i/cd.length, 0.3);
+      }
+      const crack = AC.createBufferSource();
+      const crackF = AC.createBiquadFilter();
+      const crackG = AC.createGain();
+      crack.buffer = crackBuf;
+      crackF.type = 'highpass'; crackF.frequency.value = 1500;
+      crackG.gain.value = intensity * 0.8;
+      crack.connect(crackF); crackF.connect(crackG); crackG.connect(master);
+      crack.start(t0); crack.stop(t0 + 0.1);
+
+      // Deep impact thud — pitch-drops fast
+      const thud  = AC.createOscillator();
+      const thudG = AC.createGain();
+      const thudF = AC.createBiquadFilter();
+      thud.type = 'sine';
+      thud.frequency.setValueAtTime(180 + Math.random()*80, t0);
+      thud.frequency.exponentialRampToValueAtTime(20, t0 + 0.25);
+      thudF.type = 'lowpass'; thudF.frequency.value = 300;
+      thudG.gain.setValueAtTime(intensity * 0.9, t0);
+      thudG.gain.exponentialRampToValueAtTime(0.001, t0 + 0.5);
+      thud.connect(thudF); thudF.connect(thudG); thudG.connect(master);
+      thud.start(t0); thud.stop(t0 + 0.6);
+
+      // Debris hiss — short noise tail
+      const hissBuf = AC.createBuffer(1, AC.sampleRate * 0.4, AC.sampleRate);
+      const hd = hissBuf.getChannelData(0);
+      for (let i = 0; i < hd.length; i++) {
+        hd[i] = (Math.random()*2-1) * Math.pow(1 - i/hd.length, 1.5);
+      }
+      const hiss  = AC.createBufferSource();
+      const hissF = AC.createBiquadFilter();
+      const hissG = AC.createGain();
+      hiss.buffer = hissBuf;
+      hissF.type = 'bandpass'; hissF.frequency.value = 3000 + Math.random()*2000; hissF.Q.value = 1.5;
+      hissG.gain.value = intensity * 0.2;
+      hiss.connect(hissF); hissF.connect(hissG); hissG.connect(master);
+      hiss.start(t0 + 0.02); hiss.stop(t0 + 0.5);
+    },
+
+    // Long reverb fade — outer reaches
+    outerFade: () => {
+      const osc = AC.createOscillator();
+      const env = AC.createGain();
+      osc.type = 'sine'; osc.frequency.value = 110;
+      env.gain.setValueAtTime(0,    AC.currentTime);
+      env.gain.linearRampToValueAtTime(0.06, AC.currentTime + 2);
+      env.gain.linearRampToValueAtTime(0,    AC.currentTime + 10);
+      osc.connect(env); env.connect(reverb); env.connect(master);
+      osc.start(); osc.stop(AC.currentTime + 11);
+    },
+  };
+
+  }; // end _startAudio inner
+})(); // end lazy wrapper
+
+// ── Render loop ───────────────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+// Pre-allocated temporaries for depth flare orientation (avoid per-frame GC)
+const _dfX = new THREE.Vector3(), _dfY = new THREE.Vector3();
+const _dfZ = new THREE.Vector3(0, 1, 0), _dfM = new THREE.Matrix4();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t   = clock.getElapsedTime();
+  const now = performance.now();
+  const dt  = (now - lastNow) / 1000;
+  lastNow   = now;
+
+  // ── Cosmogenesis sequencer ────────────────────────────────────────────────
+  if (cosmoActive && !cosmoPaused && phaseStart !== null && phaseIndex < PHASES.length) {
+    const phase   = PHASES[phaseIndex];
+    const elapsed = now - phaseStart;
+    const pct     = Math.min(1, elapsed / phase.duration);
+    phase.fn(pct, dt);
+    if (elapsed >= phase.duration) {
+      phaseIndex++;
+      phaseStart = now;
+      showPhase(phaseIndex);
+    }
+  }
+
+  // ── Normal idle animation (post-cosmo or always for sun) ─────────────────
+  if (!cosmoActive) {
+    sunLight.intensity = 7.5 + Math.sin(t * 1.1) * 0.6;
+    sunMesh.scale.setScalar(1 + Math.sin(t * 0.85) * 0.022);
+  }
+  sunMesh.rotation.y += cosmoPaused ? 0 : 0.0008;
+  sunMaterial.uniforms.time.value = t;
+  // Corona billboard — always face camera, tick each layer's time
+  coronaGroup.position.copy(sunMesh.position);
+  coronaGroup.quaternion.copy(camera.quaternion);
+  coronaLayers.forEach(mat => { mat.uniforms.time.value = t; });
+  // Parker spiral rotates slowly with the sun
+  parkerGroup.rotation.y = sunMesh.rotation.y * 0.18;
+  window.parkerPulseMat.uniforms.time.value = t;
+  // Interplanetary medium + radiation waves tick
+  helioMat.uniforms.time.value    = t;
+  waveDiscMat.uniforms.time.value = t;
+  // Sporadic solar flare animation — progress 0→1 linear, shader splits into two phases
+  if (flareActive) {
+    flareTimer += dt;
+    const TOTAL = 2.0;
+    if (flareTimer >= TOTAL) { flareActive = false; solarFlareMat.uniforms.progress.value = 0; }
+    else solarFlareMat.uniforms.progress.value = flareTimer / TOTAL;
+  }
+  // Depth flare: horizontal ecliptic plane, strand Y-axis tracks camera horizontally
+  // so strands appear to shoot toward/away from the viewer
+  {
+    const _dx = camera.position.x - sunMesh.position.x;
+    const _dz = camera.position.z - sunMesh.position.z;
+    const _len = Math.sqrt(_dx * _dx + _dz * _dz) || 1;
+    const nx = _dx / _len, nz = _dz / _len;
+    _dfX.set(-nz, 0, nx);   // perp to camera dir in XZ
+    _dfY.set(nx,  0, nz);   // toward camera (horizontal) — strand direction
+    _dfM.makeBasis(_dfX, _dfY, _dfZ);
+    solarFlareDepthMesh.position.copy(sunMesh.position);
+    solarFlareDepthMesh.quaternion.setFromRotationMatrix(_dfM);
+  }
+
+  planets.forEach(p => {
+    if (!cosmoPaused) p.angle += p.spd * 0.0017;
+    p.mesh.position.set(
+      p.d * Math.cos(p.angle),
+      Math.sin(p.angle * 1.2) * p.inc * p.d * 0.1,
+      p.d * Math.sin(p.angle)
+    );
+    p.mesh.rotation.y += cosmoPaused ? 0 : 0.005;
+    // Cloud layer rotates slightly faster than planet
+    if (p.mesh.userData.clouds) {
+      p.mesh.userData.clouds.rotation.y += cosmoPaused ? 0 : 0.0008;
+    }
+    // Moon — follow Earth's position, orbit independently of Earth's own spin
+    if (p.mesh.userData.moonPivot) {
+      p.mesh.userData.moonPivot.position.copy(p.mesh.position);
+      if (!cosmoPaused) p.mesh.userData.moonPivot.rotation.y += 0.0016;
+    }
+    p.orbitMesh.material.uniforms.time.value    = t;
+    p.orbitMesh.material.uniforms.opacity.value = p.orbitMesh.material.opacity;
+  });
+  if (window._beltMat && window._beltMat.uniforms) {
+    window._beltMat.uniforms.time.value   = t;
+    window._beltMat.uniforms.baseOp.value = window._beltMat.opacity;
+  }
+
+  // ── Camera — always lerp toward sphTarget, never snap ────────────────────
+  const camSpeed = cosmoActive ? 0.016 : 0.10;
+  sph.r     += (sphTarget.r     - sph.r)     * camSpeed;
+  sph.theta += (sphTarget.theta - sph.theta) * camSpeed;
+  sph.phi   += (sphTarget.phi   - sph.phi)   * camSpeed;
+  camera.position.set(
+    sph.r * Math.sin(sph.phi) * Math.sin(sph.theta),
+    sph.r * Math.cos(sph.phi),
+    sph.r * Math.sin(sph.phi) * Math.cos(sph.theta)
+  );
+  // Smoothly lerp the lookAt point
+  const lookSpd = cosmoActive ? 0.016 : 0.10;
+  window._lookX = (window._lookX || 0) + (sphTarget.lookX - (window._lookX || 0)) * lookSpd;
+  window._lookY = (window._lookY || 0) + (sphTarget.lookY - (window._lookY || 0)) * lookSpd;
+  window._lookZ = (window._lookZ || 0) + (sphTarget.lookZ - (window._lookZ || 0)) * lookSpd;
+  camera.lookAt(window._lookX, window._lookY, window._lookZ);
+
+  if (!cosmoActive && !drag) {
+    // Slow orbital drift — pauses only during active drag, resumes instantly on release
+    sphTarget.theta += 0.00055;
+  }
+  renderer.render(scene, camera);
+
+  // ── Update planet labels (screen-projected) ─────────────────────────────
+  if (window._updatePlanetLabels) window._updatePlanetLabels();
+
+  // ── Post-cosmo: keep hovered label tracking the planet ───────────────────
+  if (window._labelsPostCosmo && window._hoveredPlanetIdx >= 0) {
+    const idx = window._hoveredPlanetIdx;
+    const lEl = labelEls[idx];
+    if (lEl && planets[idx]) {
+      const W = window.innerWidth, H = window.innerHeight;
+      const sc = worldToScreen(planets[idx].mesh.position, camera, W, H);
+      if (sc.z < 1) {
+        const onRight = sc.x > W * 0.55;
+        lEl.style.left      = sc.x + 'px';
+        lEl.style.top       = (sc.y - 12) + 'px';
+        lEl.style.alignItems = onRight ? 'flex-end' : 'flex-start';
+        lEl.style.transform  = onRight ? 'translate(-100%,-100%)' : 'translate(8px,-100%)';
+      }
+    }
+  }
+}
+
+updateCamera();
+animate();
+
+})();
+</script>
+</body>
+</html>

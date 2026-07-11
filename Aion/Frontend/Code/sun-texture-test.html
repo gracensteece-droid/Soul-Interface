@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Sun Texture Test</title>
+<style>*{margin:0;padding:0}html,body{width:100%;height:100%;background:#000;overflow:hidden}canvas{display:block}
+#hint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);color:#ccc;font:13px/1.4 monospace;background:rgba(0,0,0,0.5);padding:6px 14px;border-radius:8px}</style>
+</head>
+<body>
+<div id="hint">drag to orbit · scroll to zoom · real 2k_sun.jpg + your live sun's FBM turbulence/glow shader, blended</div>
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+               "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
+camera.position.set(0, 0.3, 3.2);
+
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.minDistance = 1.3;
+controls.maxDistance = 10;
+
+const loader = new THREE.TextureLoader();
+const sunTex = loader.load('textures/tex_sun_photo.jpg');
+
+// Hybrid — the real 2k_sun.jpg granulation photo as the base surface, with the exact
+// FBM turbulence + emissive-threshold glow logic ported straight from the live
+// procedural sun (index.html's sunMaterial) layered on top for the animated,
+// flowing hot-spot brightening the static photo doesn't have on its own.
+const sunMat = new THREE.ShaderMaterial({
+  uniforms: {
+    map:                  { value: sunTex },
+    time:                 { value: 0 },
+    hotColor:             { value: new THREE.Color(1.0,  0.88, 0.08) },
+    emissiveColor:        { value: new THREE.Color(1.6,  0.90, 0.28) },
+    distortionStrength:   { value: 0.5  },
+    emissiveStrength:     { value: 1.2  },
+    fbmFrequency:         { value: 4.5  },
+    brightness:           { value: 1.15 },
+    contrastPower:        { value: 1.5  },
+    fbmScale:             { value: 1.8  },
+    fbmOffset:            { value: 0.2  },
+    emissiveThresholdMin: { value: 0.72 },
+    emissiveThresholdMax: { value: 1.0  },
+  },
+  vertexShader: `
+    varying vec3 vPosition;
+    varying vec2 vUv;
+    void main() {
+      vPosition = position;
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vPosition;
+    varying vec2 vUv;
+    uniform sampler2D map;
+    uniform float time;
+    uniform vec3  hotColor, emissiveColor;
+    uniform float distortionStrength, emissiveStrength, fbmFrequency;
+    uniform float brightness, contrastPower, fbmScale, fbmOffset;
+    uniform float emissiveThresholdMin, emissiveThresholdMax;
+
+    float hash(vec3 p) {
+      return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
+    }
+    float noise(vec3 p) {
+      vec3 i = floor(p), f = fract(p);
+      vec3 u = f * f * (3.0 - 2.0 * f);
+      return mix(
+        mix(mix(hash(i),              hash(i+vec3(1,0,0)), u.x),
+            mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)), u.x), u.y),
+        mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)), u.x),
+            mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), u.x), u.y),
+        u.z);
+    }
+    float fbm(vec3 p) {
+      float v = 0.0, a = 0.5;
+      for (int i = 0; i < 7; i++) { v += a * noise(p); p *= 2.1; a *= 0.48; }
+      return v;
+    }
+
+    void main() {
+      vec3 p = vPosition * fbmFrequency + vec3(time * 0.10, time * 0.07, time * 0.13);
+      p += vec3(time * distortionStrength * 0.1);
+      float n = fbm(p);
+      n = pow(n, contrastPower);
+      n = clamp(n * fbmScale + fbmOffset, 0.0, 1.0);
+
+      vec3 texColor = texture2D(map, vUv).rgb;
+      vec3 color = mix(texColor, texColor * hotColor * 1.4, n * 0.6);
+      float em = smoothstep(emissiveThresholdMin, emissiveThresholdMax, n) * emissiveStrength;
+      color += em * emissiveColor;
+      color *= brightness;
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `,
+});
+const sun = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 96), sunMat);
+scene.add(sun);
+
+// Soft corona glow shell — same additive rim trick as the Earth atmosphere test, tinted amber
+const corona = new THREE.Mesh(
+  new THREE.SphereGeometry(1.25, 64, 64),
+  new THREE.ShaderMaterial({
+    vertexShader:`varying vec3 vN; void main(){ vN=normalize(normalMatrix*normal); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader:`varying vec3 vN; void main(){ float i=pow(0.6-dot(vN,vec3(0,0,1.0)),2.2); gl_FragColor=vec4(1.0,0.7,0.3, clamp(i,0.0,1.0)*0.55); }`,
+    blending: THREE.AdditiveBlending, side: THREE.BackSide, transparent:true,
+  })
+);
+scene.add(corona);
+
+const pointLight = new THREE.PointLight(0xfff2cc, 2.5, 0, 0);
+scene.add(pointLight);
+
+// Starfield backdrop
+{
+  const N=2000, pos=new Float32Array(N*3);
+  for(let i=0;i<N;i++){ const r=60+Math.random()*200; const th=Math.random()*Math.PI*2; const ph=Math.acos(2*Math.random()-1);
+    pos[i*3]=r*Math.sin(ph)*Math.cos(th); pos[i*3+1]=r*Math.sin(ph)*Math.sin(th); pos[i*3+2]=r*Math.cos(ph); }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color:0xffffff, size:0.5, sizeAttenuation:true })));
+}
+
+addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+
+// Real elapsed seconds, same as index.html's `clock.getElapsedTime()` — the FBM
+// turbulence speed above was tuned against that clock, so matching it here keeps
+// the churn rate identical to how it looks in the live scene.
+const clock = new THREE.Clock();
+function tick(){
+  requestAnimationFrame(tick);
+  const t = clock.getElapsedTime();
+  sun.rotation.y = t * 0.08;
+  sunMat.uniforms.time.value = t;
+  controls.update();
+  renderer.render(scene, camera);
+}
+tick();
+</script>
+</body>
+</html>

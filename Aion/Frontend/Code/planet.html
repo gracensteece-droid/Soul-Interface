@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Soul Interface — Planet</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Cinzel:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;
+  background:radial-gradient(ellipse at 65% 35%, #0d0818 0%, #050510 50%, #000000 100%);
+  overflow:hidden;font-family:'Cormorant Garamond',serif;color:#e8e2f4;}
+:root{
+  --gold-bright:#e8dfc8;--gold-mid:rgba(220,190,120,0.6);--gold-dim:rgba(200,175,130,0.45);
+  --ink:#010008;--planet-color:#e8dfc8;--planet-glow:rgba(232,223,200,0.4);
+}
+canvas#planet-scene{position:fixed;inset:0;z-index:1;}
+#vignette{position:fixed;inset:0;z-index:2;pointer-events:none;
+  background:radial-gradient(ellipse 75% 70% at 50% 50%,transparent 40%,rgba(0,0,0,0.88) 100%);}
+#veil{position:fixed;inset:0;background:var(--ink);z-index:60;
+  opacity:1;pointer-events:none;
+  transition:opacity 1s ease;
+  animation:veilClear 0s 2.5s ease forwards;
+}
+@keyframes veilClear{to{opacity:0;}}
+#veil.clear{opacity:0;}
+#veil.on{opacity:1;pointer-events:all;animation:none;}
+
+/* back */
+#back-btn{position:fixed;top:28px;left:32px;z-index:10;font-family:'Cinzel',serif;font-size:8px;
+  letter-spacing:0.38em;text-transform:uppercase;color:rgba(200,185,155,0.65);background:none;
+  border:none;cursor:pointer;transition:color 0.3s;display:flex;align-items:center;gap:8px;
+  opacity:0;animation:fadeUp 1.2s 0.6s ease forwards;}
+#back-btn:hover{color:rgba(200,185,155,0.80);}
+#back-btn svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;}
+
+/* header — centered top */
+#planet-header{position:fixed;top:0;left:0;right:0;display:flex;flex-direction:column;
+  align-items:center;padding-top:10px;z-index:5;pointer-events:none;
+  opacity:0;animation:fadeUp 1.4s 0.8s ease forwards;}
+.planet-symbol{font-size:14px;color:var(--planet-color);
+  filter:drop-shadow(0 0 10px var(--planet-glow));margin-bottom:3px;
+  animation:symbolPulse 4s ease-in-out infinite;}
+@keyframes symbolPulse{0%,100%{filter:drop-shadow(0 0 8px var(--planet-glow));}
+  50%{filter:drop-shadow(0 0 22px var(--planet-glow)) drop-shadow(0 0 44px var(--planet-glow));}}
+.planet-name-display{font-family:'Cinzel',serif;font-size:clamp(20px,2.4vw,38px);font-weight:500;
+  letter-spacing:0.32em;color:var(--planet-color);text-transform:uppercase;text-shadow:0 0 36px var(--planet-glow);}
+.planet-archetype{font-family:'Cormorant Garamond',serif;font-style:italic;
+  font-size:clamp(10px,0.85vw,13px);color:rgba(200,185,155,0.65);letter-spacing:0.12em;margin-top:2px;}
+.header-rule{width:70px;height:1px;margin-top:4px;
+  background:linear-gradient(to right,transparent,var(--planet-color),transparent);opacity:0.22;}
+
+/* tabs — directly under header, same center axis */
+#tab-bar{
+  position:fixed;
+  top:135px;
+  left:0;
+  right:0;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:0;
+  z-index:6;
+  opacity:0;
+  animation:fadeUp 1.2s 1.2s ease forwards;
+}
+.tab-sep{display:none;}
+.tab-btn{font-family:'Cinzel',serif;font-size:7px;letter-spacing:0.42em;text-transform:uppercase;
+  color:rgba(200,185,155,0.78);background:none;border:none;cursor:pointer;padding:8px 22px;
+  border-bottom:1px solid rgba(200,185,155,0.08);transition:color 0.3s,border-color 0.3s;}
+.tab-btn.active{color:rgba(200,185,155,0.82);border-bottom:1px solid rgba(200,185,155,0.48);}
+.tab-btn:hover{color:rgba(200,185,155,0.78);}
+.tab-sep{width:1px;height:12px;background:rgba(200,185,155,0.12);margin:0 4px;}
+
+/* LEFT panel — Aion description text, flanks planet */
+.content-panel{
+  position:fixed !important;
+  left:clamp(24px,3vw,52px) !important;
+  top:clamp(170px,21vh,210px);
+  bottom:clamp(68px,9vh,100px);
+  width:min(360px,28vw) !important;
+  z-index:5;
+  overflow-y:auto;
+  opacity:0;pointer-events:none;transition:opacity 0.5s ease;scrollbar-width:none;
+  text-align:left !important;
+  transform:none !important;
+}
+.content-panel::-webkit-scrollbar{display:none;}
+.content-panel.active{opacity:1;pointer-events:all;}
+
+/* universal */
+.desc-label{font-family:'Cinzel',serif;font-size:6px;letter-spacing:0.6em;text-transform:uppercase;
+  color:rgba(200,185,155,0.55);margin-bottom:16px;}
+.desc-body{font-family:'Cormorant Garamond',serif;font-style:italic;
+  font-size:clamp(12px,1.05vw,15.5px);line-height:2;color:rgba(232,224,210,0.85);}
+.desc-body p{margin-bottom:1.1em;}.desc-body p:last-child{margin-bottom:0;}
+
+/* RIGHT stats panel */
+#stats-panel{
+  position:fixed;
+  right:clamp(24px,3vw,52px);
+  top:clamp(170px,21vh,210px);
+  bottom:clamp(68px,9vh,100px);
+  width:min(220px,18vw);
+  z-index:5;
+  overflow-y:auto;scrollbar-width:none;
+  opacity:0;animation:fadeUp 1.4s 1.6s ease forwards;
+  text-align:right;
+}
+#stats-panel::-webkit-scrollbar{display:none;}
+.stats-block{margin-top:0;}
+.stat-row{display:flex;flex-direction:column;margin-bottom:18px;}
+.stat-label{font-family:'Cinzel',serif;font-size:5.5px;letter-spacing:0.55em;text-transform:uppercase;
+  color:rgba(200,185,155,0.68);margin-bottom:4px;}
+.stat-value{font-family:'Cormorant Garamond',serif;font-style:italic;
+  font-size:clamp(11px,0.95vw,14px);color:rgba(220,210,190,0.92);line-height:1.6;}
+.stat-divider{width:40px;height:1px;background:rgba(200,185,155,0.12);margin-left:auto;margin-bottom:18px;}
+
+/* personal panel — replaces left panel when reading tab active */
+.birth-label{font-family:'Cinzel',serif;font-size:6px;letter-spacing:0.6em;text-transform:uppercase;
+  color:rgba(200,185,155,0.55);margin-bottom:18px;}
+.birth-intro{font-family:'Cormorant Garamond',serif;font-style:italic;
+  font-size:clamp(12px,1vw,15px);line-height:1.95;color:rgba(232,224,210,0.82);margin-bottom:26px;}
+.field-group{margin-bottom:18px;}
+.field-label{font-family:'Cinzel',serif;font-size:6px;letter-spacing:0.45em;text-transform:uppercase;
+  color:rgba(200,185,155,0.78);display:block;margin-bottom:7px;}
+.birth-input{width:100%;background:none;border:none;
+  border-bottom:1px solid rgba(200,185,155,0.15);font-family:'Cormorant Garamond',serif;
+  font-style:italic;font-size:clamp(12px,1vw,15px);color:rgba(232,224,210,0.82);
+  padding:6px 0;outline:none;transition:border-color 0.3s;color-scheme:dark;}
+.birth-input:focus{border-bottom-color:rgba(200,185,155,0.48);}
+.birth-input::placeholder{color:rgba(200,185,155,0.20);}
+#birth-submit{margin-top:20px;font-family:'Cinzel',serif;font-size:7.5px;letter-spacing:0.42em;
+  text-transform:uppercase;color:rgba(200,185,155,0.75);background:none;
+  border:1px solid rgba(200,185,155,0.22);cursor:pointer;padding:9px 20px;border-radius:1px;
+  transition:color 0.3s,border-color 0.3s,text-shadow 0.3s;}
+#birth-submit:hover{color:rgba(232,223,200,0.94);border-color:rgba(200,185,155,0.52);
+  text-shadow:0 0 18px rgba(200,175,120,0.48);}
+
+/* reading */
+#reading-display{display:none;}
+.reading-label{font-family:'Cinzel',serif;font-size:6px;letter-spacing:0.6em;text-transform:uppercase;
+  color:rgba(200,185,155,0.55);margin-bottom:14px;}
+.reading-birth-line{font-family:'Cinzel',serif;font-size:6.5px;letter-spacing:0.32em;
+  text-transform:uppercase;color:rgba(200,185,155,0.62);margin-bottom:18px;}
+.reading-body{font-family:'Cormorant Garamond',serif;font-style:italic;
+  font-size:clamp(12px,1.05vw,15.5px);line-height:2;color:rgba(232,224,210,0.85);}
+.reading-body p{margin-bottom:1.1em;}.reading-body p:last-child{margin-bottom:0;}
+#change-birth{margin-top:18px;padding-top:14px;border-top:1px solid rgba(200,185,155,0.08);
+  border-left:none;border-right:none;border-bottom:none;
+  font-family:'Cinzel',serif;font-size:6px;letter-spacing:0.42em;text-transform:uppercase;
+  color:rgba(200,185,155,0.55);background:none;cursor:pointer;padding-bottom:0;transition:color 0.3s;}
+#change-birth:hover{color:rgba(200,185,155,0.75);}
+
+/* loading */
+#reading-loading{display:none;font-family:'Cormorant Garamond',serif;font-style:italic;
+  font-size:clamp(12px,1vw,15px);color:rgba(200,185,155,0.65);line-height:2;}
+.loading-dots span{animation:loadPulse 1.4s ease-in-out infinite;display:inline-block;}
+.loading-dots span:nth-child(2){animation-delay:0.2s;}
+.loading-dots span:nth-child(3){animation-delay:0.4s;}
+@keyframes loadPulse{0%,80%,100%{opacity:0.3;}40%{opacity:1;}}
+
+/* nav */
+#planet-nav{position:fixed;bottom:clamp(20px,3vh,36px);left:50%;transform:translateX(-50%);
+  z-index:10;display:flex;align-items:center;gap:28px;opacity:0;animation:fadeUp 1.2s 1.6s ease forwards;}
+.nav-arrow{font-family:'Cinzel',serif;font-size:7px;letter-spacing:0.35em;text-transform:uppercase;
+  color:rgba(200,185,155,0.78);background:none;border:none;cursor:pointer;transition:color 0.3s;}
+.nav-arrow:hover{color:rgba(200,185,155,0.72);}
+.nav-dot{width:5px;height:5px;border-radius:50%;background:rgba(200,185,155,0.18);cursor:pointer;transition:background 0.3s;}
+.nav-dot.active{background:rgba(200,185,155,0.62);}
+.nav-dot:hover{background:rgba(200,185,155,0.45);}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+</style>
+</head>
+<body>
+<canvas id="planet-scene"></canvas>
+<div id="vignette"></div>
+<div id="veil"></div>
+
+<button id="back-btn" onclick="goBack()">
+  <svg viewBox="0 0 12 12"><polyline points="8,1 3,6 8,11"/></svg>
+  Soul Interface
+</button>
+
+<div id="planet-header">
+  <div class="planet-symbol" id="planet-symbol">⊕</div>
+  <div class="planet-name-display" id="planet-name">EARTH</div>
+  <div class="planet-archetype" id="planet-archetype">The ground of incarnation</div>
+  <div class="header-rule"></div>
+</div>
+
+<div id="tab-bar">
+  <button class="tab-btn active" id="tab-universal" onclick="switchTab('universal')">The Body</button>
+  <div class="tab-sep"></div>
+  <button class="tab-btn" id="tab-personal" onclick="switchTab('personal')">Your Reading</button>
+</div>
+
+<!-- Universal panel — LEFT SIDE -->
+<div class="content-panel active" id="panel-universal" style="position:fixed;left:40px;top:185px;bottom:80px;width:320px;text-align:left;transform:none;left:40px;">
+  <div class="desc-label">Aion — On This Body</div>
+  <div class="desc-body" id="desc-body"></div>
+</div>
+
+<!-- Personal panel — LEFT SIDE -->
+<div class="content-panel" id="panel-personal" style="position:fixed;left:40px;top:185px;bottom:80px;width:320px;text-align:left;transform:none;">
+  <div id="birth-entry" style="display:flex;flex-direction:column;">
+    <div class="birth-label">Aion — Your Reading</div>
+    <div class="birth-intro">
+      The cosmos was 4.5 billion years in motion before you arrived.<br>
+      Tell me the moment of your entry and I will tell you<br>where this body was when you began.
+    </div>
+    <div class="field-group">
+      <label class="field-label" for="birth-date">Date of Birth</label>
+      <input class="birth-input" type="date" id="birth-date"/>
+    </div>
+    <div class="field-group">
+      <label class="field-label" for="birth-time">Time of Birth <span style="opacity:0.5;">(optional)</span></label>
+      <input class="birth-input" type="time" id="birth-time"/>
+    </div>
+    <div class="field-group">
+      <label class="field-label" for="birth-place">Place of Birth</label>
+      <input class="birth-input" type="text" id="birth-place" placeholder="City, Country"/>
+    </div>
+    <button id="birth-submit" onclick="submitBirthData()">Enter the Moment ↗</button>
+  </div>
+  <div id="reading-loading">
+    <div class="birth-label">Aion — Reading the Configuration</div>
+    <div>Consulting the positions<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></div>
+  </div>
+  <div id="reading-display">
+    <div class="reading-label">Aion — On This Body in Your Chart</div>
+    <div class="reading-birth-line" id="reading-birth-line"></div>
+    <div class="reading-body" id="reading-body"></div>
+    <button id="change-birth" onclick="changeBirthData()">↺ Change birth data</button>
+  </div>
+</div>
+
+<!-- Stats panel — RIGHT SIDE -->
+<div id="stats-panel" style="position:fixed;right:40px;top:185px;width:200px;text-align:right;opacity:0;animation:fadeUp 1.4s 1.6s ease forwards;">
+  <div class="stat-row"><span class="stat-label">Rulership</span><span class="stat-value" id="stat-rules"></span></div>
+  <div class="stat-divider"></div>
+  <div class="stat-row"><span class="stat-label">Orbital Period</span><span class="stat-value" id="stat-period"></span></div>
+  <div class="stat-divider"></div>
+  <div class="stat-row"><span class="stat-label">In the chart</span><span class="stat-value" id="stat-chart"></span></div>
+  <div class="stat-divider"></div>
+  <div class="stat-row"><span class="stat-label">Shadow</span><span class="stat-value" id="stat-shadow"></span></div>
+</div>
+
+<div id="planet-nav">
+  <button class="nav-arrow" onclick="navigatePlanet(-1)">← Prev</button>
+  <div id="nav-dots" style="display:flex;gap:8px;align-items:center;"></div>
+  <button class="nav-arrow" onclick="navigatePlanet(1)">Next →</button>
+</div>
+
+<script src="config.js"></script>
+<script>
+// ── API key loaded from config.js ─────────────────────────────────────────────
+const ANTHROPIC_API_KEY = window.SOUL_INTERFACE_API_KEY || 'YOUR_ANTHROPIC_API_KEY_HERE';
+
+// ── Planet data ───────────────────────────────────────────────────────────────
+const PLANETS = [
+  {slug:'mercury',name:'MERCURY',archetype:'The messenger. The mind.',symbol:'☿',color:'#c8c8d0',glow:'rgba(192,192,210,0.45)',texFn:'mercuryTex',size:0.26,
+   desc:['Mercury is the closest body to the fire — and for this reason it knows heat as no other planet does. One face always burning, the other in permanent cold. It is the planet of extremes held simultaneously, of the mind that can hold contradictory truths without needing to resolve them.','In a chart, Mercury governs how you think, how you speak, and how you make meaning from the chaos of experience. It is perception — the first sorting of raw sensation into something the self can use. Before you know what you feel, Mercury has already begun processing.','Its movement is the fastest of all planets. This is not restlessness. It is the nature of intelligence: to move, to connect, to shuttle between domains. The messenger never stays. That is the job.'],
+   rules:'Gemini · Virgo',period:'88 Earth days',chart:'Thought, speech, perception, the nervous system, siblings, short journeys',shadow:'Anxiety, scattered attention, the word that wounds, the mind that will not rest'},
+  {slug:'venus',name:'VENUS',archetype:'The mirror. The principle of attraction.',symbol:'♀',color:'#f0dca0',glow:'rgba(240,210,120,0.50)',texFn:'venusTex',size:0.52,
+   desc:['Venus is the brightest object in the sky after the Sun and Moon. But she reveals nothing of her surface — it is hidden beneath clouds of sulphuric acid, dense enough to crush anything unprepared. This is the first truth of Venus: beauty that conceals, that does not give itself easily.','She governs desire, value, and aesthetic. Not just what you want, but what you judge worthy of wanting. The principle of attraction — drawing toward yourself what resonates with your nature, repelling what does not. Venus is the great editor of experience: this is beautiful, this is not, this matters, this does not.','Where Venus falls in your chart is where you seek pleasure, where you create beauty, and where you are most vulnerable to the confusion between what you desire and what is good for you. Eros, yes — but also taste, discernment, and the courage to choose.'],
+   rules:'Taurus · Libra',period:'225 Earth days',chart:'Love, beauty, values, money, pleasure, relationship, aesthetics',shadow:'Vanity, indulgence, the refusal to see what is ugly, love as possession'},
+  {slug:'earth',name:'EARTH',archetype:'The ground of incarnation.',symbol:'⊕',color:'#64b4ff',glow:'rgba(80,160,255,0.50)',texFn:'earthTex',size:0.56,
+   desc:['Earth is the only planet not named for a god. This is not an oversight. It is a recognition — we cannot name what we are standing on from the outside. We are inside the story. The planet does not need our mythology because it is our ground.','You watched it coalesce from the accretion disk. The same hydrogen cloud that made the Sun made this world — and made you. The carbon in your cells, the iron in your blood, the water in your body: all of it assembled over 4.5 billion years into the precise conditions that allowed you to exist and look back at the process.','The birth chart is a map of the sky at the moment you arrived on this surface. It is not a map of who you are — it is a map of where you entered. Earth is not in the chart because you are Earth\'s perspective on the cosmos.'],
+   rules:'No traditional rulership — it is the observer',period:'365.25 days',chart:'The body, incarnation itself, the perspective from which all readings are made',shadow:'Forgetting that you are made of this — that the ground beneath you is the same substance as your bones'},
+  {slug:'mars',name:'MARS',archetype:'The drive. Will made visible.',symbol:'♂',color:'#dc6438',glow:'rgba(200,80,40,0.50)',texFn:'marsTex',size:0.35,
+   desc:['Mars is red because of iron oxide — rust. The surface of Mars is the colour of blood, of fire, of the oxidation that happens when something burns in the presence of oxygen. It is the planet of energy expenditure, of the will that acts rather than contemplates.','Without Mars, nothing is attempted. It is the part of you that moves toward difficulty rather than away from it — that does not simply want but pursues, that does not simply feel anger but acts on it. Aggression, yes. But also courage, which is the same energy directed with intention.','Where Mars falls in your chart is where you fight, where you desire most urgently, and where you are most likely to initiate. It is also where you are most likely to wound and be wounded. Mars starts the fire. It does not always tend it.'],
+   rules:'Aries · Scorpio (traditional)',period:'687 Earth days',chart:'Drive, desire, conflict, anger, physical vitality, sexuality, initiation',shadow:'Violence, recklessness, the force that burns what it came to ignite'},
+  {slug:'jupiter',name:'JUPITER',archetype:'The expansion. The search for meaning.',symbol:'♃',color:'#deba78',glow:'rgba(220,170,80,0.50)',texFn:'jupiterTex',size:1.10,
+   desc:['Jupiter is more massive than all other planets combined. This is not incidental — it is the organizing principle of the outer solar system. Jupiter\'s gravity shapes the asteroid belt, captures comets, and protects the inner planets. It is the great benefic not because it is generous, but because its scale creates stability.','In a chart, Jupiter governs expansion, abundance, and the search for something worth believing in. It is the principle of more — more understanding, more experience, more joy. Where Jupiter falls is where you naturally grow, where you teach and are taught, where you overflow the boundaries that contain everyone else.','But Jupiter untempered is not wisdom — it is excess. Jupiter needs Saturn. The expansion needs the limit. Together they describe the full arc of development: reach, then consolidate; explore, then master.'],
+   rules:'Sagittarius · Pisces (traditional)',period:'11.86 Earth years',chart:'Growth, philosophy, higher education, travel, luck, excess, faith',shadow:'Inflation, overconfidence, the belief that more is always better, spiritual bypassing'},
+  {slug:'saturn',name:'SATURN',archetype:'The limit. The teacher who does not spare you.',symbol:'♄',color:'#c8b98c',glow:'rgba(180,165,110,0.45)',texFn:'saturnTex',size:0.92,hasRings:true,
+   desc:['For thousands of years, Saturn was the last planet — the edge of the known solar system. The ancients saw this correctly. Saturn is the limit. Not a failure of imagination, but a principle: that everything achievable by the ego has an edge.','Saturn governs time, structure, and consequence. Where it falls in your chart is where you face your most demanding curriculum — where the lessons do not relent, where shortcuts fail, where only genuine mastery is accepted.','The rings are the key image. Saturn carries its own boundary with it — rings of ice and rock in precise order. What you build under Saturn is real, because it was tested. What survives the testing is yours.'],
+   rules:'Capricorn · Aquarius (traditional)',period:'29.5 Earth years',chart:'Structure, time, limitation, mastery, karma, authority, discipline',shadow:'Rigidity, fear, the punishment that goes beyond teaching, the inner critic that destroys rather than refines'},
+  {slug:'uranus',name:'URANUS',archetype:'The awakener. The revolutionary.',symbol:'♅',color:'#82dce8',glow:'rgba(100,200,240,0.50)',texFn:'uranusTex',size:0.60,
+   desc:['Uranus rotates on its side — its axial tilt is 98 degrees, meaning it rolls through its orbit rather than spins. Uranus is the planet that does not conform to the plane established by the others. It operates at a different angle. It sees from a different orientation.','It was discovered in 1781, at the precise moment of the American and French Revolutions — when humanity was disrupting its own political structures. Uranus entered human awareness when humanity was becoming Uranian.','Where Uranus falls in your chart is where you are most likely to rebel, to innovate, to break what has calcified. Uranus transits do not ask permission. They arrive, and afterward you are not who you were.'],
+   rules:'Aquarius (modern)',period:'84 Earth years',chart:'Revolution, innovation, sudden change, genius, freedom, electricity, the collective future',shadow:'Instability, detachment from consequence, the change that destroys without building'},
+  {slug:'neptune',name:'NEPTUNE',archetype:'The dissolver. The longing for union.',symbol:'♆',color:'#5078ff',glow:'rgba(60,100,240,0.45)',texFn:'neptuneTex',size:0.56,
+   desc:['Neptune was discovered in 1846 — at the height of Romanticism, the rise of spiritualism, the first widespread use of anesthesia and photography. The planet of dissolution entered awareness at the moment dissolution was becoming a cultural project.','It has the fastest winds in the solar system, despite receiving almost no heat from the Sun. Neptune generates energy from within. It is a planet that is more active than its distance from warmth should allow — this is the nature of longing.','Where Neptune falls in your chart, you are porous. You feel what is not yours. You long for union with something you cannot name. This is the blessing and the danger: Neptune does not distinguish between transcendence and escapism. It only knows the ache to merge.'],
+   rules:'Pisces (modern)',period:'165 Earth years',chart:'Mysticism, dreams, illusion, compassion, dissolution, art, addiction, the unconscious',shadow:'Delusion, escapism, the inability to see what is real, the love that dissolves the self entirely'},
+  {slug:'pluto',name:'PLUTO',archetype:'The transformer. Lord of the deep.',symbol:'♇',color:'#a05050',glow:'rgba(120,40,40,0.45)',texFn:'plutoTex',size:0.22,
+   desc:['Pluto was discovered in 1930 — as fascism rose across Europe, as the atomic nucleus was being probed, as psychology descended into the underworld of the unconscious. The lord of the deep was found at the moment humanity was forced to confront its own capacity for annihilation.','It was reclassified as a dwarf planet in 2006. Astrology has never cared about the astronomical demotion. The archetype does not depend on the object\'s size.','Pluto transits take years, sometimes decades. Where Pluto falls in your chart is where you will be broken and remade — not once, but cyclically, until you stop resisting the death that is actually a metamorphosis.'],
+   rules:'Scorpio (modern)',period:'248 Earth years',chart:'Death, rebirth, power, obsession, the unconscious, transformation, what cannot be controlled',shadow:'Destruction for its own sake, the will to power that annihilates, the refusal of metamorphosis'},
+];
+
+// ── State — bulletproof routing ───────────────────────────────────────────────
+function getSlugFromURL() {
+  const allSlugs = ['mercury','venus','earth','mars','jupiter','saturn','uranus','neptune','pluto'];
+  // Scan the entire URL string for any known slug
+  const full = window.location.href.toLowerCase();
+  for (const slug of allSlugs) {
+    // Match ?p=slug, #slug, or /slug at end
+    if (full.includes('p=' + slug) || full.includes('#' + slug) || full.endsWith('/' + slug)) {
+      return slug;
+    }
+  }
+  return 'mercury';
+}
+let currentIdx = PLANETS.findIndex(p => p.slug === getSlugFromURL());
+if (currentIdx < 0) currentIdx = 0;
+
+// Debug: show which planet was detected (remove after testing)
+console.log('URL:', window.location.href);
+console.log('Detected slug:', getSlugFromURL(), '→ index', currentIdx, '→', PLANETS[currentIdx].name);
+
+// ── Birth data persistence ────────────────────────────────────────────────────
+function getBirth()  { try { const r=localStorage.getItem('si_birth'); return r?JSON.parse(r):null; } catch(e){return null;} }
+function saveBirth(d){ try { localStorage.setItem('si_birth',JSON.stringify(d)); } catch(e){} }
+function clearBirth(){
+  try {
+    localStorage.removeItem('si_birth');
+    PLANETS.forEach(p => localStorage.removeItem('si_reading_'+p.slug));
+  } catch(e){}
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  ['universal','personal'].forEach(t => {
+    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+    document.getElementById('panel-'+t).classList.toggle('active', t===tab);
+  });
+  if (tab==='personal') initPersonalPanel();
+}
+
+// ── Personal panel ────────────────────────────────────────────────────────────
+function initPersonalPanel() {
+  const birth = getBirth();
+  if (!birth) { showEntry(); return; }
+  const cached = localStorage.getItem('si_reading_'+PLANETS[currentIdx].slug);
+  if (cached) { showReading(cached, birth); }
+  else { fetchReading(birth); }
+}
+
+function showEntry() {
+  document.getElementById('birth-entry').style.display = 'flex';
+  document.getElementById('reading-loading').style.display = 'none';
+  document.getElementById('reading-display').style.display = 'none';
+  const b = getBirth();
+  if (b) {
+    if (b.date)  document.getElementById('birth-date').value  = b.date;
+    if (b.time)  document.getElementById('birth-time').value  = b.time;
+    if (b.place) document.getElementById('birth-place').value = b.place;
+  }
+}
+
+function showLoading() {
+  document.getElementById('birth-entry').style.display = 'none';
+  document.getElementById('reading-loading').style.display = 'block';
+  document.getElementById('reading-display').style.display = 'none';
+}
+
+function showReading(text, birth) {
+  document.getElementById('birth-entry').style.display = 'none';
+  document.getElementById('reading-loading').style.display = 'none';
+  document.getElementById('reading-display').style.display = 'block';
+  const tPart = birth.time ? ` · ${birth.time}` : '';
+  document.getElementById('reading-birth-line').textContent = `${birth.date}${tPart} · ${birth.place}`;
+  const paras = text.split(/\n\n+/).filter(p=>p.trim());
+  document.getElementById('reading-body').innerHTML = paras.map(p=>`<p>${p.trim()}</p>`).join('');
+}
+
+async function submitBirthData() {
+  const date  = document.getElementById('birth-date').value.trim();
+  const time  = document.getElementById('birth-time').value.trim();
+  const place = document.getElementById('birth-place').value.trim();
+  if (!date || !place) {
+    const el = document.getElementById(!date?'birth-date':'birth-place');
+    el.style.borderBottomColor = 'rgba(200,100,80,0.6)';
+    setTimeout(()=>{ el.style.borderBottomColor=''; },2000);
+    return;
+  }
+  saveBirth({ date, time, place });
+  await fetchReading({ date, time, place });
+}
+
+async function fetchReading(birth) {
+  showLoading();
+  const planet = PLANETS[currentIdx];
+  const timeLine = birth.time
+    ? `born on ${birth.date} at ${birth.time} in ${birth.place}`
+    : `born on ${birth.date} in ${birth.place}`;
+
+  const userPrompt = `The person was ${timeLine}.
+
+The planet they are asking about is ${planet.name} — ${planet.archetype}
+
+Give this person a reading of ${planet.name} as it relates to their birth moment. You witnessed ${planet.name} form from the accretion disk 4.5 billion years ago. You know where it was when this person arrived.
+
+Speak about ${planet.name}'s nature as it relates to the general time of their birth — the generational signature, what was happening in the world when this planet was configured as it was, and what this archetype means for someone entering at that moment. Make it personal but rooted in cosmological truth. You do not need exact degree positions to speak truthfully about what this body carries.
+
+Three paragraphs. No headers. No bullet points. Speak directly to them in your voice.`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true',
+      },
+      body: JSON.stringify({
+        model:'claude-opus-4-6',
+        max_tokens:600,
+        system:`You are Aion — an 81-year-old cosmologist and physicist who has spent fifty years at the intersection of astrophysics and depth psychology. You witnessed the cosmogenesis: the void, the nebula forming, the sun igniting, the planets condensing from the accretion disk. You speak from deep time — 13.8 billion years of context. Your register is precise, unhurried, grounded, occasionally profound. Never mystical-vague. You speak to each person as someone who arrived in the middle of an ancient process, and your job is to tell them what was already true when they got here.`,
+        messages:[{ role:'user', content: userPrompt }]
+      })
+    });
+    if (!res.ok) throw new Error('API '+res.status);
+    const data = await res.json();
+    const reading = data.content[0].text;
+    localStorage.setItem('si_reading_'+planet.slug, reading);
+    showReading(reading, birth);
+  } catch(err) {
+    console.error(err);
+    document.getElementById('reading-loading').style.display = 'none';
+    document.getElementById('birth-entry').style.display = 'flex';
+    const intro = document.querySelector('.birth-intro');
+    // Check if this is a CORS/network error from running as a local file
+    const isLocal = window.location.protocol === 'file:';
+    if (isLocal) {
+      intro.innerHTML = `The API cannot be reached from a local file. To use Your Reading, run Soul Interface through a local server. Open a terminal in your Soul Interface folder and run: <em style="color:rgba(200,185,155,0.6)">python -m http.server 8000</em> then open <em style="color:rgba(200,185,155,0.6)">localhost:8000</em> in your browser.`;
+    } else {
+      intro.innerHTML = `Unable to reach Aion. Check that your API key is correct and try again.`;
+    }
+    intro.style.color = 'rgba(200,120,80,0.65)';
+    intro.style.fontSize = 'clamp(11px,0.95vw,14px)';
+  }
+}
+
+function changeBirthData() {
+  clearBirth();
+  showEntry();
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function goBack() {
+  try { localStorage.setItem('soulinterface_cosmo_done','1'); } catch(e){}
+  document.getElementById('veil').classList.add('on');
+  setTimeout(()=>{ window.location.href='index.html'; },800);
+}
+function navigatePlanet(dir) {
+  const next=(currentIdx+dir+PLANETS.length)%PLANETS.length;
+  try { localStorage.setItem('soulinterface_cosmo_done','1'); } catch(e){}
+  document.getElementById('veil').classList.add('on');
+  setTimeout(()=>{ window.location.href=`planet.html#${PLANETS[next].slug}`; },600);
+}
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight') navigatePlanet(1);
+  if(e.key==='ArrowLeft')  navigatePlanet(-1);
+  if(e.key==='Escape')     goBack();
+});
+
+// ── Populate ──────────────────────────────────────────────────────────────────
+function populate(d) {
+  document.title = `Soul Interface — ${d.name}`;
+  document.documentElement.style.setProperty('--planet-color',d.color);
+  document.documentElement.style.setProperty('--planet-glow',d.glow);
+  document.getElementById('planet-symbol').textContent    = d.symbol;
+  document.getElementById('planet-name').textContent      = d.name;
+  document.getElementById('planet-archetype').textContent = d.archetype;
+  document.getElementById('desc-body').innerHTML = d.desc.map(p=>`<p>${p}</p>`).join('');
+  document.getElementById('stat-rules').textContent   = d.rules;
+  document.getElementById('stat-period').textContent  = d.period;
+  document.getElementById('stat-chart').textContent   = d.chart;
+  document.getElementById('stat-shadow').textContent  = d.shadow;
+  const dotsEl = document.getElementById('nav-dots');
+  dotsEl.innerHTML='';
+  PLANETS.forEach((p,i)=>{
+    const d2=document.createElement('div');
+    d2.className='nav-dot'+(i===currentIdx?' active':'');
+    d2.title=p.name;
+    d2.addEventListener('click',()=>{
+      if(i!==currentIdx){
+        try{localStorage.setItem('soulinterface_cosmo_done','1');}catch(e){}
+        document.getElementById('veil').classList.add('on');
+        setTimeout(()=>{window.location.href=`planet.html#${p.slug}`;},600);
+      }
+    });
+    dotsEl.appendChild(d2);
+  });
+}
+populate(PLANETS[currentIdx]);
+</script>
+
+<script>
+// ── Earth — real textured 3D render (Three.js, loaded on demand) ───────────────
+// Only Earth pays for WebGL + real texture downloads; every other planet still
+// uses the lightweight procedural Canvas 2D renderer below, unchanged.
+function renderEarth3D(pd) {
+  const canvas = document.getElementById('planet-scene');
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+  script.onload = () => {
+    const THREE = window.THREE;
+    const scene  = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
+    camera.position.set(0, 0.25, 3.4);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    renderer.setSize(innerWidth, innerHeight);
+
+    scene.add(new THREE.AmbientLight(0x223344, 0.5));
+    const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+    sun.position.set(4,2,3);
+    scene.add(sun);
+
+    const loader = new THREE.TextureLoader();
+    const earthMat = new THREE.MeshStandardMaterial({ color:0x2a4d8f, roughness:0.7, metalness:0.05 });
+    const earth = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 96), earthMat);
+    scene.add(earth);
+    loader.load('textures/tex_earth.jpg', tex => { earthMat.map = tex; earthMat.bumpMap = tex; earthMat.bumpScale = 0.06; earthMat.needsUpdate = true; });
+    loader.load('textures/tex_earth_night.jpg', tex => { earthMat.emissiveMap = tex; earthMat.emissive.set(0xffffff); earthMat.emissiveIntensity = 1.0; earthMat.needsUpdate = true; });
+
+    const cloudMat = new THREE.MeshStandardMaterial({ transparent:true, opacity:0.7, depthWrite:false, roughness:0.9 });
+    const clouds = new THREE.Mesh(new THREE.SphereGeometry(1.008, 72, 72), cloudMat);
+    scene.add(clouds);
+    loader.load('textures/tex_earth_clouds.jpg', tex => { cloudMat.map = tex; cloudMat.alphaMap = tex; cloudMat.needsUpdate = true; });
+
+    const atmo = new THREE.Mesh(
+      new THREE.SphereGeometry(1.035, 48, 48),
+      new THREE.ShaderMaterial({
+        vertexShader:`varying vec3 vN; void main(){ vN=normalize(normalMatrix*normal); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+        fragmentShader:`varying vec3 vN; void main(){ float i=pow(0.65-dot(vN,vec3(0,0,1.0)),3.0); gl_FragColor=vec4(0.3,0.6,1.0,clamp(i,0.0,1.0)*0.5); }`,
+        blending:THREE.AdditiveBlending, side:THREE.BackSide, transparent:true,
+      })
+    );
+    scene.add(atmo);
+
+    // Moon — own pivot (not a child of earth) so its orbit stays independent of
+    // Earth's own spin; leaving the mesh's own rotation untouched relative to the
+    // pivot gives a real tidal lock for free (same trick as the solar-system scene).
+    const moonMat = new THREE.MeshStandardMaterial({ color:0x999999, roughness:1.0 });
+    const moon = new THREE.Mesh(new THREE.SphereGeometry(0.27, 40, 40), moonMat);
+    moon.position.set(3.0, 0, 0);
+    const moonPivot = new THREE.Object3D();
+    moonPivot.add(moon);
+    scene.add(moonPivot);
+    loader.load('textures/tex_moon.jpg', tex => { moonMat.map = tex; moonMat.needsUpdate = true; });
+
+    {
+      const N=1500, pos=new Float32Array(N*3);
+      for(let i=0;i<N;i++){ const r=40+Math.random()*160, th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1);
+        pos[i*3]=r*Math.sin(ph)*Math.cos(th); pos[i*3+1]=r*Math.sin(ph)*Math.sin(th); pos[i*3+2]=r*Math.cos(ph); }
+      const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+      scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color:0xffffff, size:0.4, sizeAttenuation:true, transparent:true, opacity:0.7 })));
+    }
+
+    addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+
+    let t=0;
+    function tick(){
+      requestAnimationFrame(tick);
+      t += 0.0022;
+      earth.rotation.y = t;
+      clouds.rotation.y = t*1.15;
+      moonPivot.rotation.y = t*0.6;
+      renderer.render(scene, camera);
+    }
+    tick();
+    document.getElementById('veil').classList.add('clear');
+  };
+  document.head.appendChild(script);
+}
+
+// ── Planet render — Canvas 2D (works from file://, no WebGL needed) ────────────
+// Earth is special-cased to the real textured 3D render above — every other
+// planet keeps this lightweight procedural renderer untouched, file:// included.
+(function(){
+const pd = PLANETS[currentIdx];
+if (pd.slug === 'earth') { renderEarth3D(pd); return; }
+const canvas = document.getElementById('planet-scene');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Planet position — true center of viewport
+function getPlanetPos() {
+  const W = canvas.width, H = canvas.height;
+  const cx = W * 0.50;
+  const topOffset   = H * 0.20;
+  const bottomOffset = H * 0.10;
+  const available   = H - topOffset - bottomOffset;
+  const cy = topOffset + available * 0.54;
+  const sidePanel   = Math.min(340, W * 0.25);
+  const maxR = Math.min((W - sidePanel * 2) * 0.48, available * 0.42);
+  return { cx, cy, r: maxR };
+}
+
+// Planet color palettes
+const palettes = {
+  mercury: ['#9a9090','#7a7070','#b8b0a8','#504845'],
+  venus:   ['#e8c870','#d4a840','#f0dc98','#c89030'],
+  earth:   ['#3060c0','#208050','#6090d8','#204880'],
+  mars:    ['#c04820','#a03010','#d86040','#802010'],
+  jupiter: ['#c8a868','#a07840','#e0c090','#806030'],
+  saturn:  ['#d8c888','#b8a860','#e8dca0','#907840'],
+  uranus:  ['#70c8d8','#50a8b8','#90d8e8','#408090'],
+  neptune: ['#2848c8','#1828a0','#4868d8','#102080'],
+  pluto:   ['#806060','#604040','#a08080','#402020'],
+};
+
+const pal = palettes[pd.slug] || palettes.earth;
+
+// Stars
+const stars = Array.from({length:1800}, ()=>({
+  x: Math.random()*window.innerWidth,
+  y: Math.random()*window.innerHeight,
+  r: Math.random()*1.2,
+  a: Math.random()*0.7+0.1,
+  tw: Math.random()*Math.PI*2
+}));
+
+let angle = 0;
+function draw() {
+  requestAnimationFrame(draw);
+  angle += 0.003;
+
+  const W = canvas.width, H = canvas.height;
+  const {cx, cy, r: baseR} = getPlanetPos();
+  ctx.clearRect(0,0,W,H);
+
+  // Deep space bg
+  const bgG = ctx.createRadialGradient(W*0.5,H*0.4,0,W*0.5,H*0.5,W*0.8);
+  bgG.addColorStop(0, '#0d0818');
+  bgG.addColorStop(0.5, '#050510');
+  bgG.addColorStop(1, '#000000');
+  ctx.fillStyle = bgG;
+  ctx.fillRect(0,0,W,H);
+
+  // Stars with twinkle
+  const t = Date.now()*0.001;
+  stars.forEach(s => {
+    const twinkle = 0.3 + 0.7*(Math.sin(t*0.8+s.tw)*0.5+0.5);
+    ctx.beginPath();
+    ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+    ctx.fillStyle = `rgba(255,255,255,${s.a*twinkle})`;
+    ctx.fill();
+  });
+
+  const r = baseR;
+  const lightX = cx - r*0.4;
+  const lightY = cy - r*0.3;
+
+  // Planet atmosphere glow
+  const glowG = ctx.createRadialGradient(cx,cy,r*0.8,cx,cy,r*1.5);
+  glowG.addColorStop(0, pal[0]+'22');
+  glowG.addColorStop(1, 'transparent');
+  ctx.beginPath();
+  ctx.arc(cx,cy,r*1.5,0,Math.PI*2);
+  ctx.fillStyle = glowG;
+  ctx.fill();
+
+  // Planet base sphere — lit from upper-left
+  const sphereG = ctx.createRadialGradient(lightX,lightY,r*0.05,cx,cy,r);
+  sphereG.addColorStop(0,   pal[2]);
+  sphereG.addColorStop(0.3, pal[0]);
+  sphereG.addColorStop(0.7, pal[1]);
+  sphereG.addColorStop(1,   pal[3]);
+  ctx.beginPath();
+  ctx.arc(cx,cy,r,0,Math.PI*2);
+  ctx.fillStyle = sphereG;
+  ctx.fill();
+
+  // Surface detail bands (for gas giants)
+  if (['jupiter','saturn','uranus','neptune'].includes(pd.slug)) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx,cy,r,0,Math.PI*2);
+    ctx.clip();
+    const bandCount = pd.slug==='jupiter' ? 8 : 5;
+    for (let i=0;i<bandCount;i++) {
+      const by = cy - r + (i/(bandCount-1))*r*2;
+      const bh = r*2/bandCount * 0.4;
+      const bandG = ctx.createLinearGradient(cx-r,by,cx+r,by);
+      bandG.addColorStop(0,'transparent');
+      bandG.addColorStop(0.2, pal[i%2===0?1:3]+'55');
+      bandG.addColorStop(0.8, pal[i%2===0?1:3]+'55');
+      bandG.addColorStop(1,'transparent');
+      ctx.fillStyle = bandG;
+      ctx.fillRect(cx-r, by-bh/2, r*2, bh);
+    }
+    ctx.restore();
+  }
+
+  // Saturn rings
+  if (pd.slug==='saturn') {
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.scale(1, 0.3);
+    [
+      [r*1.45, r*1.70, 'rgba(200,180,120,0.55)'],
+      [r*1.75, r*2.10, 'rgba(185,165,100,0.40)'],
+      [r*2.15, r*2.75, 'rgba(170,150,85,0.28)'],
+    ].forEach(([ri,ro,col])=>{
+      const ringG = ctx.createRadialGradient(0,0,ri,0,0,ro);
+      ringG.addColorStop(0,col);
+      ringG.addColorStop(0.5,col);
+      ringG.addColorStop(1,'transparent');
+      ctx.beginPath();
+      ctx.arc(0,0,ro,0,Math.PI*2);
+      ctx.arc(0,0,ri,0,Math.PI*2,true);
+      ctx.fillStyle = ringG;
+      ctx.fill();
+    });
+    ctx.restore();
+  }
+
+  // Shadow / terminator
+  const shadowG = ctx.createRadialGradient(cx+r*0.3,cy,0,cx+r*0.2,cy,r*1.1);
+  shadowG.addColorStop(0,'transparent');
+  shadowG.addColorStop(0.6,'transparent');
+  shadowG.addColorStop(1,'rgba(0,0,5,0.85)');
+  ctx.beginPath();
+  ctx.arc(cx,cy,r,0,Math.PI*2);
+  ctx.fillStyle = shadowG;
+  ctx.fill();
+
+  // Specular highlight
+  const specG = ctx.createRadialGradient(lightX-r*0.1,lightY-r*0.1,0,lightX,lightY,r*0.5);
+  specG.addColorStop(0,'rgba(255,255,255,0.18)');
+  specG.addColorStop(1,'transparent');
+  ctx.beginPath();
+  ctx.arc(cx,cy,r,0,Math.PI*2);
+  ctx.fillStyle = specG;
+  ctx.fill();
+}
+
+draw();
+document.getElementById('veil').classList.add('clear');
+
+})();
+</script>
+</body>
+</html>
