@@ -57,9 +57,22 @@ Files committed:
 
 **Deliberately left out**: the two screenshots Ricky shared mid-conversation (copied into `textures/` for reference, not real project assets — didn't add them to git) and the pre-existing zero-content line-ending diff on the Maren doc (harmless, carried over from Session 11, still unresolved).
 
+---
+
+### Part 4 — Earth's Landing Page Already Had the Real Render (Verification Only)
+
+Ricky shared two screenshots comparing a standalone "Earth Texture Test" demo (real Blue Marble + tidally-locked moon, `localhost:8420`) against the live Earth reading page (`localhost:8500/planet.html?p=earth`, tab "Soul Interface — EARTH"), which showed a generic blue/green gradient placeholder instead — and asked for the real texture to appear there instead, moon included.
+
+Before building anything, checked the *actual current* `planet.html` (already committed in this session, `2f3c273`) — it turned out to already contain a complete `renderEarth3D()` function: real `tex_earth.jpg` surface with bump mapping, `tex_earth_night.jpg` as an emissive city-lights layer, animated cloud layer, additive atmosphere-glow shader, and a moon on its own orbital pivot for a genuine tidal lock, all gated behind `if (pd.slug === 'earth') { renderEarth3D(pd); return; }` so every other planet keeps the lightweight Canvas 2D renderer untouched.
+
+Served the real file fresh (`localhost:8501`) and screenshotted it — confirmed it already renders exactly what Ricky asked for. The gradient-orb screenshot he'd seen was from a **stale server** on a different port/tab, not the current file. No code changes were needed; this was pure verification. Moon orbits in and out of frame over ~2-3 minutes (realistic but not always visible at a glance) — flagged as an open question, not yet changed either way.
+
+---
+
 ### Next Session
 
 - These commits are local only — push to `origin/master` whenever Ricky's ready.
 - The Session 12 nebula work is already merged to `master` and pushed from earlier today.
 - `index.html`/`planet.html` now exist in **two places** (repo root and `Aion/Frontend/Code/`) as literal copies, not symlinks — future edits to one won't propagate to the other. Worth deciding whether that's the intended long-term structure or just a findability stopgap.
 - Sun is still procedural-only in the *main* `index.html`/`planet.html` scenes — `sun-texture-test.html` is a standalone proof-of-concept, not wired into the real scene yet.
+- Earth's real 3D render already works end-to-end on the live landing page — confirmed working, nothing pending here except the open moon-framing question (leave the realistic slow orbit, or pull it closer/keep it always in view?).
