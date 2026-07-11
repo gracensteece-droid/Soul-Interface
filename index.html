@@ -1869,6 +1869,23 @@ const planets = pData.map((pd, i) => {
     mesh.add(clouds);
     // Clouds rotate slightly faster than planet
     mesh.userData.clouds = clouds;
+
+    // Moon — NOT parented to the Earth mesh, since a child would inherit Earth's own
+    // day/night spin and wobble around at spin speed instead of a real independent
+    // orbit. Instead it's a top-level pivot whose position is copied from Earth's
+    // mesh each frame in animate() (same pattern as solarFlareDepthMesh below).
+    // Leaving the moon's own rotation untouched relative to its pivot is what
+    // produces a real tidal lock — same face always toward Earth — for free.
+    const moonMat = new THREE.MeshStandardMaterial({
+      color: 0x999999, roughness: 1.0, metalness: 0,
+    });
+    const moon = new THREE.Mesh(new THREE.SphereGeometry(pd.r * 0.27, 48, 48), moonMat);
+    moon.position.set(pd.r * 3.0, 0, 0);
+    const moonPivot = new THREE.Object3D();
+    moonPivot.add(moon);
+    scene.add(moonPivot);
+    mesh.userData.moonPivot = moonPivot;
+    window._moonMaterial = moonMat;
   }
 
   // ── Atmospheric rim glow ──────────────────────────────────────────────────
@@ -1918,6 +1935,43 @@ const planets = pData.map((pd, i) => {
 
   return { mesh, orbitMesh: ot, orbitHalo: og, d: pd.d, spd: pd.spd, angle: Math.random() * Math.PI * 2, inc: (Math.random() - 0.5) * 0.13 };
 });
+
+// ── Real photographic textures — hot-swap Earth once loaded ────────────────────
+// Earth starts out on the same procedural CanvasTexture as every other planet
+// (window._planetMaterials[2]) so there's no blank/loading gap. Whichever of these
+// finish loading just swap in over top — if a file is missing (textures/ not
+// populated via download_textures.py), that piece silently stays procedural.
+{
+  const texLoader = new THREE.TextureLoader();
+  const earthMat  = window._planetMaterials[2];
+  const cloudMesh = planets[2].mesh.userData.clouds;
+  const moonMesh  = planets[2].mesh.userData.moonPivot.children[0];
+
+  texLoader.load('textures/tex_earth.jpg', tex => {
+    earthMat.map = tex;
+    earthMat.bumpMap = tex;
+    earthMat.needsUpdate = true;
+  });
+  texLoader.load('textures/tex_earth_night.jpg', tex => {
+    earthMat.emissiveMap = tex;
+    earthMat.emissive.set(0xffffff);
+    earthMat.emissiveIntensity = 1.0;
+    earthMat.needsUpdate = true;
+  });
+  if (cloudMesh) {
+    texLoader.load('textures/tex_earth_clouds.jpg', tex => {
+      cloudMesh.material.map = tex;
+      cloudMesh.material.alphaMap = tex;
+      cloudMesh.material.needsUpdate = true;
+    });
+  }
+  if (moonMesh) {
+    texLoader.load('textures/tex_moon.jpg', tex => {
+      moonMesh.material.map = tex;
+      moonMesh.material.needsUpdate = true;
+    });
+  }
+}
 
 // ── Asteroid belt ─────────────────────────────────────────────────────────────
 const beltMats = []; // stored so we can hide during early cosmo phases
@@ -3490,6 +3544,11 @@ function animate() {
     // Cloud layer rotates slightly faster than planet
     if (p.mesh.userData.clouds) {
       p.mesh.userData.clouds.rotation.y += cosmoPaused ? 0 : 0.0008;
+    }
+    // Moon — follow Earth's position, orbit independently of Earth's own spin
+    if (p.mesh.userData.moonPivot) {
+      p.mesh.userData.moonPivot.position.copy(p.mesh.position);
+      if (!cosmoPaused) p.mesh.userData.moonPivot.rotation.y += 0.0016;
     }
     p.orbitMesh.material.uniforms.time.value    = t;
     p.orbitMesh.material.uniforms.opacity.value = p.orbitMesh.material.opacity;

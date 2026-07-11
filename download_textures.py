@@ -23,6 +23,7 @@ TEXTURES = {
     'tex_earth.jpg':        'https://www.solarsystemscope.com/textures/download/2k_earth_daymap.jpg',
     'tex_earth_clouds.jpg': 'https://www.solarsystemscope.com/textures/download/2k_earth_clouds.jpg',
     'tex_earth_night.jpg':  'https://www.solarsystemscope.com/textures/download/2k_earth_nightmap.jpg',
+    'tex_moon.jpg':         'https://www.solarsystemscope.com/textures/download/2k_moon.jpg',
     'tex_mars.jpg':         'https://www.solarsystemscope.com/textures/download/2k_mars.jpg',
     'tex_jupiter.jpg':      'https://www.solarsystemscope.com/textures/download/2k_jupiter.jpg',
     'tex_saturn.jpg':       'https://www.solarsystemscope.com/textures/download/2k_saturn.jpg',
@@ -80,4 +81,4 @@ if __name__ == '__main__':
         print('Installing requests...')
         os.system(f'{sys.executable} -m pip install requests')
         import requests
-    download()1
+    download()
