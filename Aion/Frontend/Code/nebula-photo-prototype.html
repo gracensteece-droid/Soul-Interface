@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Nebula — Photo Prototype (Pillars of Creation)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{position:fixed;inset:0}
+#info{
+  position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+  font-family:monospace;font-size:9px;letter-spacing:0.25em;
+  color:rgba(200,175,135,0.16);pointer-events:none;
+  text-align:center;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="info">DRAG · SCROLL TO ZOOM<br/>PILLARS OF CREATION — NASA / ESA / HUBBLE (2014 WFC3-UVIS)</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+window.onerror = function(msg,src,line){
+  document.body.innerHTML += `<div style="position:fixed;bottom:20px;left:20px;right:20px;background:#1a0000;color:#ff8080;font-family:monospace;font-size:12px;padding:16px;z-index:9999;border:1px solid #660000;">JS Error (line ${line}): ${msg}</div>`;
+};
+
+const canvas   = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000308, 1);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 2000);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+
+// ── Spherical camera (same rig as the procedural prototype) ──────────────────
+const sph       = { r:320, theta:0.30, phi:0.46 };
+const sphTarget = { r:320, theta:0.30, phi:0.46 };
+
+function applyCamera(){
+  camera.position.set(
+    sph.r*Math.sin(sph.phi)*Math.sin(sph.theta),
+    sph.r*Math.cos(sph.phi),
+    sph.r*Math.sin(sph.phi)*Math.cos(sph.theta)
+  );
+  camera.lookAt(0,0,0);
+}
+
+let drag=false, prev={x:0,y:0};
+canvas.addEventListener('mousedown', e=>{ drag=true; prev={x:e.clientX,y:e.clientY}; });
+window.addEventListener('mouseup', ()=>drag=false);
+window.addEventListener('mousemove', e=>{
+  if(!drag) return;
+  sphTarget.theta -= (e.clientX-prev.x)*0.004;
+  sphTarget.phi    = clamp(sphTarget.phi+(e.clientY-prev.y)*0.004, 0.05, Math.PI*0.88);
+  prev={x:e.clientX,y:e.clientY};
+  sph.theta=sphTarget.theta; sph.phi=sphTarget.phi;
+});
+window.addEventListener('wheel', e=>{
+  sphTarget.r = clamp(sphTarget.r+e.deltaY*0.20, 50, 700);
+  sph.r=sphTarget.r;
+},{passive:true});
+
+// ── Star field (context only, matches procedural prototype) ──────────────────
+{
+  const N=3500,geo=new THREE.BufferGeometry();
+  const p=new Float32Array(N*3),c=new Float32Array(N*3);
+  const pal=[[0.88,0.94,1],[1,1,0.88],[0.68,0.80,1],[1,0.82,0.62]];
+  for(let i=0;i<N;i++){
+    const a=Math.random()*Math.PI*2,b=Math.acos(2*Math.random()-1),r=700+Math.random()*300;
+    p[i*3]=r*Math.sin(b)*Math.cos(a); p[i*3+1]=r*Math.sin(b)*Math.sin(a); p[i*3+2]=r*Math.cos(b);
+    const sc=pal[Math.floor(Math.random()*pal.length)];
+    c[i*3]=sc[0]; c[i*3+1]=sc[1]; c[i*3+2]=sc[2];
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+  geo.setAttribute('color',new THREE.BufferAttribute(c,3));
+  scene.add(new THREE.Points(geo,new THREE.PointsMaterial({
+    size:2.0,sizeAttenuation:true,vertexColors:true,
+    transparent:true,opacity:0.48,depthWrite:false,blending:THREE.AdditiveBlending
+  })));
+}
+
+// ── The real photograph — mapped onto a plane, not a sphere ──────────────────
+// A nebula isn't orbited by a spacecraft like a planet, so there's no 360°
+// wrap-around texture for it. This is a single real exposure, so it goes on
+// a flat plane facing the viewer rather than a UV-wrapped sphere.
+const loader = new THREE.TextureLoader();
+loader.load('textures/tex_nebula_pillars.jpg', (tex) => {
+  tex.colorSpace = THREE.sRGBColorSpace || tex.colorSpace;
+  const aspect = tex.image.width / tex.image.height;
+  const h = 220;
+  const w = h * aspect;
+  const geo = new THREE.PlaneGeometry(w, h);
+  const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
+  const plane = new THREE.Mesh(geo, mat);
+  scene.add(plane);
+});
+
+// ── Render loop ───────────────────────────────────────────────────────────────
+function tick(){
+  requestAnimationFrame(tick);
+  if(!drag) sphTarget.theta+=0.00038;
+  sph.r     +=(sphTarget.r-sph.r)*0.08;
+  sph.theta +=(sphTarget.theta-sph.theta)*0.08;
+  sph.phi   +=(sphTarget.phi-sph.phi)*0.08;
+  applyCamera();
+  renderer.render(scene,camera);
+}
+tick();
+</script>
+</body>
+</html>
