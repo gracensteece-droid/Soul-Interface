@@ -198,15 +198,15 @@ canvas#planet-scene{position:fixed;inset:0;z-index:1;}
 
 <!-- Universal panel — LEFT SIDE -->
 <div class="content-panel active" id="panel-universal" style="position:fixed;left:40px;top:185px;bottom:80px;width:320px;text-align:left;transform:none;left:40px;">
-  <div class="desc-label">Aion — On This Body</div>
+  <div class="desc-label" id="desc-label">Aion — On This Body</div>
   <div class="desc-body" id="desc-body"></div>
 </div>
 
 <!-- Personal panel — LEFT SIDE -->
 <div class="content-panel" id="panel-personal" style="position:fixed;left:40px;top:185px;bottom:80px;width:320px;text-align:left;transform:none;">
   <div id="birth-entry" style="display:flex;flex-direction:column;">
-    <div class="birth-label">Aion — Your Reading</div>
-    <div class="birth-intro">
+    <div class="birth-label" id="birth-label">Aion — Your Reading</div>
+    <div class="birth-intro" id="birth-intro">
       The cosmos was 4.5 billion years in motion before you arrived.<br>
       Tell me the moment of your entry and I will tell you<br>where this body was when you began.
     </div>
@@ -229,7 +229,7 @@ canvas#planet-scene{position:fixed;inset:0;z-index:1;}
     <div>Consulting the positions<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></div>
   </div>
   <div id="reading-display">
-    <div class="reading-label">Aion — On This Body in Your Chart</div>
+    <div class="reading-label" id="reading-label">Aion — On This Body in Your Chart</div>
     <div class="reading-birth-line" id="reading-birth-line"></div>
     <div class="reading-body" id="reading-body"></div>
     <button id="change-birth" onclick="changeBirthData()">↺ Change birth data</button>
@@ -238,13 +238,13 @@ canvas#planet-scene{position:fixed;inset:0;z-index:1;}
 
 <!-- Stats panel — RIGHT SIDE -->
 <div id="stats-panel" style="position:fixed;right:40px;top:185px;width:200px;text-align:right;opacity:0;animation:fadeUp 1.4s 1.6s ease forwards;">
-  <div class="stat-row"><span class="stat-label">Rulership</span><span class="stat-value" id="stat-rules"></span></div>
+  <div class="stat-row" id="stat-row-rulership"><span class="stat-label" id="stat-label-rulership">Rulership</span><span class="stat-value" id="stat-rules"></span></div>
   <div class="stat-divider"></div>
-  <div class="stat-row"><span class="stat-label">Orbital Period</span><span class="stat-value" id="stat-period"></span></div>
+  <div class="stat-row" id="stat-row-period"><span class="stat-label" id="stat-label-period">Orbital Period</span><span class="stat-value" id="stat-period"></span></div>
   <div class="stat-divider"></div>
-  <div class="stat-row"><span class="stat-label">In the chart</span><span class="stat-value" id="stat-chart"></span></div>
+  <div class="stat-row" id="stat-row-chart"><span class="stat-label" id="stat-label-chart">In the chart</span><span class="stat-value" id="stat-chart"></span></div>
   <div class="stat-divider"></div>
-  <div class="stat-row"><span class="stat-label">Shadow</span><span class="stat-value" id="stat-shadow"></span></div>
+  <div class="stat-row" id="stat-row-shadow"><span class="stat-label" id="stat-label-shadow">Shadow</span><span class="stat-value" id="stat-shadow"></span></div>
 </div>
 
 <div id="planet-nav">
@@ -363,6 +363,11 @@ function showReading(text, birth) {
   document.getElementById('reading-birth-line').textContent = `${birth.date}${tPart} · ${birth.place}`;
   const paras = text.split(/\n\n+/).filter(p=>p.trim());
   document.getElementById('reading-body').innerHTML = paras.map(p=>`<p>${p.trim()}</p>`).join('');
+  // #reading-display was display:none until the line above set it to block,
+  // so reading-label/reading-birth-line/reading-body/change-birth are only
+  // measurable for the layout editor now — see applyAll()'s skip-if-hidden
+  // guard for why this second call is what actually sizes/positions them.
+  if (window.__siApplyLayout) window.__siApplyLayout();
 }
 
 async function submitBirthData() {
@@ -570,12 +575,80 @@ function renderEarth3D(pd) {
   document.head.appendChild(script);
 }
 
+// ── Jupiter — real textured 3D render, same technique as Earth above but
+// simpler: no clouds/night-lights/moon, just the real NASA/Solar-System-Scope
+// banded-atmosphere texture on a sphere plus a warm limb-glow shell.
+//
+// Spent a long stretch trying to animate this (band-slide, curl-warp,
+// vortex-distort, procedural rebuild, real NASA video footage) — none of it
+// was worth the complexity for what it added. Landed back here on purpose:
+// real photo, real bump map, real lighting, slow spin. Good on its own.
+function renderJupiter3D(pd) {
+  const canvas = document.getElementById('planet-scene');
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+  script.onload = () => {
+    const THREE = window.THREE;
+    const scene  = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
+    camera.position.set(0, 0.2, 3.8);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    renderer.setSize(innerWidth, innerHeight);
+
+    scene.add(new THREE.AmbientLight(0x332211, 0.55));
+    const sun = new THREE.DirectionalLight(0xfff4e0, 2.1);
+    sun.position.set(4,2,3);
+    scene.add(sun);
+
+    const loader = new THREE.TextureLoader();
+    const jupiterMat = new THREE.MeshStandardMaterial({ color:0xc8a878, roughness:0.85, metalness:0.0 });
+    const jupiter = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 96), jupiterMat);
+    scene.add(jupiter);
+    loader.load('textures/tex_jupiter.jpg', tex => { jupiterMat.map = tex; jupiterMat.bumpMap = tex; jupiterMat.bumpScale = 0.015; jupiterMat.needsUpdate = true; });
+
+    // Warm limb glow — Jupiter's real atmosphere is hazy amber/tan, not blue.
+    const atmo = new THREE.Mesh(
+      new THREE.SphereGeometry(1.03, 48, 48),
+      new THREE.ShaderMaterial({
+        vertexShader:`varying vec3 vN; void main(){ vN=normalize(normalMatrix*normal); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+        fragmentShader:`varying vec3 vN; void main(){ float i=pow(0.65-dot(vN,vec3(0,0,1.0)),3.0); gl_FragColor=vec4(1.0,0.82,0.55,clamp(i,0.0,1.0)*0.45); }`,
+        blending:THREE.AdditiveBlending, side:THREE.BackSide, transparent:true,
+      })
+    );
+    scene.add(atmo);
+
+    {
+      const N=1500, pos=new Float32Array(N*3);
+      for(let i=0;i<N;i++){ const r=40+Math.random()*160, th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1);
+        pos[i*3]=r*Math.sin(ph)*Math.cos(th); pos[i*3+1]=r*Math.sin(ph)*Math.sin(th); pos[i*3+2]=r*Math.cos(ph); }
+      const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+      scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color:0xffffff, size:0.4, sizeAttenuation:true, transparent:true, opacity:0.7 })));
+    }
+
+    addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+
+    let t=0;
+    function tick(){
+      requestAnimationFrame(tick);
+      t += 0.0022;
+      jupiter.rotation.y = t*1.1; // tuned rate — this is the speed that was confirmed right
+      renderer.render(scene, camera);
+    }
+    tick();
+    document.getElementById('veil').classList.add('clear');
+  };
+  document.head.appendChild(script);
+}
+
 // ── Planet render — Canvas 2D (works from file://, no WebGL needed) ────────────
-// Earth is special-cased to the real textured 3D render above — every other
-// planet keeps this lightweight procedural renderer untouched, file:// included.
+// Earth/Jupiter are special-cased to real textured 3D renders above — every
+// other planet keeps this lightweight procedural renderer untouched, file:// included.
 (function(){
 const pd = PLANETS[currentIdx];
 if (pd.slug === 'earth') { renderEarth3D(pd); return; }
+if (pd.slug === 'jupiter') { renderJupiter3D(pd); return; }
 const canvas = document.getElementById('planet-scene');
 const ctx = canvas.getContext('2d');
 
@@ -741,6 +814,380 @@ function draw() {
 draw();
 document.getElementById('veil').classList.add('clear');
 
+})();
+</script>
+
+<script>
+// ── Text layout controls — every labeled text block gets its own drag
+// position AND its own independent font-size (not one global scale), plus
+// small +/-/  size nudges attached to each block while in edit mode. The
+// control panel itself is draggable too, so it never has to sit on top of
+// something you're trying to look at. Persisted per-planet in localStorage;
+// panel position is global (it's UI chrome, not planet content).
+(function(){
+  const LAYOUT_KEY = 'soulinterface_planet_layout_v3';
+  let allLayouts = {};
+  try { allLayouts = JSON.parse(localStorage.getItem(LAYOUT_KEY) || '{}'); } catch(e){}
+  const planetSlug = (new URLSearchParams(location.search).get('p')) || (location.hash||'').replace('#','') || 'default';
+  const layout = allLayouts[planetSlug] = allLayouts[planetSlug] || {};
+
+  function persist(){ try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(allLayouts)); } catch(e){} }
+
+  // Granular — every distinct FONT STYLE gets its own control, not every
+  // container. Where a container mixes two visually different styles (e.g.
+  // a stat row's small-caps label + its italic value, or the header's
+  // symbol/name/archetype), each style gets split into its own block rather
+  // than sharing one — per Ricky pointing directly at "RULERSHIP" (Cinzel,
+  // small caps) vs. "Sagittarius · Pisces..." (Cormorant italic) as two
+  // fonts wrongly sharing one size control.
+  const blocks = [
+    { id:'back-btn',        label:'Back Button' },
+    { id:'planet-symbol',   label:'Planet Symbol' },
+    { id:'planet-name',     label:'Planet Name' },
+    { id:'planet-archetype', label:'Planet Archetype' },
+    { id:'tab-bar',         label:'Tabs' },
+    { id:'desc-label',      label:'Body Label' },
+    { id:'desc-body',       label:'Body Text' },
+    { id:'birth-label',     label:'Reading Label' },
+    { id:'birth-intro',     label:'Reading Intro Text' },
+    { id:'birth-submit',    label:'Enter Button' },
+    { id:'reading-label',   label:'Reading Result Label' },
+    { id:'reading-birth-line', label:'Reading Birth Line' },
+    { id:'reading-body',    label:'Reading Result Text' },
+    { id:'change-birth',    label:'Change Birth Button' },
+    { id:'stat-label-rulership', label:'Stat: Rulership (Label)' },
+    { id:'stat-rules',           label:'Stat: Rulership (Value)' },
+    { id:'stat-label-period',    label:'Stat: Orbital Period (Label)' },
+    { id:'stat-period',          label:'Stat: Orbital Period (Value)' },
+    { id:'stat-label-chart',     label:'Stat: In the Chart (Label)' },
+    { id:'stat-chart',           label:'Stat: In the Chart (Value)' },
+    { id:'stat-label-shadow',    label:'Stat: Shadow (Label)' },
+    { id:'stat-shadow',          label:'Stat: Shadow (Value)' },
+    { id:'planet-nav',      label:'Navigation' },
+  ];
+
+  // Elements that repeat with the same shared style (the 3 birth-data field
+  // labels, the 3 input fields) — one size control per STYLE, not per
+  // instance, per Ricky's "every font that's a different style" framing.
+  // No drag: dragging one shared control would be ambiguous with 3 separate,
+  // differently-positioned elements underneath it.
+  const styleGroups = [
+    { key:'group:field-label', selector:'.field-label', label:'Field Labels' },
+    { key:'group:birth-input', selector:'.birth-input', label:'Input Text' },
+  ];
+
+  let editMode = false;
+
+  // Some elements (.content-panel, its descendants) have left/top/transform
+  // marked !important in the stylesheet — setProperty(...,'important') is
+  // needed to actually win against that.
+  function setPos(el, left, top){
+    el.style.setProperty('position', 'fixed', 'important');
+    el.style.setProperty('left', left+'px', 'important');
+    el.style.setProperty('right', 'auto', 'important');
+    el.style.setProperty('top', top+'px', 'important');
+  }
+  function setScale(el, scale){
+    el.style.setProperty('transform-origin', 'top left', 'important');
+    el.style.setProperty('transform', `scale(${scale})`, 'important');
+  }
+
+  // Fixed two bugs at once here:
+  //
+  // 1. "Collapse" — several controllable elements are siblings inside a
+  //    normal-flow parent (e.g. the four stat rows inside #stats-panel).
+  //    Pulling just ONE of them out to position:fixed removed it from flow,
+  //    so its siblings closed the gap it left — looked like things
+  //    "collapsing" whenever you dragged just one element.
+  // 2. "Way huge / different format" — position:fixed with no explicit
+  //    width falls back to shrink-to-fit sizing, so text that used to wrap
+  //    inside e.g. a 200px-wide stat block would suddenly render as one
+  //    unwrapped line, reading as if the font had exploded in size.
+  //
+  // Fix: lock EVERY controllable element to position:fixed (with its width
+  // explicitly preserved) up front, all in one pass — so no element is ever
+  // depending on a sibling's presence in normal flow, and none of them ever
+  // lose their wrapping width.
+  // A 3rd bug, found via the "collapse" symptom persisting for nested
+  // elements even after the fix above: several containers (#stats-panel,
+  // and anything else using the fadeUp fade-in CSS animation) never fully
+  // clear their `transform` even after the animation finishes — a
+  // `forwards`-filling animation whose last keyframe is `transform:translateY(0)`
+  // leaves a computed transform matrix behind forever, and per the CSS spec
+  // ANY non-`none` transform on an ancestor (even an identity one) creates a
+  // new containing block for position:fixed descendants. That silently
+  // rebased nested elements (stat rows, etc.) off their parent's box instead
+  // of the viewport, producing wildly wrong rendered positions even though
+  // their own inline left/top looked correct.
+  function clearAncestorTransforms(el){
+    let p = el.parentElement;
+    while (p && p !== document.body) {
+      const cs = getComputedStyle(p);
+      // Only intervene where an actual CSS animation is present (e.g.
+      // #stats-panel's fadeUp). Overriding the computed transform alone
+      // isn't enough there: a running animation targeting transform still
+      // forces a containing block even while its current value is
+      // overridden to none, so the animation itself has to be killed too.
+      // fadeUp also drives opacity 0->1 on the same rule, so killing it
+      // needs opacity pinned back to 1 — hardcoded rather than "captured
+      // from current computed style", because applyAll() runs at page
+      // load, before fadeUp's own delay (0.6-1.6s) has even elapsed, so
+      // the "current" value at that instant is still the pre-animation
+      // base opacity:0, which would otherwise get permanently pinned and
+      // leave the element invisible forever. Every fadeUp usage in this
+      // file is a fade-IN ending at opacity:1, so 1 is always correct.
+      // Containers with no animation (e.g. .content-panel, which toggles
+      // opacity via a class + transition for tab switching) are left
+      // untouched so that visibility logic keeps working.
+      if (cs.animationName && cs.animationName !== 'none') {
+        p.style.setProperty('animation', 'none', 'important');
+        p.style.setProperty('opacity', '1', 'important');
+      }
+      p.style.setProperty('transform', 'none', 'important');
+      p = p.parentElement;
+    }
+  }
+
+  function applyAll(){
+    // Pass 1 — capture natural (as-laid-out) rects for anything not already
+    // customized, BEFORE any element is mutated (mutating block N would
+    // otherwise shift the natural layout block N+1 is about to be measured in).
+    // Style-group members (e.g. the 3 field labels) are measured here too —
+    // each is still an individually-positioned element in the DOM even
+    // though they share one scale control.
+    const natural = new Map();
+    blocks.forEach(b => {
+      const el = document.getElementById(b.id);
+      if (el) natural.set(el, el.getBoundingClientRect());
+    });
+    const groupMembers = [];
+    styleGroups.forEach(g => {
+      document.querySelectorAll(g.selector).forEach(el => {
+        natural.set(el, el.getBoundingClientRect());
+        groupMembers.push({ el, group: g });
+      });
+    });
+
+    // Pass 2 — lock every element to fixed positioning with an explicit width.
+    blocks.forEach(b => {
+      const el = document.getElementById(b.id);
+      if (!el) return;
+      const s = layout[b.id];
+      // Elements behind a display:none ancestor (e.g. #reading-display,
+      // hidden until a reading is actually submitted) measure as an all-zero
+      // rect. Applying that would permanently pin them to 0-width/(0,0) the
+      // first time they ever become visible — once forced to position:fixed
+      // they can never be correctly re-measured in flow again. Skip them
+      // here (leave in normal flow) until genuinely visible; showReading()
+      // calls applyAll() again once it makes them visible, and at that point
+      // this same check passes and they're measured for real.
+      if (!s && el.getClientRects().length === 0) return;
+      const nat = natural.get(el);
+      const left  = (s && s.left!=null)  ? s.left  : nat.left;
+      const top   = (s && s.top!=null)   ? s.top   : nat.top;
+      const width = (s && s.width!=null) ? s.width : nat.width;
+      clearAncestorTransforms(el);
+      setPos(el, left, top);
+      el.style.setProperty('width', width+'px', 'important');
+      setScale(el, (s && s.scale!=null) ? s.scale : 1.0);
+    });
+
+    // Pass 2b — style-group members. Each instance still gets locked to its
+    // OWN natural position/width (otherwise removing an earlier sibling like
+    // birth-label/birth-intro from flow collapses these into the vacated
+    // space — the exact sibling-collapse bug fixed for stat rows earlier,
+    // recurring here because these were left in normal flow). What's shared
+    // across the group is only the scale value, not the position.
+    groupMembers.forEach(({el, group}) => {
+      if (el.getClientRects().length === 0) return; // not yet visible; same reasoning as the blocks guard above
+      const nat = natural.get(el);
+      const s = layout[group.key];
+      clearAncestorTransforms(el);
+      setPos(el, nat.left, nat.top);
+      el.style.setProperty('width', nat.width+'px', 'important');
+      setScale(el, (s && s.scale!=null) ? s.scale : 1.0);
+    });
+  }
+
+  function nudgeScale(id, delta){
+    const el = document.getElementById(id);
+    if (!el) return;
+    layout[id] = layout[id] || {};
+    const cur = layout[id].scale!=null ? layout[id].scale : 1.0;
+    layout[id].scale = Math.max(0.4, Math.min(3.0, cur + delta));
+    setScale(el, layout[id].scale);
+    persist();
+    positionBadges();
+  }
+
+  function nudgeGroupScale(key, selector, delta){
+    layout[key] = layout[key] || {};
+    const cur = layout[key].scale!=null ? layout[key].scale : 1.0;
+    layout[key].scale = Math.max(0.4, Math.min(3.0, cur + delta));
+    document.querySelectorAll(selector).forEach(el => setScale(el, layout[key].scale));
+    persist();
+    positionBadges();
+  }
+
+  function makeDraggable(el, id){
+    let dragging=false, startX=0, startY=0, origLeft=0, origTop=0;
+    el.addEventListener('mousedown', e => {
+      if (!editMode) return;
+      if (e.target.closest('.layout-badge')) return; // don't drag when clicking +/- badges
+      dragging = true;
+      const rect = el.getBoundingClientRect();
+      startX = e.clientX; startY = e.clientY;
+      origLeft = rect.left; origTop = rect.top;
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    window.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      const nl = origLeft + (e.clientX-startX);
+      const nt = origTop + (e.clientY-startY);
+      setPos(el, nl, nt);
+      positionBadges();
+    });
+    window.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      layout[id] = layout[id] || {};
+      layout[id].left = parseFloat(el.style.left);
+      layout[id].top  = parseFloat(el.style.top);
+      persist();
+    });
+  }
+
+  // Small floating "A− / A+" badge per block, shown only in edit mode,
+  // repositioned to track its block whenever that block moves.
+  const badges = [];
+  blocks.forEach(b => {
+    const el = document.getElementById(b.id);
+    if (!el) return;
+    makeDraggable(el, b.id);
+    const badge = document.createElement('div');
+    badge.className = 'layout-badge';
+    badge.style.cssText = 'position:fixed;z-index:51;display:none;gap:2px;'
+      + 'background:rgba(10,8,6,0.9);border:1px solid rgba(140,200,255,0.4);border-radius:4px;padding:2px;';
+    badge.innerHTML = `<button style="width:18px;height:18px;font-size:10px;line-height:1;background:rgba(140,200,255,0.12);border:none;color:#cfe6ff;cursor:pointer;border-radius:2px;">−</button>`
+      + `<button style="width:18px;height:18px;font-size:10px;line-height:1;background:rgba(140,200,255,0.12);border:none;color:#cfe6ff;cursor:pointer;border-radius:2px;">+</button>`;
+    document.body.appendChild(badge);
+    const [minus, plus] = badge.querySelectorAll('button');
+    minus.addEventListener('click', ev => { ev.stopPropagation(); nudgeScale(b.id, -0.05); });
+    plus.addEventListener('click',  ev => { ev.stopPropagation(); nudgeScale(b.id,  0.05); });
+    badges.push({ id:b.id, el, badge });
+  });
+
+  // Group badges — one per shared style, sized-only (amber, not blue, to
+  // signal "no drag here"), tracks its FIRST matching element so it hides
+  // automatically along with the rest of the group when that context (e.g.
+  // the birth-entry form) isn't visible.
+  styleGroups.forEach(g => {
+    const el = document.querySelector(g.selector);
+    if (!el) return;
+    const badge = document.createElement('div');
+    badge.className = 'layout-badge';
+    badge.style.cssText = 'position:fixed;z-index:51;display:none;gap:2px;'
+      + 'background:rgba(10,8,6,0.9);border:1px solid rgba(220,175,110,0.4);border-radius:4px;padding:2px;';
+    badge.innerHTML = `<button style="width:18px;height:18px;font-size:10px;line-height:1;background:rgba(220,175,110,0.12);border:none;color:#f0d9b8;cursor:pointer;border-radius:2px;">−</button>`
+      + `<button style="width:18px;height:18px;font-size:10px;line-height:1;background:rgba(220,175,110,0.12);border:none;color:#f0d9b8;cursor:pointer;border-radius:2px;">+</button>`;
+    document.body.appendChild(badge);
+    const [minus, plus] = badge.querySelectorAll('button');
+    minus.addEventListener('click', ev => { ev.stopPropagation(); nudgeGroupScale(g.key, g.selector, -0.05); });
+    plus.addEventListener('click',  ev => { ev.stopPropagation(); nudgeGroupScale(g.key, g.selector,  0.05); });
+    badges.push({ id:g.key, el, badge });
+  });
+
+  function positionBadges(){
+    badges.forEach(({el,badge}) => {
+      // getClientRects().length===0 correctly reflects "not actually
+      // rendered" regardless of WHY (display:none on the element itself,
+      // OR on an ancestor like #reading-display, OR position:fixed weirdness
+      // with offsetParent) — the other two checks each missed a real case.
+      if (!editMode || el.getClientRects().length===0){ badge.style.display='none'; return; }
+      const r = el.getBoundingClientRect();
+      badge.style.display = 'flex';
+      badge.style.left = (r.right+4)+'px';
+      badge.style.top  = (r.top)+'px';
+    });
+  }
+
+  // Exposed so showReading() (a top-level function, outside this IIFE) can
+  // re-run layout once #reading-display flips from display:none to block.
+  window.__siApplyLayout = applyAll;
+
+  applyAll();
+
+  // The stat rows are independently positioned now, so a static divider
+  // "between" them (from when they were stacked in normal flow) no longer
+  // means anything — could end up floating anywhere relative to the rows
+  // it used to visually separate. Hide them rather than leave orphaned lines.
+  document.querySelectorAll('.stat-divider').forEach(d => { d.style.display = 'none'; });
+
+  // ── Control panel — draggable via its own grip handle, position persisted
+  // globally (shared across all planet pages, since it's UI chrome).
+  const PANEL_POS_KEY = 'soulinterface_layoutpanel_pos';
+  let panelPos = { left: null, top: 14 };
+  try { panelPos = JSON.parse(localStorage.getItem(PANEL_POS_KEY)) || panelPos; } catch(e){}
+
+  const panel = document.createElement('div');
+  panel.style.cssText = 'position:fixed;z-index:52;'
+    + 'background:rgba(10,8,6,0.9);border:1px solid rgba(200,175,135,0.35);border-radius:6px;'
+    + 'font-family:monospace;color:rgba(230,215,190,0.92);padding:6px 12px 6px 6px;display:flex;align-items:center;gap:12px;';
+  panel.innerHTML = `
+    <span id="layoutDragHandle" style="cursor:move;opacity:0.5;padding:4px 6px;font-size:12px;user-select:none;">⠿</span>
+    <button id="layoutEditToggle" style="background:rgba(140,200,255,0.12);border:1px solid rgba(140,200,255,0.4);color:rgba(200,225,255,0.95);font-family:inherit;font-size:10px;padding:5px 12px;border-radius:4px;cursor:pointer;white-space:nowrap;">✎ EDIT LAYOUT</button>
+    <button id="layoutResetBtn" style="background:rgba(255,120,120,0.1);border:1px solid rgba(255,120,120,0.3);color:rgba(255,180,180,0.9);font-family:inherit;font-size:9px;padding:5px 10px;border-radius:4px;cursor:pointer;white-space:nowrap;">RESET</button>
+  `;
+  document.body.appendChild(panel);
+
+  if (panelPos.left!=null) { panel.style.left = panelPos.left+'px'; }
+  else { panel.style.left = '50%'; panel.style.transform = 'translateX(-50%)'; }
+  panel.style.top = panelPos.top+'px';
+
+  const handle = panel.querySelector('#layoutDragHandle');
+  let pDragging=false, pStartX=0, pStartY=0, pOrigLeft=0, pOrigTop=0;
+  handle.addEventListener('mousedown', e => {
+    pDragging = true;
+    const rect = panel.getBoundingClientRect();
+    pStartX = e.clientX; pStartY = e.clientY;
+    pOrigLeft = rect.left; pOrigTop = rect.top;
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', e => {
+    if (!pDragging) return;
+    panel.style.transform = 'none';
+    panel.style.left = (pOrigLeft + (e.clientX-pStartX)) + 'px';
+    panel.style.top  = (pOrigTop  + (e.clientY-pStartY)) + 'px';
+  });
+  window.addEventListener('mouseup', () => {
+    if (!pDragging) return;
+    pDragging = false;
+    try { localStorage.setItem(PANEL_POS_KEY, JSON.stringify({ left: parseFloat(panel.style.left), top: parseFloat(panel.style.top) })); } catch(e){}
+  });
+
+  const toggleBtn = panel.querySelector('#layoutEditToggle');
+  const resetBtn  = panel.querySelector('#layoutResetBtn');
+
+  toggleBtn.addEventListener('click', () => {
+    editMode = !editMode;
+    toggleBtn.style.background = editMode ? 'rgba(140,200,255,0.35)' : 'rgba(140,200,255,0.12)';
+    toggleBtn.textContent = editMode ? '✎ DRAGGING ON' : '✎ EDIT LAYOUT';
+    blocks.forEach(b => {
+      const el = document.getElementById(b.id);
+      if (el) el.style.cursor = editMode ? 'move' : '';
+    });
+    positionBadges();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    allLayouts[planetSlug] = {};
+    persist();
+    location.reload();
+  });
+
+  // Keep badges tracking their blocks (window resize, tab switches, etc.)
+  setInterval(positionBadges, 200);
 })();
 </script>
 </body>
