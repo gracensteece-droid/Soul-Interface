@@ -446,8 +446,21 @@ Verified two ways: direct inspection of the new `tex_pluto_bump.jpg` at the prev
 
 ---
 
+---
+
+### Part 38 — Bloom Slider: A Real Tool Instead of Chasing One Pixel-Exact Seam
+
+Ricky sent two more screenshots — one where a naturally overexposed highlight blew out and blended smoothly over what would otherwise be a visible texture seam, and one showing a fainter seam elsewhere without that benefit — and asked for "that same thing" to obscure the second one. Checked the texture file directly at the region matching the second screenshot first (row-by-row brightness sampling, contrast-boosted crops) rather than assuming; found only a very faint gradient artifact, not a hard defect worth chasing further, and confirmed a precise live-camera reproduction of Ricky's exact rotation isn't reliable via scripted orbit-drag (learned this the hard way in Part 37's verification too).
+
+Rather than keep hunting for one exact pixel location, built the actual tool being described: a live **Bloom** slider (Texture Look panel's Color Grading group). Real bloom — a brightened (`brightness(170-270%)`), blurred (6-30px) copy of the canvas composited back on top with `mix-blend-mode:screen`. Screen blending brightens and softens whatever's already bright while leaving dark areas close to untouched (screen-blending with near-black is close to a no-op), which is exactly the optical behavior that made the original highlight wash out detail in Ricky's first screenshot. Reused the same throttled drawImage-capture pattern as the existing Blend-edges overlay (~180ms interval, not per-frame).
+
+This is a more useful fix than a one-off texture edit: it works on any planet, at any camera angle, on demand — Ricky can dial it in wherever a seam needs hiding rather than needing another round-trip each time. Verified live: before/after screenshots at the same orbited framing show a dramatic, clearly visible bloom exactly matching the reference screenshot's look — bright terrain near the highlight glows and blends smoothly into its surroundings. Synced to `Aion/Frontend/Code/`.
+
+---
+
 ### Next Session
 
+- Part 38 (Bloom slider) is ready to commit as a follow-up if not already done.
 - Part 37 (separate bump/color textures) is ready to commit as a follow-up if not already done.
 - The most important lesson of the whole Pluto arc, reinforced a third time by Part 37: when a material uses the same texture for both `.map` and `.bumpMap`, any purely cosmetic addition to that texture (sharpening, grain, contrast) is also read as physical height. If a future planet needs similar cosmetic polish on a bump-mapped real photo, use separate color/bump outputs from the start rather than tuning parameters against a shared file until an artifact shows up.
 - General lesson from Part 32, worth remembering for any future real-photo bump-mapped planet: a texture used as both color map and bump map means any sharpening applied for the color map's sake also gets read as fake height by the bump map. When tuning sharpness, check both — and if terrain starts looking "quilted," "woven," or like a repeating material pattern (drywall, fabric) at close zoom, suspect bumpScale amplifying synthetic texture-processing artifacts before suspecting the source texture itself.

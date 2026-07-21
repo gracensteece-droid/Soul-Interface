@@ -2052,7 +2052,7 @@ document.getElementById('veil').classList.add('clear');
   let allLooks = {};
   try { allLooks = JSON.parse(localStorage.getItem(LOOK_KEY)) || {}; } catch(e){}
   const DEFAULT_LOOK = {
-    contrast: 100, saturate: 100, brightness: 100, hue: 0, warmth: 0, vignette: 100,
+    contrast: 100, saturate: 100, brightness: 100, hue: 0, warmth: 0, vignette: 100, bloom: 0,
     focus: 0, relief: 100,
     blendStrength: 0, blendRadius: 50,
     atmosphere: 100, motion: 100,
@@ -2099,6 +2099,48 @@ document.getElementById('veil').classList.add('clear');
     if (vignetteEl) vignetteEl.style.opacity = String(look.vignette / 100);
   }
   applyVignette();
+
+  // Bloom — Ricky pointed at a screenshot where a naturally overexposed
+  // highlight blew out and blended smoothly over a visible texture seam,
+  // and asked for that same effect deliberately, to obscure a seam
+  // elsewhere that doesn't get that natural highlight. Real bloom: a
+  // brightened, blurred copy of the frame composited back on top with
+  // `mix-blend-mode:screen`, which brightens and softens already-bright
+  // areas while leaving dark areas close to untouched (screen blending
+  // with near-black is close to a no-op) — the same optical behavior that
+  // made the original highlight wash out detail. Reuses the throttled
+  // drawImage-capture approach from the Blend-edges overlay below.
+  let bloomOverlay = null, bloomInterval = null;
+  function ensureBloomOverlay(){
+    if (bloomOverlay) return bloomOverlay;
+    bloomOverlay = document.createElement('canvas');
+    bloomOverlay.style.cssText = 'position:fixed;inset:0;z-index:1;pointer-events:none;mix-blend-mode:screen;';
+    lookCanvas.parentNode.insertBefore(bloomOverlay, lookCanvas.nextSibling);
+    return bloomOverlay;
+  }
+  function updateBloomOverlay(){
+    if (look.bloom <= 0){
+      if (bloomOverlay) bloomOverlay.style.opacity = '0';
+      if (bloomInterval) { clearInterval(bloomInterval); bloomInterval = null; }
+      return;
+    }
+    const ov = ensureBloomOverlay();
+    ov.width = lookCanvas.clientWidth;
+    ov.height = lookCanvas.clientHeight;
+    const blurPx = 6 + look.bloom / 100 * 24;
+    ov.style.filter = `brightness(${170 + look.bloom}%) blur(${blurPx.toFixed(1)}px)`;
+    ov.style.opacity = String(look.bloom / 100);
+    const ctx = ov.getContext('2d');
+    function draw(){
+      if (look.bloom <= 0) return;
+      ctx.clearRect(0, 0, ov.width, ov.height);
+      ctx.drawImage(lookCanvas, 0, 0, ov.width, ov.height);
+    }
+    draw();
+    if (bloomInterval) clearInterval(bloomInterval);
+    bloomInterval = setInterval(draw, 180);
+  }
+  updateBloomOverlay();
 
   function applyRelief(){
     if (!window.__siPlanetMat) return;
@@ -2186,6 +2228,7 @@ document.getElementById('veil').classList.add('clear');
     applyLookFilters();
     applyWarmth();
     applyVignette();
+    updateBloomOverlay();
     applyRelief();
     applyAtmosphere();
     applyMotion();
@@ -2235,6 +2278,7 @@ document.getElementById('veil').classList.add('clear');
     ${lookSliderRow('Hue', 'hue', -180, 180)}
     ${lookSliderRow('Warmth', 'warmth', -100, 100)}
     ${lookSliderRow('Vignette', 'vignette', 0, 150)}
+    ${lookSliderRow('Bloom', 'bloom', 0, 100)}
     ${groupHeader('SURFACE')}
     ${lookSliderRow('Focus', 'focus', 0, 100)}
     ${lookSliderRow('Relief', 'relief', 0, 200)}
