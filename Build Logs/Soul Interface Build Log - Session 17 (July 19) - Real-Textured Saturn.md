@@ -458,8 +458,23 @@ This is a more useful fix than a one-off texture edit: it works on any planet, a
 
 ---
 
+### Part 39 — Bloom Spots: Restrict Bloom to Clicked Locations Instead of "Wherever It's Already Bright"
+
+Ricky asked directly: is there a way to have the bloom effect but only in spots he chooses? Part 38's Bloom was global — self-limiting to bright areas via the screen-blend math, but not something he could point at one specific location. Added click-to-place spots: a "📍 PLACE SPOT" toggle button that, while active, lets him click anywhere on the rendered planet to drop a circle; once any spots exist, Bloom only shows inside them (soft-edged, via a radial-gradient falloff) instead of everywhere the frame happens to be bright. A "CLEAR" button removes all spots, and a hint line reports how many are placed.
+
+Implementation notes:
+- Spots are screen-space, not raycast onto the sphere's actual 3D geometry/UV — a real, deliberate scope call, documented in the code. A surface-locked version would need Three.js raycasting plus continuous reprojection every frame as the planet rotates/sways, which is a much bigger lift for a tool whose actual use case (per this whole back-and-forth) is "hide this one seam in the shot I'm currently framing," not a persistent 3D-painted decal. Worth revisiting only if that use case changes.
+- Combining multiple spots correctly required care: applying `destination-in` once per spot directly would **AND** them together (shrink to only their overlap) rather than **OR** them (grow to their union). Fixed by first drawing all spot circles onto a separate offscreen mask canvas with plain `source-over` (so they combine additively), then punching that combined shape into the bloom overlay with a single `destination-in` pass.
+- The click-capture layer sits at a low z-index with `pointer-events:none` by default, flipping to `auto` only while placing mode is active, so normal orbit-drag/zoom is completely unaffected the rest of the time — verified live (a normal drag-to-orbit after placing a spot and toggling placing mode back off still rotates the camera correctly).
+- Spots persist per-planet in `localStorage` (`soulinterface_planet3d_bloomspots_v1`), same pattern as every other Texture Look setting.
+
+Verified live: with Bloom active and no spots, the existing global glow shows near the bright highlight as before; after placing one spot in a different (darker) location and re-screenshotting, the global glow is gone entirely and a new, clearly visible bloom appears only inside the placed spot — confirming the masking actually restricts location rather than just adding on top. Synced to `Aion/Frontend/Code/`.
+
+---
+
 ### Next Session
 
+- Part 39 (Bloom spots) is ready to commit as a follow-up if not already done.
 - Part 38 (Bloom slider) is ready to commit as a follow-up if not already done.
 - Part 37 (separate bump/color textures) is ready to commit as a follow-up if not already done.
 - The most important lesson of the whole Pluto arc, reinforced a third time by Part 37: when a material uses the same texture for both `.map` and `.bumpMap`, any purely cosmetic addition to that texture (sharpening, grain, contrast) is also read as physical height. If a future planet needs similar cosmetic polish on a bump-mapped real photo, use separate color/bump outputs from the start rather than tuning parameters against a shared file until an artifact shows up.
