@@ -62,10 +62,13 @@ def main():
 
     src = Image.open(src_path).convert("RGB")
     result = src.resize((OUT_W, OUT_H), Image.LANCZOS)
-    # Light touch only — this source is already real, already-colored, and
-    # already smoothly composited; heavy sharpening would just amplify the
-    # inherent softness in the low-res far-side band into visible ringing.
-    result = result.filter(ImageFilter.UnsharpMask(radius=1.5, percent=40, threshold=2))
+    # Ricky flagged the first pass (percent=40) as still too soft — bumped to
+    # a stronger but still real photo-sharpening tier (matches typical
+    # unsharp-mask presets; not aggressive enough to fabricate ringing on
+    # real detail). This can't recover detail the low-res far-side band
+    # never had, but it does make the well-imaged encounter hemisphere
+    # noticeably crisper, which was worth more sharpening headroom.
+    result = result.filter(ImageFilter.UnsharpMask(radius=2, percent=65, threshold=2))
     result.save(OUT, quality=93)
     print(f"saved {OUT}")
 

@@ -2083,12 +2083,14 @@ const planets = pData.map((pd, i) => {
   const plutoMat = window._planetMaterials[8];
   // Cache-busting query string — see the matching comment in planet.html's
   // renderPluto3D; bump the version if this file is ever regenerated again.
-  texLoader.load('textures/tex_pluto.jpg?v=4', tex => {
+  // contrast/saturate raised to match the tier used for Uranus/Neptune/
+  // Saturn above — see the matching comment in planet.html's renderPluto3D.
+  texLoader.load('textures/tex_pluto.jpg?v=5', tex => {
     const img = tex.image;
     const canvas = document.createElement('canvas');
     canvas.width = img.width; canvas.height = img.height;
     const ctx = canvas.getContext('2d');
-    ctx.filter = 'contrast(110%) saturate(115%)';
+    ctx.filter = 'contrast(130%) saturate(125%)';
     ctx.drawImage(img, 0, 0);
     const enhanced = new THREE.CanvasTexture(canvas);
     enhanced.needsUpdate = true;
