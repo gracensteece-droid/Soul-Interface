@@ -414,6 +414,26 @@ Verified all four sliders live (screenshots at default, contrast=200, focus=100,
 
 ---
 
+### Part 36 — Texture Look Panel Expansion: Color Grading, Surface Relief, Atmosphere & Motion, Split Blend Tool
+
+Ricky asked for "more effects." Rather than guess, asked which categories mattered — he picked Surface relief, Color grading, and Atmosphere & motion, plus a follow-up ask for "some kind of blending tool" (more control over Part 35's single Blend edges slider). Expanded the panel from 4 sliders to 12, across four labeled groups:
+
+- **Color grading**: added Brightness and Hue (both plain CSS filter functions, same mechanism as Contrast/Saturation), Warmth (a cool-blue/warm-orange overlay div with `mix-blend-mode:overlay` — the same kind of multiply-tint v1's Pluto texture used to fake color onto a grayscale source, Session 17 Part 24, just live and reversible instead of baked permanently into a file), and Vignette (wired directly to the existing static `#vignette` element's opacity, rather than adding a duplicate overlay — that element already existed in the page for exactly this purpose, just wasn't adjustable before).
+- **Surface**: added Relief, a live multiplier on `window.__siPlanetMat.bumpScale`. Each planet's baked-in default bump scale (set in its `loader.load()` callback) is hardcoded into a small `BASE_BUMP` lookup table in the panel script, keyed by `planetSlug` — reading the live value off the material directly would race the texture's async load, so the known constant is used instead.
+- **Blend tool**: split the one "Blend edges" slider into **Strength** (opacity/blur amount — what the slider already did) and **Radius** (how far toward the center the transition reaches, previously hardcoded), giving independent control over "how much" versus "where," which is what "a blending tool" was actually asking for over a single combined knob.
+- **Atmosphere & Motion**: Atmosphere scales the glow-shell mesh (`window.__siAtmoMesh.scale`) rather than touching its `ShaderMaterial` — the glow shaders hardcode their intensity directly into the fragment shader's alpha term rather than exposing a uniform, and retrofitting uniforms into 7 near-duplicate shaders for this one control wasn't worth the risk of a botched find/replace across all of them; scaling the shell up/down is a reasonable, honest approximation of "more/less glow." Disabled (not hidden) on Mercury and Pluto, which have no atmosphere shell by design. Motion multiplies the per-frame time increment (`t += 0.0022 * (window.__siSpeedMul || 1)`, replaced identically across all 9 tick loops) — 0 freezes the idle sway/spin entirely, up to 3x speed.
+
+Exposing the per-planet material and atmosphere mesh required one addition to each of the 9 `renderX3D` functions — `window.__siPlanetMat = xMat; window.__siAtmoMesh = atmo (or null);` — inserted right before each function's `setupPlanetDrag(...)` call, which turned out to be a clean, identically-shaped anchor point across all 9.
+
+Two real bugs, both caught in verification rather than assumed away:
+1. **The whole panel silently failed to render at all** — `ReferenceError: Cannot access 'look' before initialization`. Root cause: this new code lives in the same enclosing IIFE as the pre-existing layout-panel system, which already has its own `function applyAll(){...}`. Function declarations in the same scope silently overwrite each other via hoisting, and mine (textually later in the file) won — so the layout system's own early `applyAll()` call ended up running *my* version instead, before `let look` had executed. Renamed mine to `applyLookAll` throughout; a same-named `const`/`let` collision would have thrown immediately at parse time, but two `function` declarations don't, which is what made this quietly break the *entire* panel rather than fail loudly at the source.
+2. **Persisted Relief/Atmosphere values wouldn't apply on page load.** `window.__siPlanetMat`/`__siAtmoMesh` are set inside each planet's `script.onload` callback (Three.js loads from a CDN `<script>` tag, genuinely async), while the look panel initializes synchronously well before that resolves. A one-time `applyRelief()`/`applyAtmosphere()` call at panel setup would silently no-op. Fixed with a short bounded poll (100ms interval, ~10s cap) that only runs when a non-default Relief/Atmosphere value needs restoring — most page loads (default values) skip it entirely.
+3. **The panel visibly overlapped the existing right-side stats panel** (rulership/orbital period/chart text) once it grew to 12 sliders across 4 groups — a real layout regression, caught by actually looking at the screenshot rather than trusting the code. Fixed by collapsing the panel behind a small "🎚 LOOK" toggle button, matching the existing EDIT LAYOUT control's own show/hide pattern, rather than leaving 12 sliders permanently on screen.
+
+Verified via Playwright: all 12 sliders present and independently functional (screenshots confirming visible Relief, Warmth, Vignette, and Motion=0 effects; `window.__siSpeedMul` and the Atmosphere slider's `disabled` state read back correctly), zero JS errors, and the collapsed-by-default panel confirmed not to overlap the stats text anymore. Synced to `Aion/Frontend/Code/`.
+
+---
+
 ### Next Session
 
 - Part 35 (the Texture Look panel) is ready to commit as a follow-up if not already done.

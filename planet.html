@@ -695,6 +695,10 @@ function renderEarth3D(pd) {
     earthGroup.add(moonPivot);
     loader.load('textures/tex_moon.jpg', tex => { setAniso(tex); moonMat.map = tex; moonMat.needsUpdate = true; });
 
+    // Exposed for the Texture Look panel's Relief/Atmosphere sliders (final
+    // <script> block, runs independently of this render function).
+    window.__siPlanetMat = earthMat;
+    window.__siAtmoMesh = atmo;
     setupPlanetDrag(canvas, camera, earthGroup, THREE, pd.slug);
 
     {
@@ -712,7 +716,7 @@ function renderEarth3D(pd) {
       let t=0;
       function tick(){
         requestAnimationFrame(tick);
-        t += 0.0022;
+        t += 0.0022 * (window.__siSpeedMul != null ? window.__siSpeedMul : 1); // Texture Look panel's Motion slider
         earth.rotation.y = t;
         clouds.rotation.y = t*1.15;
         moonPivot.rotation.y = t*0.6;
@@ -779,6 +783,8 @@ function renderJupiter3D(pd) {
     );
     jupiterGroup.add(atmo);
 
+    window.__siPlanetMat = jupiterMat;
+    window.__siAtmoMesh = atmo;
     setupPlanetDrag(canvas, camera, jupiterGroup, THREE, pd.slug);
 
     {
@@ -796,7 +802,7 @@ function renderJupiter3D(pd) {
       let t=0;
       function tick(){
         requestAnimationFrame(tick);
-        t += 0.0022;
+        t += 0.0022 * (window.__siSpeedMul != null ? window.__siSpeedMul : 1); // Texture Look panel's Motion slider
         jupiter.rotation.y = t*1.1; // tuned rate — this is the speed that was confirmed right
         controls.enabled = !window.__siEditMode;
         controls.update();
@@ -897,6 +903,8 @@ function renderSaturn3D(pd) {
     );
     saturnGroup.add(atmo);
 
+    window.__siPlanetMat = saturnMat;
+    window.__siAtmoMesh = atmo;
     setupPlanetDrag(canvas, camera, saturnGroup, THREE, pd.slug);
 
     {
@@ -914,7 +922,7 @@ function renderSaturn3D(pd) {
       let t=0;
       function tick(){
         requestAnimationFrame(tick);
-        t += 0.0022;
+        t += 0.0022 * (window.__siSpeedMul != null ? window.__siSpeedMul : 1); // Texture Look panel's Motion slider
         saturn.rotation.y = t*1.1; // same tuned rate as Jupiter — spins only the sphere on its own axis; rings stay static
         controls.enabled = !window.__siEditMode;
         controls.update();
@@ -979,6 +987,8 @@ function renderVenus3D(pd) {
     );
     venusGroup.add(atmo);
 
+    window.__siPlanetMat = venusMat;
+    window.__siAtmoMesh = atmo;
     setupPlanetDrag(canvas, camera, venusGroup, THREE, pd.slug);
 
     {
@@ -996,7 +1006,7 @@ function renderVenus3D(pd) {
       let t=0;
       function tick(){
         requestAnimationFrame(tick);
-        t += 0.0022;
+        t += 0.0022 * (window.__siSpeedMul != null ? window.__siSpeedMul : 1); // Texture Look panel's Motion slider
         venus.rotation.y = t*1.1; // same tuned rate as Jupiter/Saturn
         controls.enabled = !window.__siEditMode;
         controls.update();
@@ -1047,6 +1057,8 @@ function renderMercury3D(pd) {
     mercuryGroup.add(mercury);
     loader.load('textures/tex_mercury.jpg', tex => { setAniso(tex); mercuryMat.map = tex; mercuryMat.bumpMap = tex; mercuryMat.bumpScale = 0.025; mercuryMat.needsUpdate = true; });
 
+    window.__siPlanetMat = mercuryMat;
+    window.__siAtmoMesh = null; // Mercury has no atmosphere glow shell — see the comment above renderMercury3D
     setupPlanetDrag(canvas, camera, mercuryGroup, THREE, pd.slug);
 
     {
@@ -1064,7 +1076,7 @@ function renderMercury3D(pd) {
       let t=0;
       function tick(){
         requestAnimationFrame(tick);
-        t += 0.0022;
+        t += 0.0022 * (window.__siSpeedMul != null ? window.__siSpeedMul : 1); // Texture Look panel's Motion slider
         mercury.rotation.y = t*1.1; // same tuned rate as the others
         controls.enabled = !window.__siEditMode;
         controls.update();
@@ -1127,6 +1139,8 @@ function renderMars3D(pd) {
     );
     marsGroup.add(atmo);
 
+    window.__siPlanetMat = marsMat;
+    window.__siAtmoMesh = atmo;
     setupPlanetDrag(canvas, camera, marsGroup, THREE, pd.slug);
 
     {
@@ -1144,7 +1158,7 @@ function renderMars3D(pd) {
       let t=0;
       function tick(){
         requestAnimationFrame(tick);
-        t += 0.0022;
+        t += 0.0022 * (window.__siSpeedMul != null ? window.__siSpeedMul : 1); // Texture Look panel's Motion slider
         mars.rotation.y = t*1.1; // same tuned rate as the others
         controls.enabled = !window.__siEditMode;
         controls.update();
@@ -1221,6 +1235,8 @@ function renderUranus3D(pd) {
     );
     uranusGroup.add(atmo);
 
+    window.__siPlanetMat = uranusMat;
+    window.__siAtmoMesh = atmo;
     setupPlanetDrag(canvas, camera, uranusGroup, THREE, pd.slug);
 
     {
@@ -1238,7 +1254,7 @@ function renderUranus3D(pd) {
       let t=0;
       function tick(){
         requestAnimationFrame(tick);
-        t += 0.0022;
+        t += 0.0022 * (window.__siSpeedMul != null ? window.__siSpeedMul : 1); // Texture Look panel's Motion slider
         uranus.rotation.y = t*1.1; // spins on its own local axis, independent of the group's static tilt — same trick as Saturn's rings
         controls.enabled = !window.__siEditMode;
         controls.update();
@@ -1306,6 +1322,8 @@ function renderNeptune3D(pd) {
     );
     neptuneGroup.add(atmo);
 
+    window.__siPlanetMat = neptuneMat;
+    window.__siAtmoMesh = atmo;
     setupPlanetDrag(canvas, camera, neptuneGroup, THREE, pd.slug);
 
     {
@@ -1323,7 +1341,7 @@ function renderNeptune3D(pd) {
       let t=0;
       function tick(){
         requestAnimationFrame(tick);
-        t += 0.0022;
+        t += 0.0022 * (window.__siSpeedMul != null ? window.__siSpeedMul : 1); // Texture Look panel's Motion slider
         neptune.rotation.y = t*1.1; // same tuned rate as the others
         controls.enabled = !window.__siEditMode;
         controls.update();
@@ -1411,6 +1429,8 @@ function renderPluto3D(pd) {
       plutoMat.map = tex; plutoMat.bumpMap = tex; plutoMat.bumpScale = 0.012; plutoMat.needsUpdate = true;
     });
 
+    window.__siPlanetMat = plutoMat;
+    window.__siAtmoMesh = null; // Pluto has no atmosphere glow shell — see Session 17 Part 34
     setupPlanetDrag(canvas, camera, plutoGroup, THREE, pd.slug);
 
     {
@@ -1428,7 +1448,7 @@ function renderPluto3D(pd) {
       let t=0;
       function tick(){
         requestAnimationFrame(tick);
-        t += 0.0022;
+        t += 0.0022 * (window.__siSpeedMul != null ? window.__siSpeedMul : 1); // Texture Look panel's Motion slider
         // Unlike every other planet, Pluto's real texture is sharp only in
         // a narrow band (New Horizons' actual high-res imaging strip) and
         // falls off into genuinely low-res, smeared data outside it — real
@@ -2013,17 +2033,33 @@ document.getElementById('veil').classList.add('clear');
   // Keep badges tracking their blocks (window resize, tab switches, etc.)
   setInterval(positionBadges, 200);
 
-  // ── Live "Texture Look" controls — Contrast / Saturation / Focus / Blend.
-  // Grew out of the Pluto texture-tuning back-and-forth this session: every
-  // adjustment needed a Python re-composite + screenshot round trip. This
-  // lets Ricky dial the look in-browser instead, per planet, persisted.
+  // ── Live "Texture Look" controls. Grew out of the Pluto texture-tuning
+  // back-and-forth this session: every adjustment needed a Python
+  // re-composite + screenshot round trip. This lets Ricky dial the look
+  // in-browser instead, per planet, persisted. Started with just Contrast/
+  // Saturation/Focus/Blend (Part 35); expanded here (Part 36) to Color
+  // Grading, Surface Relief, and Atmosphere & Motion groups, plus split the
+  // one "Blend edges" slider into Strength + Radius for finer control.
   const LOOK_KEY = 'soulinterface_planet3d_look_v1';
   let allLooks = {};
   try { allLooks = JSON.parse(localStorage.getItem(LOOK_KEY)) || {}; } catch(e){}
-  const DEFAULT_LOOK = { contrast: 100, saturate: 100, focus: 0, blend: 0 };
+  const DEFAULT_LOOK = {
+    contrast: 100, saturate: 100, brightness: 100, hue: 0, warmth: 0, vignette: 100,
+    focus: 0, relief: 100,
+    blendStrength: 0, blendRadius: 50,
+    atmosphere: 100, motion: 100,
+  };
   let look = Object.assign({}, DEFAULT_LOOK, allLooks[planetSlug] || {});
 
+  // Each real-textured planet's own baked-in bumpScale (see the loader.load
+  // callback in its renderX3D function) — Relief multiplies this, rather
+  // than the panel needing to read it live off window.__siPlanetMat, which
+  // may still be its pre-texture-load default when this panel initializes.
+  const BASE_BUMP = { earth:0.06, venus:0.01, mercury:0.025, mars:0.02, jupiter:0.015, saturn:0.022, uranus:0.022, neptune:0.02, pluto:0.012 };
+  const baseBumpScale = BASE_BUMP[planetSlug] != null ? BASE_BUMP[planetSlug] : 0.02;
+
   const lookCanvas = document.getElementById('planet-scene');
+  const vignetteEl = document.getElementById('vignette');
 
   function applyLookFilters(){
     // focus is soften-only (0=native sharpness, 100=max blur) — CSS has no
@@ -2031,9 +2067,48 @@ document.getElementById('veil').classList.add('clear');
     // actually in the texture would misrepresent real photo data, same
     // principle this whole session's texture work has stuck to.
     const blurPx = look.focus / 100 * 4;
-    lookCanvas.style.filter = `contrast(${look.contrast}%) saturate(${look.saturate}%)` + (blurPx > 0 ? ` blur(${blurPx.toFixed(2)}px)` : '');
+    lookCanvas.style.filter = `contrast(${look.contrast}%) saturate(${look.saturate}%) brightness(${look.brightness}%) hue-rotate(${look.hue}deg)`
+      + (blurPx > 0 ? ` blur(${blurPx.toFixed(2)}px)` : '');
   }
   applyLookFilters();
+
+  // Warmth — a color-temperature tint (cool blue <-> warm orange), the same
+  // kind of multiply-tint v1's Pluto texture used to fake color onto a
+  // grayscale source (Session 17 Part 24), just live and reversible instead
+  // of baked permanently into a file.
+  const warmthOverlay = document.createElement('div');
+  warmthOverlay.style.cssText = 'position:fixed;inset:0;z-index:1;pointer-events:none;mix-blend-mode:overlay;';
+  lookCanvas.parentNode.insertBefore(warmthOverlay, lookCanvas.nextSibling);
+  function applyWarmth(){
+    const w = look.warmth;
+    if (w === 0){ warmthOverlay.style.opacity = '0'; return; }
+    warmthOverlay.style.background = w > 0 ? 'rgb(255,150,40)' : 'rgb(60,110,255)';
+    warmthOverlay.style.opacity = String(Math.min(Math.abs(w) / 100, 1) * 0.35);
+  }
+  applyWarmth();
+
+  function applyVignette(){
+    if (vignetteEl) vignetteEl.style.opacity = String(look.vignette / 100);
+  }
+  applyVignette();
+
+  function applyRelief(){
+    if (!window.__siPlanetMat) return;
+    window.__siPlanetMat.bumpScale = baseBumpScale * (look.relief / 100);
+    window.__siPlanetMat.needsUpdate = true;
+  }
+  applyRelief();
+
+  function applyAtmosphere(){
+    if (!window.__siAtmoMesh) return;
+    window.__siAtmoMesh.scale.setScalar(Math.max(0.01, look.atmosphere / 100));
+  }
+  applyAtmosphere();
+
+  function applyMotion(){
+    window.__siSpeedMul = look.motion / 100;
+  }
+  applyMotion();
 
   // "Blend edges" — a live, general-purpose analog to compose_pluto_texture.py's
   // per-pixel detail-tier blending (Part 33): that one is computed offline,
@@ -2041,7 +2116,8 @@ document.getElementById('veil').classList.add('clear');
   // boundary. This is a cheap universal approximation any planet can use —
   // a radial blur overlay, masked so the sphere's center stays untouched and
   // only the limb softens, which is where hard texture-detail transitions
-  // (or just the terminator) tend to read as jarring.
+  // (or just the terminator) tend to read as jarring. Strength controls how
+  // much blur/opacity; Radius controls how far toward the center it reaches.
   let blendOverlay = null, blendInterval = null;
   function ensureBlendOverlay(){
     if (blendOverlay) return blendOverlay;
@@ -2051,7 +2127,7 @@ document.getElementById('veil').classList.add('clear');
     return blendOverlay;
   }
   function updateBlendOverlay(){
-    if (look.blend <= 0){
+    if (look.blendStrength <= 0){
       if (blendOverlay) blendOverlay.style.opacity = '0';
       if (blendInterval) { clearInterval(blendInterval); blendInterval = null; }
       return;
@@ -2059,9 +2135,9 @@ document.getElementById('veil').classList.add('clear');
     const ov = ensureBlendOverlay();
     ov.width = lookCanvas.clientWidth;
     ov.height = lookCanvas.clientHeight;
-    const blurPx = (look.blend / 100 * 14).toFixed(1);
+    const blurPx = (look.blendStrength / 100 * 14).toFixed(1);
     ov.style.filter = `blur(${blurPx}px)`;
-    ov.style.opacity = String(0.25 + look.blend / 100 * 0.55);
+    ov.style.opacity = String(0.25 + look.blendStrength / 100 * 0.55);
     // "circle" with no size keyword defaults to farthest-corner, which for a
     // 1280x720 box is ~735px from center — far past the sphere's actual
     // on-screen radius (~275px at default zoom), so the transition landed
@@ -2069,12 +2145,12 @@ document.getElementById('veil').classList.add('clear');
     // how high blend was set. closest-side anchors 100% to the nearest
     // viewport edge instead (the vertical half-height on a landscape frame),
     // which stays in the sphere's neighborhood across reasonable zoom levels.
-    const innerPct = 62 - look.blend * 0.15;
-    ov.style.maskImage = `radial-gradient(closest-side circle at 50% 50%, transparent ${innerPct}%, black 95%)`;
+    const innerPct = 72 - look.blendRadius * 0.37;
+    ov.style.maskImage = `radial-gradient(closest-side circle at 50% 50%, transparent ${innerPct}%, black 96%)`;
     ov.style.webkitMaskImage = ov.style.maskImage;
     const ctx = ov.getContext('2d');
     function draw(){
-      if (look.blend <= 0) return;
+      if (look.blendStrength <= 0) return;
       ctx.clearRect(0, 0, ov.width, ov.height);
       ctx.drawImage(lookCanvas, 0, 0, ov.width, ov.height);
     }
@@ -2091,47 +2167,128 @@ document.getElementById('veil').classList.add('clear');
     try { localStorage.setItem(LOOK_KEY, JSON.stringify(allLooks)); } catch(e){}
   }
 
+  const ALL_KEYS = Object.keys(DEFAULT_LOOK);
+  // Named applyLookAll, not applyAll — this IIFE already has an applyAll()
+  // for the layout-panel system (defined earlier in this same script block).
+  // Function declarations in the same scope silently overwrite each other
+  // via hoisting; reusing the name broke the layout system's own early
+  // applyAll() call, which ran before this file's `let look` had executed
+  // ("Cannot access 'look' before initialization").
+  function applyLookAll(){
+    applyLookFilters();
+    applyWarmth();
+    applyVignette();
+    applyRelief();
+    applyAtmosphere();
+    applyMotion();
+    updateBlendOverlay();
+  }
+
+  // Collapsed by default behind a small toggle button — the panel grew to
+  // 12 sliders across 4 groups (Part 36), wide/tall enough that left
+  // permanently open it visibly overlapped the existing right-side stats
+  // panel (rulership/orbital period/chart text). A toggle avoids that
+  // collision when the panel isn't actively being used, same tradeoff the
+  // existing EDIT LAYOUT control makes for its own dragging mode.
+  const lookToggleBtn = document.createElement('button');
+  lookToggleBtn.textContent = '🎚 LOOK';
+  lookToggleBtn.style.cssText = 'position:fixed;z-index:53;right:14px;top:14px;'
+    + 'background:rgba(140,200,255,0.12);border:1px solid rgba(140,200,255,0.4);color:rgba(200,225,255,0.95);'
+    + 'font-family:monospace;font-size:10px;padding:5px 12px;border-radius:4px;cursor:pointer;white-space:nowrap;';
+  document.body.appendChild(lookToggleBtn);
+
   const lookPanel = document.createElement('div');
-  lookPanel.style.cssText = 'position:fixed;z-index:52;right:14px;top:14px;'
-    + 'background:rgba(10,8,6,0.9);border:1px solid rgba(200,175,135,0.35);border-radius:6px;'
-    + 'font-family:monospace;color:rgba(230,215,190,0.92);padding:8px 12px;display:flex;flex-direction:column;gap:7px;width:150px;';
+  lookPanel.style.cssText = 'position:fixed;z-index:52;right:14px;top:48px;max-height:calc(100vh - 62px);overflow-y:auto;display:none;'
+    + 'background:rgba(10,8,6,0.92);border:1px solid rgba(200,175,135,0.35);border-radius:6px;'
+    + 'font-family:monospace;color:rgba(230,215,190,0.92);padding:8px 12px;flex-direction:column;gap:6px;width:170px;';
+  lookToggleBtn.addEventListener('click', () => {
+    const open = lookPanel.style.display === 'flex';
+    lookPanel.style.display = open ? 'none' : 'flex';
+    lookToggleBtn.style.background = open ? 'rgba(140,200,255,0.12)' : 'rgba(140,200,255,0.35)';
+  });
   function lookSliderRow(labelText, key, min, max){
     return `<label style="font-size:9px;display:flex;flex-direction:column;gap:2px;">
       <span style="display:flex;justify-content:space-between;"><span>${labelText}</span><span id="lookVal_${key}">${look[key]}</span></span>
       <input type="range" id="lookSlider_${key}" min="${min}" max="${max}" step="1" value="${look[key]}" style="width:100%;">
     </label>`;
   }
+  function groupHeader(text){
+    return `<div style="font-size:8px;opacity:0.55;letter-spacing:0.08em;margin-top:4px;border-top:1px solid rgba(200,175,135,0.2);padding-top:5px;">${text}</div>`;
+  }
   lookPanel.innerHTML = `
     <div style="font-size:9px;opacity:0.6;display:flex;justify-content:space-between;align-items:center;">
       <span>TEXTURE LOOK</span>
       <button id="lookResetBtn" style="background:rgba(255,120,120,0.1);border:1px solid rgba(255,120,120,0.3);color:rgba(255,180,180,0.9);font-family:inherit;font-size:8px;padding:2px 6px;border-radius:3px;cursor:pointer;">RESET</button>
     </div>
+    ${groupHeader('COLOR GRADING')}
     ${lookSliderRow('Contrast', 'contrast', 50, 200)}
     ${lookSliderRow('Saturation', 'saturate', 50, 200)}
+    ${lookSliderRow('Brightness', 'brightness', 50, 150)}
+    ${lookSliderRow('Hue', 'hue', -180, 180)}
+    ${lookSliderRow('Warmth', 'warmth', -100, 100)}
+    ${lookSliderRow('Vignette', 'vignette', 0, 150)}
+    ${groupHeader('SURFACE')}
     ${lookSliderRow('Focus', 'focus', 0, 100)}
-    ${lookSliderRow('Blend edges', 'blend', 0, 100)}
+    ${lookSliderRow('Relief', 'relief', 0, 200)}
+    ${groupHeader('BLEND TOOL')}
+    ${lookSliderRow('Strength', 'blendStrength', 0, 100)}
+    ${lookSliderRow('Radius', 'blendRadius', 0, 100)}
+    ${groupHeader('ATMOSPHERE & MOTION')}
+    ${lookSliderRow('Atmosphere', 'atmosphere', 0, 200)}
+    ${lookSliderRow('Motion', 'motion', 0, 300)}
   `;
   document.body.appendChild(lookPanel);
 
-  ['contrast', 'saturate', 'focus', 'blend'].forEach(key => {
+  // Atmosphere slider is meaningless on Mercury/Pluto (no glow shell — see
+  // the comments by their window.__siAtmoMesh = null assignments). Disable
+  // rather than hide, so it's clear this is planet-specific, not missing.
+  if (!window.__siAtmoMesh){
+    const atmoSlider = lookPanel.querySelector('#lookSlider_atmosphere');
+    atmoSlider.disabled = true;
+    const pdForName = PLANETS.find(p => p.slug === planetSlug);
+    atmoSlider.title = `${pdForName ? pdForName.name : 'This planet'} has no atmosphere glow shell to adjust`;
+    atmoSlider.style.opacity = '0.35';
+  }
+
+  ALL_KEYS.forEach(key => {
     const slider = lookPanel.querySelector(`#lookSlider_${key}`);
     const valEl = lookPanel.querySelector(`#lookVal_${key}`);
     slider.addEventListener('input', () => {
       look[key] = Number(slider.value);
       valEl.textContent = look[key];
-      applyLookFilters();
-      updateBlendOverlay();
+      applyLookAll();
       persistLook();
     });
   });
+
+  // window.__siPlanetMat / __siAtmoMesh are set inside the relevant
+  // renderX3D function's script.onload callback — Three.js loads from a CDN
+  // <script> tag appended earlier in the page, so it's genuinely async and
+  // very likely hasn't finished by the time this panel initializes. Without
+  // this, a persisted non-default Relief/Atmosphere value would silently
+  // fail to apply on load (the material/mesh it needs doesn't exist yet)
+  // even though the sliders themselves show the right values. Poll briefly
+  // rather than restructuring every renderX3D function to call back in.
+  if (look.relief !== DEFAULT_LOOK.relief || look.atmosphere !== DEFAULT_LOOK.atmosphere){
+    let tries = 0;
+    const waitForMats = setInterval(() => {
+      tries++;
+      if (window.__siPlanetMat){
+        applyRelief();
+        applyAtmosphere();
+        clearInterval(waitForMats);
+      } else if (tries > 100){ // ~10s — long past any reasonable load time
+        clearInterval(waitForMats);
+      }
+    }, 100);
+  }
   lookPanel.querySelector('#lookResetBtn').addEventListener('click', () => {
     look = Object.assign({}, DEFAULT_LOOK);
-    ['contrast', 'saturate', 'focus', 'blend'].forEach(key => {
+    ALL_KEYS.forEach(key => {
       lookPanel.querySelector(`#lookSlider_${key}`).value = look[key];
       lookPanel.querySelector(`#lookVal_${key}`).textContent = look[key];
     });
-    applyLookFilters();
-    updateBlendOverlay();
+    applyLookAll();
     persistLook();
   });
 })();
