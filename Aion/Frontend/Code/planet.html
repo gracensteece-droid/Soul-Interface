@@ -1323,7 +1323,15 @@ function renderPluto3D(pd) {
     renderer.setPixelRatio(Math.min(devicePixelRatio,2));
     renderer.setSize(innerWidth, innerHeight);
 
-    scene.add(new THREE.AmbientLight(0x2a2420, 0.4));
+    // ambient dropped from 0.4 — Pluto has no atmosphere to scatter light
+    // onto its unlit side, so a real photo of it has a hard, dark
+    // terminator, not a softly-lit night side. Bonus effect worth being
+    // honest about: this also naturally hides more of the one hemisphere
+    // that has no real high-resolution data (Session 17 Parts 30-33) in
+    // shadow, rather than leaving it lit and visibly soft — that's a
+    // legitimate side benefit of a physically accurate light, not a texture
+    // trick standing in for one.
+    scene.add(new THREE.AmbientLight(0x2a2420, 0.12));
     const sun = new THREE.DirectionalLight(0xfff0e0, 2.3);
     sun.position.set(4,2,3);
     scene.add(sun);
@@ -1354,7 +1362,7 @@ function renderPluto3D(pd) {
     // class of artifact as Uranus's JPEG-block quilting earlier this
     // session. 0.012 keeps real crater rims readable without amplifying
     // every sharpened edge into fake geometry.
-    loadEnhancedTexture(loader, THREE, 'textures/tex_pluto.jpg?v=7', { contrast: 1.3, saturate: 1.25 }, tex => {
+    loadEnhancedTexture(loader, THREE, 'textures/tex_pluto.jpg?v=8', { contrast: 1.3, saturate: 1.25 }, tex => {
       plutoMat.map = tex; plutoMat.bumpMap = tex; plutoMat.bumpScale = 0.012; plutoMat.needsUpdate = true;
     });
 

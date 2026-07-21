@@ -136,15 +136,21 @@ def main():
     alpha = (flatness * 0.85)[..., None]
     arr = arr * (1 - alpha) + softened * alpha
 
+    # Grain to keep flat patches from reading as an obviously pasted-in
+    # fill. v3's first attempt generated the coarse layer on a downsampled
+    # grid and upsampled it with BICUBIC — invisible in plain color, but
+    # under this material's bumpMap + a grazing terminator light angle, the
+    # upsample's faint cell boundaries turned into a hard-edged rectangular
+    # fake-relief artifact (Ricky caught this — "that straight line looks
+    # kind of harsh up close"). Generating both octaves at full resolution
+    # and blurring with the same box-blur used everywhere else in this
+    # script avoids the resampling grid entirely — cheap regardless of blur
+    # radius since box blur via cumsum is O(1) per radius.
     rng = np.random.default_rng(20260720)
     fine = rng.normal(0, 1, size=gray.shape).astype(np.float32)
     fine = _blur(fine, 1.0)
-    coarse_small = rng.normal(0, 1, size=(gray.shape[0] // 6, gray.shape[1] // 6)).astype(np.float32)
-    coarse_small = _blur(coarse_small, 2.5)
-    coarse = np.asarray(
-        Image.fromarray(coarse_small, mode='F').resize((gray.shape[1], gray.shape[0]), Image.BICUBIC),
-        dtype=np.float32,
-    )
+    coarse = rng.normal(0, 1, size=gray.shape).astype(np.float32)
+    coarse = _blur(coarse, 18)
 
     # Low amplitude on purpose — this is grain/texture, not simulated
     # geography. Just enough that a dead-flat patch reads as soft real
