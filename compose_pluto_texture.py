@@ -1,5 +1,5 @@
 """
-Soul Interface — Pluto texture compositor (v3, already applied)
+Soul Interface — Pluto texture compositor (v4, already applied)
 
 v1 downsampled directly from NASA's raw New Horizons TIF and mirror-filled
 the unmapped far side, which produced a hard black void with jagged seam
@@ -8,31 +8,35 @@ imaged a narrow high-res strip during closest approach — everything else
 degrades toward the limb, and that's baked into the actual pixels, not a
 processing bug). v2 switched to Askaniy's "Pluto Texture Map (25K)", a
 third-party composite blending that same New Horizons data with a 2002
-Hubble far-side fill and a true-color pass — a real improvement (full
-coverage, no void, real color) but Ricky correctly flagged that the
-different source tiers still don't *blend* into each other: there's a
-sharply-detailed encounter hemisphere, a smeared lower-resolution band, and
-— confirmed by inspecting the raw 25K source directly, not just our
-downsampled output — genuinely flat, near-zero-detail patches at both poles
-where not even Hubble resolved anything. Those tiers meet at real, abrupt
-seams in the source itself.
+Hubble far-side fill and a true-color pass. v3 added per-pixel detail-tier
+blending across the real crisp/soft seams, plus low-amplitude grain in the
+flat patches so they didn't read as an obviously pasted-in fill.
 
-v3 doesn't invent detail in the flat patches — there is none to recover,
-in any resolution of any available source. What it does instead:
-  1. Detects low-detail regions via local variance on a downsampled/blurred
-     luminance map (cheap box-blur-based estimate, not a fabricated feature
-     map).
-  2. Blends in very low-amplitude two-octave grain (a soft coarse layer plus
-     a finer layer, both smoothed) into exactly those regions, weighted by
-     how flat they are — enough that a dead-flat "pasted-on" patch reads as
-     plausibly soft real terrain instead of an obviously separate fill, not
-     enough to simulate any specific geographic feature. This is grain, not
-     fabricated craters.
-  3. Because the variance mask is itself a smooth (blurred) gradient, the
-     grain fades in/out gradually across the real tier boundaries instead of
-     stopping at a hard edge — softening the seams Ricky pointed out without
-     touching the genuinely detailed regions at all (their variance is high,
-     so their blend weight is ~0).
+v3's real, repeated mistake: `renderPluto3D` and index.html both point
+`.map` AND `.bumpMap` at the SAME output file. Every cosmetic, color-only
+addition made to that one file — sharpening, grain, anything with any
+high-frequency content — also becomes fake physical geometry once the
+bump map reads it as height. This bit three separate times under three
+different specific appearances, each one initially looking like a
+different bug:
+  - Part 32: sharpening's edge contrast read as a "quilted" look
+  - Part 34: a downsampled-then-BICUBIC-upsampled grain layer's faint
+    resampling-grid edges read as a hard rectangular artifact
+  - Part 37 (this one): v3's two-octave grain, uniform enough in
+    frequency, read as a regular "orange peel"/drywall-knockdown pattern
+    once lit and shaded as height — Ricky's exact, correct description.
+
+Each time, the fix was another round of tuning sharpening/bumpScale/grain
+parameters against the shared file — which only ever reduces the symptom,
+because the actual cause (one file serving two incompatible jobs) was
+never addressed. v4 fixes the real thing: outputs TWO files instead of
+one. `tex_pluto.jpg` (the color map) keeps the full treatment — sharpening,
+seam-blending, grain. `tex_pluto_bump.jpg` (the bump map) gets ONLY the
+seam-blending — no sharpening, no grain — so nothing added purely for
+color/cosmetic reasons can ever be misread as height again, regardless of
+how future tuning on the color side changes. `renderPluto3D` (planet.html)
+and index.html's Pluto block both updated to point `.bumpMap` at the new
+file instead of reusing `.map`'s texture object.
 
 Source: "Pluto Texture Map (25K)" by Askaniy (deviantart.com/askaniy),
 24888x12444, CC BY-NC-SA 3.0 (non-commercial — fine for this project as-is,
@@ -40,8 +44,9 @@ but flag it if Soul Interface is ever monetized). Downloaded from the
 artist's linked Google Drive folder (pluto25K.jpg, ~59MB) rather than the
 DeviantArt page itself, which requires a login to download.
 
-This has already been run once — textures/tex_pluto.jpg (and the
-Aion/Frontend/Code copy) already reflect its output.
+This has already been run once — textures/tex_pluto.jpg and
+textures/tex_pluto_bump.jpg (and the Aion/Frontend/Code copies) already
+reflect its output.
 
 Usage (if re-doing this from scratch):
   pip install pillow numpy
@@ -57,7 +62,9 @@ from PIL import Image, ImageFilter
 
 Image.MAX_IMAGE_PIXELS = None  # source is ~310M pixels, above PIL's default decompression-bomb guard
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'textures', 'tex_pluto.jpg')
+TEX_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'textures')
+OUT_COLOR = os.path.join(TEX_DIR, 'tex_pluto.jpg')
+OUT_BUMP = os.path.join(TEX_DIR, 'tex_pluto_bump.jpg')
 OUT_W, OUT_H = 4096, 2048  # matches Jupiter/Saturn's resolution tier
 
 
@@ -86,6 +93,25 @@ def _blur(arr_f32, radius):
     return out
 
 
+def _compute_flatness(arr):
+    """0 (detailed) - 1 (flat) blend weight from local luminance variance, blurred wide so it ramps smoothly rather than cutting at a hard boundary."""
+    gray = arr.mean(axis=2)
+    mean = _blur(gray, 10)
+    mean_sq = _blur(gray * gray, 10)
+    variance = np.clip(mean_sq - mean * mean, 0, None)
+    v = np.log1p(variance)
+    v_lo, v_hi = np.percentile(v, 2), np.percentile(v, 45)
+    flatness = np.clip(1.0 - (v - v_lo) / max(v_hi - v_lo, 1e-6), 0.0, 1.0)
+    return _blur(flatness, 60)
+
+
+def _blend_seams(arr, flatness):
+    """Blend each pixel toward a locally-blurred version of itself, weighted by flatness — softens the real crisp/soft tier boundaries without touching detailed regions (flatness ~0 there)."""
+    softened = np.stack([_blur(arr[..., c], 12) for c in range(3)], axis=-1)
+    alpha = (flatness * 0.85)[..., None]
+    return arr * (1 - alpha) + softened * alpha
+
+
 def main():
     if len(sys.argv) != 2:
         print("Usage: python compose_pluto_texture.py <pluto25K.jpg>")
@@ -93,74 +119,35 @@ def main():
     src_path = sys.argv[1]
 
     src = Image.open(src_path).convert("RGB")
-    result = src.resize((OUT_W, OUT_H), Image.LANCZOS)
-    # percent=40 (v2) read too soft; percent=65 (Part 31) fixed that but,
-    # combined with the renderer's bumpMap using this same sharpened image,
-    # amplified the sharpening's fine edge contrast into a fake "quilted"
-    # look once lit and shaded as height — the same class of artifact hit on
-    # Uranus earlier this session. Settled at percent=50, with the rest of
-    # the fake-geometry fix living in bumpScale (see renderPluto3D / index.html).
-    result = result.filter(ImageFilter.UnsharpMask(radius=1.5, percent=50, threshold=3))
+    resized = src.resize((OUT_W, OUT_H), Image.LANCZOS)
+    base = np.asarray(resized, dtype=np.float32)
+    flatness = _compute_flatness(base)
+    blended = _blend_seams(base, flatness)
 
-    arr = np.asarray(result, dtype=np.float32)
-    gray = arr.mean(axis=2)
+    # ── Bump map: seam-blending ONLY. No sharpening, no grain — anything
+    # added here purely for color/cosmetic reasons becomes fake physical
+    # relief once read as height (see the module docstring; this is the
+    # actual fix for Parts 32/34/37, not another parameter tweak).
+    bump_img = Image.fromarray(np.clip(blended, 0, 255).astype(np.uint8))
+    bump_img.save(OUT_BUMP, quality=93)
+    print(f"saved {OUT_BUMP}")
 
-    # Local variance = E[x^2] - E[x]^2, via two Gaussian blurs. sigma=10 is
-    # wide enough to judge "is this a detailed crater field or a flat fill"
-    # rather than reacting to single-pixel noise.
-    mean = _blur(gray, 10)
-    mean_sq = _blur(gray * gray, 10)
-    variance = np.clip(mean_sq - mean * mean, 0, None)
+    # ── Color map: full treatment — sharpen, then grain in the flat regions
+    # so they read as soft real terrain rather than an obviously pasted-in
+    # fill. Both are purely cosmetic now that they never touch the bump map.
+    sharpened = Image.fromarray(np.clip(blended, 0, 255).astype(np.uint8))
+    sharpened = sharpened.filter(ImageFilter.UnsharpMask(radius=1.5, percent=50, threshold=3))
+    color = np.asarray(sharpened, dtype=np.float32)
 
-    # Normalize into a 0 (detailed) - 1 (flat) blend weight. The real
-    # cratered regions have variance in the hundreds-to-thousands; the flat
-    # polar/far-side fills are near 0. log1p compresses the range so the
-    # falloff between "somewhat textured" and "detailed" isn't razor-thin.
-    v = np.log1p(variance)
-    v_lo, v_hi = np.percentile(v, 2), np.percentile(v, 45)
-    flatness = np.clip(1.0 - (v - v_lo) / max(v_hi - v_lo, 1e-6), 0.0, 1.0)
-    # sigma=60 (not 14) — the first pass only smoothed the *grain* mask, but
-    # the actual complaint was the abrupt jump in sharpness itself where a
-    # crater field cuts directly into a flat fill. A wide blur here means
-    # `flatness` ramps from 0 to 1 over a real span of pixels, so the blend
-    # below softens detail gradually across that span instead of stopping
-    # dead at a boundary.
-    flatness = _blur(flatness, 60)
-
-    # Blend each pixel toward a locally-blurred version of itself, weighted
-    # by flatness. Purely-detailed regions (flatness ~0) are untouched;
-    # purely-flat regions were already smooth so this is a no-op there too;
-    # the actual effect is on the ramp *between* them, where detail now
-    # fades out gradually instead of cutting hard into the fill.
-    softened = np.stack([_blur(arr[..., c], 12) for c in range(3)], axis=-1)
-    alpha = (flatness * 0.85)[..., None]
-    arr = arr * (1 - alpha) + softened * alpha
-
-    # Grain to keep flat patches from reading as an obviously pasted-in
-    # fill. v3's first attempt generated the coarse layer on a downsampled
-    # grid and upsampled it with BICUBIC — invisible in plain color, but
-    # under this material's bumpMap + a grazing terminator light angle, the
-    # upsample's faint cell boundaries turned into a hard-edged rectangular
-    # fake-relief artifact (Ricky caught this — "that straight line looks
-    # kind of harsh up close"). Generating both octaves at full resolution
-    # and blurring with the same box-blur used everywhere else in this
-    # script avoids the resampling grid entirely — cheap regardless of blur
-    # radius since box blur via cumsum is O(1) per radius.
     rng = np.random.default_rng(20260720)
-    fine = rng.normal(0, 1, size=gray.shape).astype(np.float32)
-    fine = _blur(fine, 1.0)
-    coarse = rng.normal(0, 1, size=gray.shape).astype(np.float32)
-    coarse = _blur(coarse, 18)
-
-    # Low amplitude on purpose — this is grain/texture, not simulated
-    # geography. Just enough that a dead-flat patch reads as soft real
-    # terrain instead of an obviously separate pasted-in fill.
+    fine = _blur(rng.normal(0, 1, size=(OUT_H, OUT_W)).astype(np.float32), 1.0)
+    coarse = _blur(rng.normal(0, 1, size=(OUT_H, OUT_W)).astype(np.float32), 18)
     grain = fine * 3.5 + coarse * 7.0
-    arr += grain[..., None] * flatness[..., None]
+    color += grain[..., None] * flatness[..., None]
 
-    result = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
-    result.save(OUT, quality=93)
-    print(f"saved {OUT}")
+    color_img = Image.fromarray(np.clip(color, 0, 255).astype(np.uint8))
+    color_img.save(OUT_COLOR, quality=93)
+    print(f"saved {OUT_COLOR}")
 
 
 if __name__ == "__main__":

@@ -1419,14 +1419,22 @@ function renderPluto3D(pd) {
     // contrast/saturate raised from 1.1/1.15 — Ricky called the first pass
     // flat next to the other planets, which all use a punchier boost
     // (Uranus 1.5/1.6, Neptune 1.3/1.4, Saturn 1.45/1.7); matched that tier.
-    // bumpScale dropped twice now (0.03 -> 0.022 -> 0.012): at close zoom
-    // the bump map was turning the sharpened texture's fine edge contrast
-    // into a fake "quilted" look once lit and shaded as real height — same
-    // class of artifact as Uranus's JPEG-block quilting earlier this
-    // session. 0.012 keeps real crater rims readable without amplifying
-    // every sharpened edge into fake geometry.
-    loadEnhancedTexture(loader, THREE, 'textures/tex_pluto.jpg?v=8', { contrast: 1.3, saturate: 1.25 }, tex => {
-      plutoMat.map = tex; plutoMat.bumpMap = tex; plutoMat.bumpScale = 0.012; plutoMat.needsUpdate = true;
+    loadEnhancedTexture(loader, THREE, 'textures/tex_pluto.jpg?v=9', { contrast: 1.3, saturate: 1.25 }, tex => {
+      plutoMat.map = tex; plutoMat.needsUpdate = true;
+    });
+    // Separate bump source (Session 17 Part 37) — .map and .bumpMap used to
+    // point at the same file, so every cosmetic addition to the color
+    // texture (sharpening, grain) also became fake physical relief once
+    // read as height. That caused three separate-looking artifacts this
+    // session (Parts 32, 34, and finally a regular "drywall" pattern from
+    // v3's grain). tex_pluto_bump.jpg (compose_pluto_texture.py v4) gets
+    // ONLY the seam-blending, no sharpening or grain, so this can't recur
+    // regardless of how the color texture gets tuned going forward.
+    // bumpScale raised back up from 0.012 now that the bump source itself
+    // has nothing fake left to amplify.
+    loader.load('textures/tex_pluto_bump.jpg?v=1', tex => {
+      setAniso(tex);
+      plutoMat.bumpMap = tex; plutoMat.bumpScale = 0.022; plutoMat.needsUpdate = true;
     });
 
     window.__siPlanetMat = plutoMat;

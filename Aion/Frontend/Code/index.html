@@ -2085,7 +2085,7 @@ const planets = pData.map((pd, i) => {
   // renderPluto3D; bump the version if this file is ever regenerated again.
   // contrast/saturate raised to match the tier used for Uranus/Neptune/
   // Saturn above — see the matching comment in planet.html's renderPluto3D.
-  texLoader.load('textures/tex_pluto.jpg?v=8', tex => {
+  texLoader.load('textures/tex_pluto.jpg?v=9', tex => {
     const img = tex.image;
     const canvas = document.createElement('canvas');
     canvas.width = img.width; canvas.height = img.height;
@@ -2096,12 +2096,18 @@ const planets = pData.map((pd, i) => {
     enhanced.needsUpdate = true;
     setAniso(enhanced);
     plutoMat.map = enhanced;
-    plutoMat.bumpMap = enhanced;
-    // Explicit low bumpScale — without this Three.js defaults to 1.0, which
-    // at this planet's real-photo detail level would read as much heavier
-    // fake bump noise than intended (see the matching fix/comment in
-    // planet.html's renderPluto3D).
-    plutoMat.bumpScale = 0.012;
+    plutoMat.needsUpdate = true;
+  });
+  // Separate bump source (Session 17 Part 37) — .map and .bumpMap used to
+  // share one texture, so cosmetic color-only additions (sharpening, grain)
+  // were also read as fake physical relief once lit. tex_pluto_bump.jpg has
+  // only the seam-blending, nothing that can be misread as height, so this
+  // class of artifact (hit three times this session under three different
+  // appearances) can't recur regardless of future color-side tuning.
+  texLoader.load('textures/tex_pluto_bump.jpg?v=1', tex => {
+    setAniso(tex);
+    plutoMat.bumpMap = tex;
+    plutoMat.bumpScale = 0.022; // raised from 0.012 — nothing fake left in this source to amplify
     plutoMat.needsUpdate = true;
   });
 
