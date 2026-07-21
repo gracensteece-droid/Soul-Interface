@@ -472,8 +472,19 @@ Verified live: with Bloom active and no spots, the existing global glow shows ne
 
 ---
 
+### Part 40 — Wiring the Real NASA Sun Photo Into `index.html`'s Live Scene
+
+Ricky remembered a standalone Sun texture experiment from Session 13 (`Aion/Frontend/Code/sun-texture-test.html`) — the real NASA/SDO photo (`tex_sun_photo.jpg`) blended with the exact FBM turbulence/glow shader ported from `index.html`'s live `sunMaterial` — and asked to actually wire it into the real scene, since it had only ever been a proof-of-concept. Before touching anything, spun the prototype back up (a stale, decade-old orphaned `python -m http.server 8421` from the original Session 13 scratchpad was still squatting on that port; used 8422 instead rather than touch a process outside this session) to confirm it still worked, then confirmed a real risk before editing: `index.html`'s sun shares its name with a *completely different* Sun system in `Aion/Frontend/origin/src/main.js` (the separate Origin Sequencer app, with its own extensive keyframed spin/size/ripple/color controls per the "GalaxyCloud" commit). Grepped `index.html` directly and confirmed its own `sunMaterial` uniforms are all set once at creation with no external sequencer touching them (only `time` updates per frame) — a contained, safe change, not the heavily-tuned system.
+
+Ported the prototype's exact blend into `index.html`'s `sunMaterial`: added a `map` sampler2D uniform loading `textures/tex_sun_photo.jpg`, added `vUv` to the vertex shader, and replaced the fragment shader's `mix(deepColor, hotColor, n)` (blending between two flat colors) with `texColor = texture2D(map, vUv).rgb; color = mix(texColor, texColor * hotColor * 1.4, n * 0.6)` — the real photo as the base, tinted toward the hot color at high turbulence values, same technique as the prototype. Dropped the now-unused `deepColor`/`baseColor` uniforms (confirmed via grep nothing else in the file referenced them) — the real photo doesn't need the flat base-color tint the pure-procedural version relied on to look right. Copied `tex_sun_photo.jpg` into the root `textures/` folder (it only existed under `Aion/Frontend/Code/textures/` before) and synced the edited `index.html` to `Aion/Frontend/Code/`.
+
+Verified beyond just "it renders": checked the dissolve function first (grepped `-i dissolve` in `index.html`) to make sure this wasn't going to collide with anything — turned out to be the cosmogenesis intro's camera/opacity transition, unrelated to the sun mesh's own material, so no conflict. Then live-tested three states with Playwright: the idle solar-system scene (real granulated surface detail clearly visible on zoom, corona flares and orbit rings unaffected), and the actual cosmogenesis ignition sequence played through (not skipped) to confirm the small igniting sun still renders correctly early in that scene too. Zero JS errors in any state.
+
+---
+
 ### Next Session
 
+- Part 40 (real sun texture wired into `index.html`) is ready to commit as a follow-up if not already done.
 - Part 39 (Bloom spots) is ready to commit as a follow-up if not already done.
 - Part 38 (Bloom slider) is ready to commit as a follow-up if not already done.
 - Part 37 (separate bump/color textures) is ready to commit as a follow-up if not already done.
