@@ -495,6 +495,137 @@ populate(PLANETS[currentIdx]);
 </script>
 
 <script>
+// ── Drag-to-reposition for the real-textured 3D planets ─────────────────────────
+// Shared by renderEarth3D/renderJupiter3D/renderSaturn3D below — drags the
+// planet's own THREE.Group (sphere + rings/clouds/moon, whatever's parented
+// to it) in screen-space, converting pixel delta to world-space delta via
+// the camera's fov/aspect at the group's current distance, so the planet
+// tracks the cursor 1:1 instead of drifting at the wrong rate. Gated behind
+// the SAME edit mode as the text layout editor (window.__siEditMode, set by
+// that IIFE's EDIT LAYOUT toggle later in the page) so there's one single
+// "customize this page" mode covering both text and the planet itself,
+// rather than a second, separate toggle. Persisted per-planet-slug in its
+// own localStorage key, cleared by the layout editor's RESET button.
+const PLANET3D_POS_KEY = 'soulinterface_planet3d_pos_v1';
+function setupPlanetDrag(canvas, camera, group, THREE, slug) {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(PLANET3D_POS_KEY) || '{}'); } catch(e){}
+  if (saved[slug]) { group.position.x = saved[slug].x; group.position.y = saved[slug].y; }
+
+  let dragging = false, startX = 0, startY = 0, origX = 0, origY = 0;
+  canvas.addEventListener('mousedown', e => {
+    if (!window.__siEditMode) return;
+    dragging = true;
+    startX = e.clientX; startY = e.clientY;
+    origX = group.position.x; origY = group.position.y;
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const dist = camera.position.distanceTo(group.position) || camera.position.length();
+    const visibleH = 2 * dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    const unitsPerPx = visibleH / canvas.clientHeight;
+    group.position.x = origX + (e.clientX - startX) * unitsPerPx;
+    group.position.y = origY - (e.clientY - startY) * unitsPerPx;
+  });
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    saved[slug] = { x: group.position.x, y: group.position.y };
+    try { localStorage.setItem(PLANET3D_POS_KEY, JSON.stringify(saved)); } catch(e){}
+  });
+  // Cursor hint — only while edit mode is actually on, checked continuously
+  // since edit mode can toggle on/off without the mouse re-entering the canvas.
+  canvas.addEventListener('mousemove', () => {
+    canvas.style.cursor = window.__siEditMode ? 'move' : '';
+  });
+}
+
+// Real Saturn imagery, unlike Jupiter's, is genuinely low-contrast at a
+// global scale — the vivid storm/hexagon photos people picture are rare
+// close-up Cassini flybys, not what any standard texture map shows, and
+// Solar System Scope doesn't offer a more detailed Saturn alternative.
+// Rather than fabricate fake detail, this boosts the CONTRAST/SATURATION of
+// the real data itself (same idea as how astrophotographers process raw
+// data) using the canvas 2D context's native filter pipeline — much faster
+// than a manual per-pixel pass at this resolution.
+// Anisotropic filtering — without this, ANY texture on a curved sphere
+// blurs badly (a directional, streaky smear, not uniform softness) at
+// grazing viewing angles, which is most of a sphere's visible surface
+// away from dead-center. Never set anywhere in this file before this was
+// caught on Pluto (Session 17 Part 29) — it was already affecting every
+// real-textured planet, just most visible on Pluto's high-contrast crater
+// texture. Increasing the source texture's resolution (Parts 26-27)
+// didn't fix this, because it isn't a resolution problem. 16 is the de
+// facto max most GPUs support; Three.js clamps down automatically if the
+// actual hardware maximum is lower, so this is safe to set unconditionally
+// without querying renderer.capabilities.getMaxAnisotropy() at each call site.
+function setAniso(tex) {
+  tex.anisotropy = 16;
+  return tex;
+}
+
+// optional postDraw(ctx, canvas) runs AFTER the base contrast/saturation
+// pass, for painting stylized overlays (a polar tint, a storm band) on top
+// of the real data — an explicit artistic addition, not passed off as
+// photographically accurate, same spirit as Venus's texture choice.
+function loadEnhancedTexture(loader, THREE, url, { contrast = 1, saturate = 1, postDraw = null } = {}, onReady) {
+  loader.load(url, tex => {
+    const img = tex.image;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width; canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    ctx.filter = `contrast(${contrast * 100}%) saturate(${saturate * 100}%)`;
+    ctx.drawImage(img, 0, 0);
+    ctx.filter = 'none';
+    if (postDraw) postDraw(ctx, canvas);
+    const enhanced = new THREE.CanvasTexture(canvas);
+    enhanced.needsUpdate = true;
+    setAniso(enhanced);
+    onReady(enhanced);
+  });
+}
+
+// ── Camera orbit controls, shared by every real-3D-render planet ───────────────
+// cdnjs' three.js r128 package doesn't bundle the examples/ addons (only the
+// core three.min.js), so OrbitControls is loaded separately from jsdelivr,
+// which mirrors the full npm package for the exact same r128 release.
+// Cached so navigating between renders within one page load doesn't
+// re-fetch it (in practice each planet is a full page navigation anyway,
+// but this is a harmless safety net either way).
+let __orbitControlsLoading = null;
+function loadOrbitControls(THREE, onReady) {
+  if (THREE.OrbitControls) { onReady(); return; }
+  if (!__orbitControlsLoading) {
+    __orbitControlsLoading = new Promise(resolve => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js';
+      s.onload = resolve;
+      document.head.appendChild(s);
+    });
+  }
+  __orbitControlsLoading.then(onReady);
+}
+
+// Orbit controls are the default way to look around a planet; the
+// existing drag-to-reposition feature (setupPlanetDrag, above) only
+// applies while the text layout editor's edit mode is on — the two would
+// otherwise fight over the same mousedown/mousemove events on the same
+// canvas. Disabling controls whenever edit mode is active (checked live,
+// every frame, in each render function's tick loop) keeps them mutually
+// exclusive without needing an event-based handoff between two separate
+// <script> blocks.
+function makeOrbitControls(camera, renderer, THREE) {
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.enablePan = false; // panning would overlap with setupPlanetDrag's job
+  controls.minDistance = camera.position.length() * 0.55;
+  controls.maxDistance = camera.position.length() * 4;
+  controls.target.set(0, 0, 0);
+  return controls;
+}
+
 // ── Earth — real textured 3D render (Three.js, loaded on demand) ───────────────
 // Only Earth pays for WebGL + real texture downloads; every other planet still
 // uses the lightweight procedural Canvas 2D renderer below, unchanged.
@@ -517,17 +648,24 @@ function renderEarth3D(pd) {
     sun.position.set(4,2,3);
     scene.add(sun);
 
+    // Everything visually "Earth" (sphere, clouds, glow, and the moon's own
+    // pivot) is parented under one group so dragging moves them all together
+    // while each keeps spinning/orbiting independently via its own LOCAL
+    // rotation — see setupPlanetDrag() above.
+    const earthGroup = new THREE.Group();
+    scene.add(earthGroup);
+
     const loader = new THREE.TextureLoader();
     const earthMat = new THREE.MeshStandardMaterial({ color:0x2a4d8f, roughness:0.7, metalness:0.05 });
     const earth = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 96), earthMat);
-    scene.add(earth);
-    loader.load('textures/tex_earth.jpg', tex => { earthMat.map = tex; earthMat.bumpMap = tex; earthMat.bumpScale = 0.06; earthMat.needsUpdate = true; });
-    loader.load('textures/tex_earth_night.jpg', tex => { earthMat.emissiveMap = tex; earthMat.emissive.set(0xffffff); earthMat.emissiveIntensity = 1.0; earthMat.needsUpdate = true; });
+    earthGroup.add(earth);
+    loader.load('textures/tex_earth.jpg', tex => { setAniso(tex); earthMat.map = tex; earthMat.bumpMap = tex; earthMat.bumpScale = 0.06; earthMat.needsUpdate = true; });
+    loader.load('textures/tex_earth_night.jpg', tex => { setAniso(tex); earthMat.emissiveMap = tex; earthMat.emissive.set(0xffffff); earthMat.emissiveIntensity = 1.0; earthMat.needsUpdate = true; });
 
     const cloudMat = new THREE.MeshStandardMaterial({ transparent:true, opacity:0.7, depthWrite:false, roughness:0.9 });
     const clouds = new THREE.Mesh(new THREE.SphereGeometry(1.008, 72, 72), cloudMat);
-    scene.add(clouds);
-    loader.load('textures/tex_earth_clouds.jpg', tex => { cloudMat.map = tex; cloudMat.alphaMap = tex; cloudMat.needsUpdate = true; });
+    earthGroup.add(clouds);
+    loader.load('textures/tex_earth_clouds.jpg', tex => { setAniso(tex); cloudMat.map = tex; cloudMat.alphaMap = tex; cloudMat.needsUpdate = true; });
 
     const atmo = new THREE.Mesh(
       new THREE.SphereGeometry(1.035, 48, 48),
@@ -537,18 +675,22 @@ function renderEarth3D(pd) {
         blending:THREE.AdditiveBlending, side:THREE.BackSide, transparent:true,
       })
     );
-    scene.add(atmo);
+    earthGroup.add(atmo);
 
     // Moon — own pivot (not a child of earth) so its orbit stays independent of
     // Earth's own spin; leaving the mesh's own rotation untouched relative to the
     // pivot gives a real tidal lock for free (same trick as the solar-system scene).
+    // Parented under earthGroup (not earth itself) so it moves along when the
+    // group is dragged, without inheriting earth's own spin.
     const moonMat = new THREE.MeshStandardMaterial({ color:0x999999, roughness:1.0 });
     const moon = new THREE.Mesh(new THREE.SphereGeometry(0.27, 40, 40), moonMat);
     moon.position.set(3.0, 0, 0);
     const moonPivot = new THREE.Object3D();
     moonPivot.add(moon);
-    scene.add(moonPivot);
-    loader.load('textures/tex_moon.jpg', tex => { moonMat.map = tex; moonMat.needsUpdate = true; });
+    earthGroup.add(moonPivot);
+    loader.load('textures/tex_moon.jpg', tex => { setAniso(tex); moonMat.map = tex; moonMat.needsUpdate = true; });
+
+    setupPlanetDrag(canvas, camera, earthGroup, THREE, pd.slug);
 
     {
       const N=1500, pos=new Float32Array(N*3);
@@ -560,17 +702,22 @@ function renderEarth3D(pd) {
 
     addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
 
-    let t=0;
-    function tick(){
-      requestAnimationFrame(tick);
-      t += 0.0022;
-      earth.rotation.y = t;
-      clouds.rotation.y = t*1.15;
-      moonPivot.rotation.y = t*0.6;
-      renderer.render(scene, camera);
-    }
-    tick();
-    document.getElementById('veil').classList.add('clear');
+    loadOrbitControls(THREE, () => {
+      const controls = makeOrbitControls(camera, renderer, THREE);
+      let t=0;
+      function tick(){
+        requestAnimationFrame(tick);
+        t += 0.0022;
+        earth.rotation.y = t;
+        clouds.rotation.y = t*1.15;
+        moonPivot.rotation.y = t*0.6;
+        controls.enabled = !window.__siEditMode;
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      tick();
+      document.getElementById('veil').classList.add('clear');
+    });
   };
   document.head.appendChild(script);
 }
@@ -602,11 +749,14 @@ function renderJupiter3D(pd) {
     sun.position.set(4,2,3);
     scene.add(sun);
 
+    const jupiterGroup = new THREE.Group();
+    scene.add(jupiterGroup);
+
     const loader = new THREE.TextureLoader();
     const jupiterMat = new THREE.MeshStandardMaterial({ color:0xc8a878, roughness:0.85, metalness:0.0 });
     const jupiter = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 96), jupiterMat);
-    scene.add(jupiter);
-    loader.load('textures/tex_jupiter.jpg', tex => { jupiterMat.map = tex; jupiterMat.bumpMap = tex; jupiterMat.bumpScale = 0.015; jupiterMat.needsUpdate = true; });
+    jupiterGroup.add(jupiter);
+    loader.load('textures/tex_jupiter.jpg', tex => { setAniso(tex); jupiterMat.map = tex; jupiterMat.bumpMap = tex; jupiterMat.bumpScale = 0.015; jupiterMat.needsUpdate = true; });
 
     // Warm limb glow — Jupiter's real atmosphere is hazy amber/tan, not blue.
     const atmo = new THREE.Mesh(
@@ -617,7 +767,9 @@ function renderJupiter3D(pd) {
         blending:THREE.AdditiveBlending, side:THREE.BackSide, transparent:true,
       })
     );
-    scene.add(atmo);
+    jupiterGroup.add(atmo);
+
+    setupPlanetDrag(canvas, camera, jupiterGroup, THREE, pd.slug);
 
     {
       const N=1500, pos=new Float32Array(N*3);
@@ -629,26 +781,619 @@ function renderJupiter3D(pd) {
 
     addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
 
-    let t=0;
-    function tick(){
-      requestAnimationFrame(tick);
-      t += 0.0022;
-      jupiter.rotation.y = t*1.1; // tuned rate — this is the speed that was confirmed right
-      renderer.render(scene, camera);
+    loadOrbitControls(THREE, () => {
+      const controls = makeOrbitControls(camera, renderer, THREE);
+      let t=0;
+      function tick(){
+        requestAnimationFrame(tick);
+        t += 0.0022;
+        jupiter.rotation.y = t*1.1; // tuned rate — this is the speed that was confirmed right
+        controls.enabled = !window.__siEditMode;
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      tick();
+      document.getElementById('veil').classList.add('clear');
+    });
+  };
+  document.head.appendChild(script);
+}
+
+// ── Saturn — real textured 3D render, same technique as Jupiter above plus a
+// real ring system (real NASA/Solar-System-Scope alpha-mapped ring texture
+// on a RingGeometry). Same "real photo, real lighting, slow spin, no surface
+// animation" philosophy as Jupiter — see the note above renderJupiter3D.
+function renderSaturn3D(pd) {
+  const canvas = document.getElementById('planet-scene');
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+  script.onload = () => {
+    const THREE = window.THREE;
+    const scene  = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
+    camera.position.set(0, 0.9, 5.6); // pulled back further than Jupiter — the rings need room in frame
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    renderer.setSize(innerWidth, innerHeight);
+
+    scene.add(new THREE.AmbientLight(0x2a2618, 0.55));
+    const sun = new THREE.DirectionalLight(0xfff4e0, 2.1);
+    sun.position.set(4,2,3);
+    scene.add(sun);
+
+    const loader = new THREE.TextureLoader();
+    // saturnGroup only ever gets ONE static rotation (the axial tilt, set
+    // once below) — it is never spun per-frame. Real ring systems don't
+    // visibly rotate on human timescales; only the planet's own cloud bands
+    // do. Tying the whole tilted group's spin to the frame loop (an earlier
+    // version of this did) made the tilted ring disc precess/wobble around
+    // the vertical axis instead of sitting still, since spinning a tilted
+    // plane around an axis that isn't its own normal traces out a cone, not
+    // a clean rotation — that's the "ring spinning weird" bug. The sphere
+    // spins on its own local Y axis every frame instead (see tick() below),
+    // independent of the group's static tilt.
+    const saturnGroup = new THREE.Group();
+    saturnGroup.rotation.z = 26.7 * Math.PI/180; // Saturn's real axial tilt, applied once to sphere+rings together
+    scene.add(saturnGroup);
+
+    const saturnMat = new THREE.MeshStandardMaterial({ color:0xc8b98c, roughness:0.85, metalness:0.0 });
+    const saturn = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 96), saturnMat);
+    saturnGroup.add(saturn);
+    loadEnhancedTexture(loader, THREE, 'textures/tex_saturn.jpg', { contrast: 1.45, saturate: 1.7 }, tex => {
+      saturnMat.map = tex; saturnMat.bumpMap = tex; saturnMat.bumpScale = 0.022; saturnMat.needsUpdate = true;
+    });
+
+    // Rings — RingGeometry's default UVs wrap around the ring rather than
+    // running cleanly from inner to outer edge, so a radial alpha texture
+    // (transparent gaps, opaque bands) reads as a smeared mess unless the
+    // UVs are remapped to actually run 0->1 from inner to outer radius.
+    const ringInner = 1.2, ringOuter = 2.3;
+    const ringGeo = new THREE.RingGeometry(ringInner, ringOuter, 128, 4);
+    {
+      const pos = ringGeo.attributes.position;
+      const uv  = ringGeo.attributes.uv;
+      const v3  = new THREE.Vector3();
+      for (let i = 0; i < pos.count; i++) {
+        v3.fromBufferAttribute(pos, i);
+        const r = v3.length();
+        uv.setXY(i, (r - ringInner) / (ringOuter - ringInner), 1);
+      }
     }
-    tick();
-    document.getElementById('veil').classList.add('clear');
+    const ringMat = new THREE.MeshBasicMaterial({
+      color:0xd8cba0, side:THREE.DoubleSide, transparent:true, opacity:0.9, depthWrite:false,
+    });
+    const rings = new THREE.Mesh(ringGeo, ringMat);
+    // Lie flat in the sphere's own equatorial plane (the sphere spins on its
+    // local Y axis, so its equator is the XZ plane) — the shared axial tilt
+    // above is what actually tips both sphere and ring together.
+    rings.rotation.x = Math.PI/2;
+    saturnGroup.add(rings);
+    loader.load('textures/tex_saturn_ring.png', tex => { setAniso(tex); ringMat.map = tex; ringMat.alphaMap = tex; ringMat.needsUpdate = true; });
+
+    // Warm limb glow — same technique as Jupiter's, paler gold to match Saturn's haze.
+    const atmo = new THREE.Mesh(
+      new THREE.SphereGeometry(1.03, 48, 48),
+      new THREE.ShaderMaterial({
+        vertexShader:`varying vec3 vN; void main(){ vN=normalize(normalMatrix*normal); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+        fragmentShader:`varying vec3 vN; void main(){ float i=pow(0.65-dot(vN,vec3(0,0,1.0)),3.0); gl_FragColor=vec4(1.0,0.94,0.78,clamp(i,0.0,1.0)*0.40); }`,
+        blending:THREE.AdditiveBlending, side:THREE.BackSide, transparent:true,
+      })
+    );
+    saturnGroup.add(atmo);
+
+    setupPlanetDrag(canvas, camera, saturnGroup, THREE, pd.slug);
+
+    {
+      const N=1500, pos=new Float32Array(N*3);
+      for(let i=0;i<N;i++){ const r=40+Math.random()*160, th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1);
+        pos[i*3]=r*Math.sin(ph)*Math.cos(th); pos[i*3+1]=r*Math.sin(ph)*Math.sin(th); pos[i*3+2]=r*Math.cos(ph); }
+      const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+      scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color:0xffffff, size:0.4, sizeAttenuation:true, transparent:true, opacity:0.7 })));
+    }
+
+    addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+
+    loadOrbitControls(THREE, () => {
+      const controls = makeOrbitControls(camera, renderer, THREE);
+      let t=0;
+      function tick(){
+        requestAnimationFrame(tick);
+        t += 0.0022;
+        saturn.rotation.y = t*1.1; // same tuned rate as Jupiter — spins only the sphere on its own axis; rings stay static
+        controls.enabled = !window.__siEditMode;
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      tick();
+      document.getElementById('veil').classList.add('clear');
+    });
+  };
+  document.head.appendChild(script);
+}
+
+// ── Venus — real textured 3D render, same technique as Jupiter/Saturn above.
+// Uses the Magellan radar false-color terrain map (tex_venus.jpg =
+// venus_surface), not the real photographic cloud-top view — tried the
+// literal camera-true cloud photo first, but it's pale and low-contrast
+// enough to read as bland next to reference photos. The fiery orange radar
+// map isn't literally what a camera sees (Venus's atmosphere hides the
+// ground completely) but it's the iconic image people actually associate
+// with the planet, so it wins here over strict photographic accuracy.
+function renderVenus3D(pd) {
+  const canvas = document.getElementById('planet-scene');
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+  script.onload = () => {
+    const THREE = window.THREE;
+    const scene  = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
+    camera.position.set(0, 0.2, 3.6);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    renderer.setSize(innerWidth, innerHeight);
+
+    scene.add(new THREE.AmbientLight(0x332a1a, 0.55));
+    const sun = new THREE.DirectionalLight(0xfff4e0, 2.1);
+    sun.position.set(4,2,3);
+    scene.add(sun);
+
+    const venusGroup = new THREE.Group();
+    scene.add(venusGroup);
+
+    const loader = new THREE.TextureLoader();
+    const venusMat = new THREE.MeshStandardMaterial({ color:0xe8d2a0, roughness:0.9, metalness:0.0 });
+    const venus = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 96), venusMat);
+    venusGroup.add(venus);
+    loader.load('textures/tex_venus.jpg', tex => { setAniso(tex); venusMat.map = tex; venusMat.bumpMap = tex; venusMat.bumpScale = 0.01; venusMat.needsUpdate = true; });
+
+    // Warm pale-gold limb glow — Venus's real atmosphere is a bright, hazy cream.
+    const atmo = new THREE.Mesh(
+      new THREE.SphereGeometry(1.03, 48, 48),
+      new THREE.ShaderMaterial({
+        vertexShader:`varying vec3 vN; void main(){ vN=normalize(normalMatrix*normal); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+        fragmentShader:`varying vec3 vN; void main(){ float i=pow(0.65-dot(vN,vec3(0,0,1.0)),3.0); gl_FragColor=vec4(1.0,0.92,0.72,clamp(i,0.0,1.0)*0.42); }`,
+        blending:THREE.AdditiveBlending, side:THREE.BackSide, transparent:true,
+      })
+    );
+    venusGroup.add(atmo);
+
+    setupPlanetDrag(canvas, camera, venusGroup, THREE, pd.slug);
+
+    {
+      const N=1500, pos=new Float32Array(N*3);
+      for(let i=0;i<N;i++){ const r=40+Math.random()*160, th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1);
+        pos[i*3]=r*Math.sin(ph)*Math.cos(th); pos[i*3+1]=r*Math.sin(ph)*Math.sin(th); pos[i*3+2]=r*Math.cos(ph); }
+      const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+      scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color:0xffffff, size:0.4, sizeAttenuation:true, transparent:true, opacity:0.7 })));
+    }
+
+    addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+
+    loadOrbitControls(THREE, () => {
+      const controls = makeOrbitControls(camera, renderer, THREE);
+      let t=0;
+      function tick(){
+        requestAnimationFrame(tick);
+        t += 0.0022;
+        venus.rotation.y = t*1.1; // same tuned rate as Jupiter/Saturn
+        controls.enabled = !window.__siEditMode;
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      tick();
+      document.getElementById('veil').classList.add('clear');
+    });
+  };
+  document.head.appendChild(script);
+}
+
+// ── Mercury — real textured 3D render, same technique as Venus above.
+// No atmosphere glow shell, unlike every other real-render planet so far —
+// Mercury has essentially no atmosphere, so a soft haze/limb-glow would be
+// inaccurate for an airless, hard-edged cratered body. Real MESSENGER/
+// Mariner 10 photos show a crisp, stark disk with no halo at all.
+function renderMercury3D(pd) {
+  const canvas = document.getElementById('planet-scene');
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+  script.onload = () => {
+    const THREE = window.THREE;
+    const scene  = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
+    camera.position.set(0, 0.15, 3.2);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    renderer.setSize(innerWidth, innerHeight);
+
+    scene.add(new THREE.AmbientLight(0x2a2622, 0.4)); // dimmer ambient — no atmosphere to scatter light
+    const sun = new THREE.DirectionalLight(0xfff4e0, 2.3);
+    sun.position.set(4,2,3);
+    scene.add(sun);
+
+    const mercuryGroup = new THREE.Group();
+    scene.add(mercuryGroup);
+
+    const loader = new THREE.TextureLoader();
+    const mercuryMat = new THREE.MeshStandardMaterial({ color:0xc0c0c8, roughness:0.95, metalness:0.0 });
+    const mercury = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 96), mercuryMat);
+    mercuryGroup.add(mercury);
+    loader.load('textures/tex_mercury.jpg', tex => { setAniso(tex); mercuryMat.map = tex; mercuryMat.bumpMap = tex; mercuryMat.bumpScale = 0.025; mercuryMat.needsUpdate = true; });
+
+    setupPlanetDrag(canvas, camera, mercuryGroup, THREE, pd.slug);
+
+    {
+      const N=1500, pos=new Float32Array(N*3);
+      for(let i=0;i<N;i++){ const r=40+Math.random()*160, th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1);
+        pos[i*3]=r*Math.sin(ph)*Math.cos(th); pos[i*3+1]=r*Math.sin(ph)*Math.sin(th); pos[i*3+2]=r*Math.cos(ph); }
+      const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+      scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color:0xffffff, size:0.4, sizeAttenuation:true, transparent:true, opacity:0.7 })));
+    }
+
+    addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+
+    loadOrbitControls(THREE, () => {
+      const controls = makeOrbitControls(camera, renderer, THREE);
+      let t=0;
+      function tick(){
+        requestAnimationFrame(tick);
+        t += 0.0022;
+        mercury.rotation.y = t*1.1; // same tuned rate as the others
+        controls.enabled = !window.__siEditMode;
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      tick();
+      document.getElementById('veil').classList.add('clear');
+    });
+  };
+  document.head.appendChild(script);
+}
+
+// ── Mars — real textured 3D render, same technique as Mercury above, plus
+// a faint dusty-pink atmosphere glow. Mars's atmosphere is real but very
+// thin (~1% of Earth's pressure) — nowhere near Venus/Jupiter/Earth's
+// glow strength, but a bare airless look (Mercury's treatment) would be
+// wrong too, so this sits at a low opacity between the two.
+function renderMars3D(pd) {
+  const canvas = document.getElementById('planet-scene');
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+  script.onload = () => {
+    const THREE = window.THREE;
+    const scene  = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
+    camera.position.set(0, 0.2, 3.4);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    renderer.setSize(innerWidth, innerHeight);
+
+    scene.add(new THREE.AmbientLight(0x332218, 0.45));
+    const sun = new THREE.DirectionalLight(0xfff4e0, 2.2);
+    sun.position.set(4,2,3);
+    scene.add(sun);
+
+    const marsGroup = new THREE.Group();
+    scene.add(marsGroup);
+
+    const loader = new THREE.TextureLoader();
+    const marsMat = new THREE.MeshStandardMaterial({ color:0xb85838, roughness:0.92, metalness:0.0 });
+    const mars = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 96), marsMat);
+    marsGroup.add(mars);
+    loader.load('textures/tex_mars.jpg', tex => { setAniso(tex); marsMat.map = tex; marsMat.bumpMap = tex; marsMat.bumpScale = 0.02; marsMat.needsUpdate = true; });
+
+    // Faint dusty-pink limb glow — thin real atmosphere, much weaker than
+    // Venus/Jupiter/Earth's, but present unlike airless Mercury.
+    const atmo = new THREE.Mesh(
+      new THREE.SphereGeometry(1.02, 48, 48),
+      new THREE.ShaderMaterial({
+        vertexShader:`varying vec3 vN; void main(){ vN=normalize(normalMatrix*normal); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+        fragmentShader:`varying vec3 vN; void main(){ float i=pow(0.65-dot(vN,vec3(0,0,1.0)),3.0); gl_FragColor=vec4(0.92,0.62,0.48,clamp(i,0.0,1.0)*0.22); }`,
+        blending:THREE.AdditiveBlending, side:THREE.BackSide, transparent:true,
+      })
+    );
+    marsGroup.add(atmo);
+
+    setupPlanetDrag(canvas, camera, marsGroup, THREE, pd.slug);
+
+    {
+      const N=1500, pos=new Float32Array(N*3);
+      for(let i=0;i<N;i++){ const r=40+Math.random()*160, th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1);
+        pos[i*3]=r*Math.sin(ph)*Math.cos(th); pos[i*3+1]=r*Math.sin(ph)*Math.sin(th); pos[i*3+2]=r*Math.cos(ph); }
+      const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+      scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color:0xffffff, size:0.4, sizeAttenuation:true, transparent:true, opacity:0.7 })));
+    }
+
+    addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+
+    loadOrbitControls(THREE, () => {
+      const controls = makeOrbitControls(camera, renderer, THREE);
+      let t=0;
+      function tick(){
+        requestAnimationFrame(tick);
+        t += 0.0022;
+        mars.rotation.y = t*1.1; // same tuned rate as the others
+        controls.enabled = !window.__siEditMode;
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      tick();
+      document.getElementById('veil').classList.add('clear');
+    });
+  };
+  document.head.appendChild(script);
+}
+
+// ── Uranus — real textured 3D render, ice giant with a pale cyan methane-
+// haze glow (stronger than Mars's thin dust glow, similar strength to
+// Jupiter/Saturn's but tinted cool instead of warm gold). No rings —
+// Uranus does have faint real ones, but nowhere near as visually defining
+// as Saturn's, and weren't asked for.
+//
+// Applies Uranus's real, famous ~98° axial tilt as a one-time static
+// rotation on the group (same technique as Saturn's 26.7° tilt) — Uranus
+// is the one planet that rotates almost entirely on its side, a genuinely
+// distinctive, scientifically real detail worth keeping rather than
+// rendering it upright like every other planet here.
+function renderUranus3D(pd) {
+  const canvas = document.getElementById('planet-scene');
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+  script.onload = () => {
+    const THREE = window.THREE;
+    const scene  = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
+    camera.position.set(0, 0.2, 3.6);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    renderer.setSize(innerWidth, innerHeight);
+
+    scene.add(new THREE.AmbientLight(0x1a2c33, 0.5));
+    const sun = new THREE.DirectionalLight(0xdcf4ff, 2.0);
+    sun.position.set(4,2,3);
+    scene.add(sun);
+
+    const uranusGroup = new THREE.Group();
+    uranusGroup.rotation.z = 98 * Math.PI/180; // Uranus's real axial tilt — it rolls through its orbit rather than spins upright
+    scene.add(uranusGroup);
+
+    const loader = new THREE.TextureLoader();
+    const uranusMat = new THREE.MeshStandardMaterial({ color:0x9fe0e8, roughness:0.8, metalness:0.0 });
+    const uranus = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 96), uranusMat);
+    uranusGroup.add(uranus);
+    // Real JWST-derived detail (see compose_uranus_texture.py) is genuinely
+    // subtle even in the source photo — same contrast/saturation boost
+    // pipeline as Saturn's loadEnhancedTexture() to make it actually read,
+    // plus a much higher bumpScale than the original flat-texture value
+    // (0.008) so the now-present color variation gets real dimensional
+    // shading from the lighting instead of just sitting flat in the color map.
+    loadEnhancedTexture(loader, THREE, 'textures/tex_uranus.jpg', { contrast: 1.5, saturate: 1.6 }, tex => {
+      uranusMat.map = tex; uranusMat.bumpMap = tex; uranusMat.bumpScale = 0.022; uranusMat.needsUpdate = true;
+    });
+
+    // Pale cyan limb glow — Uranus's real methane-haze atmosphere.
+    const atmo = new THREE.Mesh(
+      new THREE.SphereGeometry(1.03, 48, 48),
+      new THREE.ShaderMaterial({
+        vertexShader:`varying vec3 vN; void main(){ vN=normalize(normalMatrix*normal); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+        fragmentShader:`varying vec3 vN; void main(){ float i=pow(0.65-dot(vN,vec3(0,0,1.0)),3.0); gl_FragColor=vec4(0.55,0.90,0.95,clamp(i,0.0,1.0)*0.42); }`,
+        blending:THREE.AdditiveBlending, side:THREE.BackSide, transparent:true,
+      })
+    );
+    uranusGroup.add(atmo);
+
+    setupPlanetDrag(canvas, camera, uranusGroup, THREE, pd.slug);
+
+    {
+      const N=1500, pos=new Float32Array(N*3);
+      for(let i=0;i<N;i++){ const r=40+Math.random()*160, th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1);
+        pos[i*3]=r*Math.sin(ph)*Math.cos(th); pos[i*3+1]=r*Math.sin(ph)*Math.sin(th); pos[i*3+2]=r*Math.cos(ph); }
+      const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+      scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color:0xffffff, size:0.4, sizeAttenuation:true, transparent:true, opacity:0.7 })));
+    }
+
+    addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+
+    loadOrbitControls(THREE, () => {
+      const controls = makeOrbitControls(camera, renderer, THREE);
+      let t=0;
+      function tick(){
+        requestAnimationFrame(tick);
+        t += 0.0022;
+        uranus.rotation.y = t*1.1; // spins on its own local axis, independent of the group's static tilt — same trick as Saturn's rings
+        controls.enabled = !window.__siEditMode;
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      tick();
+      document.getElementById('veil').classList.add('clear');
+    });
+  };
+  document.head.appendChild(script);
+}
+
+// ── Neptune — real textured 3D render. Unlike Uranus, Neptune's real
+// Solar System Scope texture already has genuine visible detail — the
+// actual Great Dark Spot storm and real banding are present in the raw
+// file, not flat like Uranus's was. Still runs through the same
+// loadEnhancedTexture() contrast/saturation pipeline and a properly-tuned
+// bumpScale from the start this time (Uranus initially shipped without
+// either, which was the real reason it looked bland — see Session 17
+// Part 22 — not repeating that here).
+function renderNeptune3D(pd) {
+  const canvas = document.getElementById('planet-scene');
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+  script.onload = () => {
+    const THREE = window.THREE;
+    const scene  = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
+    camera.position.set(0, 0.2, 3.6);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    renderer.setSize(innerWidth, innerHeight);
+
+    scene.add(new THREE.AmbientLight(0x141c33, 0.5));
+    const sun = new THREE.DirectionalLight(0xdce8ff, 2.1);
+    sun.position.set(4,2,3);
+    scene.add(sun);
+
+    const neptuneGroup = new THREE.Group();
+    scene.add(neptuneGroup);
+
+    const loader = new THREE.TextureLoader();
+    const neptuneMat = new THREE.MeshStandardMaterial({ color:0x3860d8, roughness:0.8, metalness:0.0 });
+    const neptune = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 96), neptuneMat);
+    neptuneGroup.add(neptune);
+    loadEnhancedTexture(loader, THREE, 'textures/tex_neptune.jpg', { contrast: 1.3, saturate: 1.4 }, tex => {
+      neptuneMat.map = tex; neptuneMat.bumpMap = tex; neptuneMat.bumpScale = 0.02; neptuneMat.needsUpdate = true;
+    });
+
+    // Deep-blue limb glow — Neptune's real atmosphere, vivid and active
+    // (the fastest winds in the solar system), stronger than Uranus's haze.
+    const atmo = new THREE.Mesh(
+      new THREE.SphereGeometry(1.03, 48, 48),
+      new THREE.ShaderMaterial({
+        vertexShader:`varying vec3 vN; void main(){ vN=normalize(normalMatrix*normal); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+        fragmentShader:`varying vec3 vN; void main(){ float i=pow(0.65-dot(vN,vec3(0,0,1.0)),3.0); gl_FragColor=vec4(0.28,0.42,0.95,clamp(i,0.0,1.0)*0.48); }`,
+        blending:THREE.AdditiveBlending, side:THREE.BackSide, transparent:true,
+      })
+    );
+    neptuneGroup.add(atmo);
+
+    setupPlanetDrag(canvas, camera, neptuneGroup, THREE, pd.slug);
+
+    {
+      const N=1500, pos=new Float32Array(N*3);
+      for(let i=0;i<N;i++){ const r=40+Math.random()*160, th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1);
+        pos[i*3]=r*Math.sin(ph)*Math.cos(th); pos[i*3+1]=r*Math.sin(ph)*Math.sin(th); pos[i*3+2]=r*Math.cos(ph); }
+      const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+      scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color:0xffffff, size:0.4, sizeAttenuation:true, transparent:true, opacity:0.7 })));
+    }
+
+    addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+
+    loadOrbitControls(THREE, () => {
+      const controls = makeOrbitControls(camera, renderer, THREE);
+      let t=0;
+      function tick(){
+        requestAnimationFrame(tick);
+        t += 0.0022;
+        neptune.rotation.y = t*1.1; // same tuned rate as the others
+        controls.enabled = !window.__siEditMode;
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      tick();
+      document.getElementById('veil').classList.add('clear');
+    });
+  };
+  document.head.appendChild(script);
+}
+
+// ── Pluto — real textured 3D render, from NASA/JHU-APL/SwRI's New
+// Horizons global mosaic (see compose_pluto_texture.py) — replaces a
+// genuine bug, not a style upgrade: download_textures.py had been
+// pointing tex_pluto.jpg at Solar System Scope's "2k_eris_fictional.jpg",
+// a DIFFERENT dwarf planet's admittedly-fictional stand-in texture, not
+// real Pluto data at all.
+//
+// The mosaic is grayscale (New Horizons' LORRI imager is panchromatic) —
+// tinted warm tan via the material's base color (multiplied with the
+// texture) to approximate Pluto's real, subtly warm-toned surface rather
+// than rendering unnaturally neutral grayscale. No atmosphere glow —
+// Pluto's real nitrogen atmosphere is thinner even than Mars's, close to
+// negligible at this scale, same reasoning as Mercury's airless treatment.
+function renderPluto3D(pd) {
+  const canvas = document.getElementById('planet-scene');
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+  script.onload = () => {
+    const THREE = window.THREE;
+    const scene  = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
+    camera.position.set(0, 0.15, 3.2);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    renderer.setSize(innerWidth, innerHeight);
+
+    scene.add(new THREE.AmbientLight(0x2a2420, 0.4));
+    const sun = new THREE.DirectionalLight(0xfff0e0, 2.3);
+    sun.position.set(4,2,3);
+    scene.add(sun);
+
+    const plutoGroup = new THREE.Group();
+    scene.add(plutoGroup);
+
+    const loader = new THREE.TextureLoader();
+    // color left at white — the v2 texture (Session 17 Part 30) is a real
+    // true-color composite (Askaniy's 25K Pluto map, blending New Horizons
+    // LORRI/MVIC with a Hubble far-side fill), not the grayscale New
+    // Horizons-only mosaic v1 used. The old 0xcfa888 tan multiply tint was
+    // there to fake color onto grayscale — keeping it now would double-tint
+    // an already-colored photo and skew it artificially orange.
+    const plutoMat = new THREE.MeshStandardMaterial({ color:0xffffff, roughness:0.95, metalness:0.0 });
+    const pluto = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 96), plutoMat);
+    plutoGroup.add(pluto);
+    // Cache-busting query string — this file has been overwritten several
+    // times in place (Session 17 Parts 25-27, 30), and browsers were serving
+    // a stale cached copy after each update since the filename itself never
+    // changes. Bump the version string if this file is ever regenerated again.
+    loadEnhancedTexture(loader, THREE, 'textures/tex_pluto.jpg?v=4', { contrast: 1.1, saturate: 1.15 }, tex => {
+      plutoMat.map = tex; plutoMat.bumpMap = tex; plutoMat.bumpScale = 0.03; plutoMat.needsUpdate = true;
+    });
+
+    setupPlanetDrag(canvas, camera, plutoGroup, THREE, pd.slug);
+
+    {
+      const N=1500, pos=new Float32Array(N*3);
+      for(let i=0;i<N;i++){ const r=40+Math.random()*160, th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1);
+        pos[i*3]=r*Math.sin(ph)*Math.cos(th); pos[i*3+1]=r*Math.sin(ph)*Math.sin(th); pos[i*3+2]=r*Math.cos(ph); }
+      const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+      scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color:0xffffff, size:0.4, sizeAttenuation:true, transparent:true, opacity:0.7 })));
+    }
+
+    addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+
+    loadOrbitControls(THREE, () => {
+      const controls = makeOrbitControls(camera, renderer, THREE);
+      let t=0;
+      function tick(){
+        requestAnimationFrame(tick);
+        t += 0.0022;
+        pluto.rotation.y = t*1.1; // same tuned rate as the others
+        controls.enabled = !window.__siEditMode;
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      tick();
+      document.getElementById('veil').classList.add('clear');
+    });
   };
   document.head.appendChild(script);
 }
 
 // ── Planet render — Canvas 2D (works from file://, no WebGL needed) ────────────
-// Earth/Jupiter are special-cased to real textured 3D renders above — every
-// other planet keeps this lightweight procedural renderer untouched, file:// included.
+// Earth/Venus/Jupiter/Saturn/Mercury/Mars/Uranus/Neptune/Pluto are
+// special-cased to real textured 3D renders above — every other planet
+// keeps this lightweight procedural renderer untouched, file:// included.
 (function(){
 const pd = PLANETS[currentIdx];
 if (pd.slug === 'earth') { renderEarth3D(pd); return; }
+if (pd.slug === 'venus') { renderVenus3D(pd); return; }
+if (pd.slug === 'mercury') { renderMercury3D(pd); return; }
+if (pd.slug === 'mars') { renderMars3D(pd); return; }
+if (pd.slug === 'uranus') { renderUranus3D(pd); return; }
+if (pd.slug === 'neptune') { renderNeptune3D(pd); return; }
+if (pd.slug === 'pluto') { renderPluto3D(pd); return; }
 if (pd.slug === 'jupiter') { renderJupiter3D(pd); return; }
+if (pd.slug === 'saturn') { renderSaturn3D(pd); return; }
 const canvas = document.getElementById('planet-scene');
 const ctx = canvas.getContext('2d');
 
@@ -1171,6 +1916,7 @@ document.getElementById('veil').classList.add('clear');
 
   toggleBtn.addEventListener('click', () => {
     editMode = !editMode;
+    window.__siEditMode = editMode; // read by setupPlanetDrag() in the 3D render functions, defined in an earlier separate <script> block
     toggleBtn.style.background = editMode ? 'rgba(140,200,255,0.35)' : 'rgba(140,200,255,0.12)';
     toggleBtn.textContent = editMode ? '✎ DRAGGING ON' : '✎ EDIT LAYOUT';
     blocks.forEach(b => {
@@ -1183,6 +1929,14 @@ document.getElementById('veil').classList.add('clear');
   resetBtn.addEventListener('click', () => {
     allLayouts[planetSlug] = {};
     persist();
+    // Also clear this planet's dragged 3D position — separate localStorage
+    // key from the text layout, since it's written by setupPlanetDrag() in
+    // an earlier <script> block, not this IIFE.
+    try {
+      const saved3d = JSON.parse(localStorage.getItem('soulinterface_planet3d_pos_v1') || '{}');
+      delete saved3d[planetSlug];
+      localStorage.setItem('soulinterface_planet3d_pos_v1', JSON.stringify(saved3d));
+    } catch(e){}
     location.reload();
   });
 

@@ -19,27 +19,52 @@ TEXTURES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'texture
 
 TEXTURES = {
     'tex_mercury.jpg':      'https://www.solarsystemscope.com/textures/download/2k_mercury.jpg',
+    # Tried "venus_atmosphere" first (the real photographic cloud-top view —
+    # what a camera actually sees, since the thick atmosphere hides the
+    # ground entirely) but Ricky compared it against reference photos and it
+    # read as bland — the pale, low-contrast cloud swirl doesn't match what
+    # people recognize as "Venus." Switched to "venus_surface", the
+    # Magellan-radar false-color terrain map: not literally camera-true, but
+    # it's the iconic fiery orange image everyone actually associates with
+    # the planet. "8k" for this one is a genuine 8192x4096 image (~12.5MB) —
+    # same situation as Earth/Moon in Session 17, too heavy — stayed at 2k.
     'tex_venus.jpg':        'https://www.solarsystemscope.com/textures/download/2k_venus_surface.jpg',
     'tex_earth.jpg':        'https://www.solarsystemscope.com/textures/download/2k_earth_daymap.jpg',
     'tex_earth_clouds.jpg': 'https://www.solarsystemscope.com/textures/download/2k_earth_clouds.jpg',
     'tex_earth_night.jpg':  'https://www.solarsystemscope.com/textures/download/2k_earth_nightmap.jpg',
     'tex_moon.jpg':         'https://www.solarsystemscope.com/textures/download/2k_moon.jpg',
     'tex_mars.jpg':         'https://www.solarsystemscope.com/textures/download/2k_mars.jpg',
-    'tex_jupiter.jpg':      'https://www.solarsystemscope.com/textures/download/2k_jupiter.jpg',
-    'tex_saturn.jpg':       'https://www.solarsystemscope.com/textures/download/2k_saturn.jpg',
-    'tex_saturn_ring.png':  'https://www.solarsystemscope.com/textures/download/2k_saturn_ring_alpha.png',
+    # Jupiter/Saturn bumped to Solar System Scope's "8k" tier — in practice
+    # these two happen to only be 4096x2048 source art (4x the pixel data of
+    # "2k", not a true 8k image), landing at a reasonable 1-3MB each. Earth's
+    # "8k" equivalents are genuine 8192x4096 source art and would have added
+    # ~34MB combined for Earth+Moon alone — not a reasonable trade for a page
+    # that should load quickly, and Earth/Moon's texture wasn't what was
+    # actually flagged as lacking, so those stay at 2k.
+    'tex_jupiter.jpg':      'https://www.solarsystemscope.com/textures/download/8k_jupiter.jpg',
+    'tex_saturn.jpg':       'https://www.solarsystemscope.com/textures/download/8k_saturn.jpg',
+    'tex_saturn_ring.png':  'https://www.solarsystemscope.com/textures/download/8k_saturn_ring_alpha.png',
     'tex_uranus.jpg':       'https://www.solarsystemscope.com/textures/download/2k_uranus.jpg',
     'tex_neptune.jpg':      'https://www.solarsystemscope.com/textures/download/2k_neptune.jpg',
-    'tex_pluto.jpg':        'https://www.solarsystemscope.com/textures/download/2k_eris_fictional.jpg',
+    # NOT Solar System Scope — they don't have a real Pluto texture at
+    # all; their catalog entry that used to be here ("2k_eris_fictional")
+    # is a DIFFERENT dwarf planet (Eris), explicitly marked fictional in
+    # its own filename. Real Pluto data comes from NASA/JHU-APL/SwRI's New
+    # Horizons global mosaic via USGS Astrogeology, then processed by
+    # compose_pluto_texture.py (fills the real spacecraft's unmapped far
+    # side by mirroring the imaged hemisphere, not by inventing anything) —
+    # this downloader intentionally does NOT fetch tex_pluto.jpg, since
+    # skip-if-exists would otherwise be fine but there's no direct one-shot
+    # URL for the finished, composited result. See compose_pluto_texture.py
+    # for the source URL and how to rebuild it from scratch.
     'tex_sun.jpg':          'https://www.solarsystemscope.com/textures/download/2k_sun.jpg',
     'tex_stars.jpg':        'https://www.solarsystemscope.com/textures/download/2k_stars_milky_way.jpg',
 }
 
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                  '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Referer': 'https://www.solarsystemscope.com/textures/',
-}
+# Solar System Scope's WAF blocks requests carrying a browser-shaped
+# User-Agent/Referer (403, even though a real browser tab works fine) but
+# allows bare requests with no headers at all through — so send none.
+HEADERS = {}
 
 def download():
     os.makedirs(TEXTURES_DIR, exist_ok=True)
@@ -60,7 +85,7 @@ def download():
                 for chunk in r.iter_content(65536):
                     f.write(chunk)
             size_kb = os.path.getsize(dest) // 1024
-            print(f' {size_kb}KB ✓')
+            print(f' {size_kb}KB OK')
             ok += 1
         except Exception as e:
             print(f' FAILED — {e}')

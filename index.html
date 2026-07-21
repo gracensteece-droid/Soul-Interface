@@ -1956,16 +1956,28 @@ const planets = pData.map((pd, i) => {
 // populated via download_textures.py), that piece silently stays procedural.
 {
   const texLoader = new THREE.TextureLoader();
+  // Anisotropic filtering — without this, textures on a curved sphere blur
+  // badly (a directional, streaky smear, not uniform softness) at grazing
+  // viewing angles. See the matching setAniso() in planet.html for the full
+  // story (caught on Pluto, but was silently affecting every real-textured
+  // planet here too). 16 is the de facto max most GPUs support; Three.js
+  // clamps down automatically if the hardware max is lower.
+  function setAniso(tex) {
+    tex.anisotropy = 16;
+    return tex;
+  }
   const earthMat  = window._planetMaterials[2];
   const cloudMesh = planets[2].mesh.userData.clouds;
   const moonMesh  = planets[2].mesh.userData.moonPivot.children[0];
 
   texLoader.load('textures/tex_earth.jpg', tex => {
+    setAniso(tex);
     earthMat.map = tex;
     earthMat.bumpMap = tex;
     earthMat.needsUpdate = true;
   });
   texLoader.load('textures/tex_earth_night.jpg', tex => {
+    setAniso(tex);
     earthMat.emissiveMap = tex;
     earthMat.emissive.set(0xffffff);
     earthMat.emissiveIntensity = 1.0;
@@ -1973,6 +1985,7 @@ const planets = pData.map((pd, i) => {
   });
   if (cloudMesh) {
     texLoader.load('textures/tex_earth_clouds.jpg', tex => {
+      setAniso(tex);
       cloudMesh.material.map = tex;
       cloudMesh.material.alphaMap = tex;
       cloudMesh.material.needsUpdate = true;
@@ -1980,10 +1993,110 @@ const planets = pData.map((pd, i) => {
   }
   if (moonMesh) {
     texLoader.load('textures/tex_moon.jpg', tex => {
+      setAniso(tex);
       moonMesh.material.map = tex;
       moonMesh.material.needsUpdate = true;
     });
   }
+
+  // Venus — same real Magellan radar terrain map used for the close-up
+  // render on planet.html (see renderVenus3D there for why: the literal
+  // camera-true cloud photo read as too bland next to reference photos).
+  const venusMat = window._planetMaterials[1];
+  texLoader.load('textures/tex_venus.jpg', tex => {
+    setAniso(tex);
+    venusMat.map = tex;
+    venusMat.bumpMap = tex;
+    venusMat.needsUpdate = true;
+  });
+
+  // Mercury — same real photo used for the close-up render on planet.html
+  // (see renderMercury3D there).
+  const mercuryMat = window._planetMaterials[0];
+  texLoader.load('textures/tex_mercury.jpg', tex => {
+    setAniso(tex);
+    mercuryMat.map = tex;
+    mercuryMat.bumpMap = tex;
+    mercuryMat.needsUpdate = true;
+  });
+
+  // Mars — same real photo used for the close-up render on planet.html
+  // (see renderMars3D there).
+  const marsMat = window._planetMaterials[3];
+  texLoader.load('textures/tex_mars.jpg', tex => {
+    setAniso(tex);
+    marsMat.map = tex;
+    marsMat.bumpMap = tex;
+    marsMat.needsUpdate = true;
+  });
+
+  // Uranus — same real photo used for the close-up render on planet.html
+  // (see renderUranus3D there), same contrast/saturation boost too (the
+  // real JWST-derived detail is genuinely subtle even in the source photo
+  // — see the comment on loadEnhancedTexture() in planet.html). This small
+  // orbiting version doesn't apply Uranus's real axial tilt (that's a
+  // closeup-only touch) — it just gets the same surface texture.
+  const uranusMat = window._planetMaterials[6];
+  texLoader.load('textures/tex_uranus.jpg', tex => {
+    const img = tex.image;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width; canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    ctx.filter = 'contrast(150%) saturate(160%)';
+    ctx.drawImage(img, 0, 0);
+    const enhanced = new THREE.CanvasTexture(canvas);
+    enhanced.needsUpdate = true;
+    setAniso(enhanced);
+    uranusMat.map = enhanced;
+    uranusMat.bumpMap = enhanced;
+    uranusMat.needsUpdate = true;
+  });
+
+  // Neptune — same real photo used for the close-up render on planet.html
+  // (see renderNeptune3D there), same contrast/saturation boost too.
+  // Unlike Uranus, Neptune's real texture already has genuine visible
+  // detail (the actual Great Dark Spot storm) — the boost here is the
+  // same modest strength used in the close-up render, not a rescue.
+  const neptuneMat = window._planetMaterials[7];
+  texLoader.load('textures/tex_neptune.jpg', tex => {
+    const img = tex.image;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width; canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    ctx.filter = 'contrast(130%) saturate(140%)';
+    ctx.drawImage(img, 0, 0);
+    const enhanced = new THREE.CanvasTexture(canvas);
+    enhanced.needsUpdate = true;
+    setAniso(enhanced);
+    neptuneMat.map = enhanced;
+    neptuneMat.bumpMap = enhanced;
+    neptuneMat.needsUpdate = true;
+  });
+
+  // Pluto — same real texture used for the close-up render on planet.html
+  // (see renderPluto3D there and compose_pluto_texture.py for the full
+  // story: v1 used NASA's raw New Horizons mosaic, grayscale and with a
+  // black unmapped-hemisphere void; v2, Session 17 Part 30, switched to
+  // Askaniy's 25K community composite, which is already true color and has
+  // no hard void — so no tan multiply-tint needed here anymore, just a
+  // modest contrast/saturation boost matching the close-up render.
+  const plutoMat = window._planetMaterials[8];
+  // Cache-busting query string — see the matching comment in planet.html's
+  // renderPluto3D; bump the version if this file is ever regenerated again.
+  texLoader.load('textures/tex_pluto.jpg?v=4', tex => {
+    const img = tex.image;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width; canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    ctx.filter = 'contrast(110%) saturate(115%)';
+    ctx.drawImage(img, 0, 0);
+    const enhanced = new THREE.CanvasTexture(canvas);
+    enhanced.needsUpdate = true;
+    setAniso(enhanced);
+    plutoMat.map = enhanced;
+    plutoMat.bumpMap = enhanced;
+    plutoMat.needsUpdate = true;
+  });
 
   // Jupiter — same real NASA/Solar-System-Scope banded-atmosphere photo used
   // for the close-up render on planet.html (see renderJupiter3D there), so
@@ -1992,9 +2105,34 @@ const planets = pData.map((pd, i) => {
   // as Earth above, hot-swapped once the real photo loads.
   const jupiterMat = window._planetMaterials[4];
   texLoader.load('textures/tex_jupiter.jpg', tex => {
+    setAniso(tex);
     jupiterMat.map = tex;
     jupiterMat.bumpMap = tex;
     jupiterMat.needsUpdate = true;
+  });
+
+  // Saturn — same real photo used for the close-up render on planet.html
+  // (see renderSaturn3D there), same contrast/saturation boost too (the raw
+  // texture is genuinely flat at a global scale — see the comment on
+  // loadEnhancedTexture() in planet.html for why). Only the sphere's own
+  // surface texture is swapped; the 4 procedural ring bands built above are
+  // already a reasonable stylized approximation at this tiny orbiting scale
+  // and are left as-is rather than swapped for the real alpha-mapped ring
+  // texture.
+  const saturnMat = window._planetMaterials[5];
+  texLoader.load('textures/tex_saturn.jpg', tex => {
+    const img = tex.image;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width; canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    ctx.filter = 'contrast(145%) saturate(170%)';
+    ctx.drawImage(img, 0, 0);
+    const enhanced = new THREE.CanvasTexture(canvas);
+    enhanced.needsUpdate = true;
+    setAniso(enhanced);
+    saturnMat.map = enhanced;
+    saturnMat.bumpMap = enhanced;
+    saturnMat.needsUpdate = true;
   });
 }
 
