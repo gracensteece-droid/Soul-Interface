@@ -2085,7 +2085,7 @@ const planets = pData.map((pd, i) => {
   // renderPluto3D; bump the version if this file is ever regenerated again.
   // contrast/saturate raised to match the tier used for Uranus/Neptune/
   // Saturn above — see the matching comment in planet.html's renderPluto3D.
-  texLoader.load('textures/tex_pluto.jpg?v=5', tex => {
+  texLoader.load('textures/tex_pluto.jpg?v=6', tex => {
     const img = tex.image;
     const canvas = document.createElement('canvas');
     canvas.width = img.width; canvas.height = img.height;
@@ -2097,6 +2097,11 @@ const planets = pData.map((pd, i) => {
     setAniso(enhanced);
     plutoMat.map = enhanced;
     plutoMat.bumpMap = enhanced;
+    // Explicit low bumpScale — without this Three.js defaults to 1.0, which
+    // at this planet's real-photo detail level would read as much heavier
+    // fake bump noise than intended (see the matching fix/comment in
+    // planet.html's renderPluto3D).
+    plutoMat.bumpScale = 0.012;
     plutoMat.needsUpdate = true;
   });
 

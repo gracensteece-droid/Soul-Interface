@@ -62,13 +62,16 @@ def main():
 
     src = Image.open(src_path).convert("RGB")
     result = src.resize((OUT_W, OUT_H), Image.LANCZOS)
-    # Ricky flagged the first pass (percent=40) as still too soft — bumped to
-    # a stronger but still real photo-sharpening tier (matches typical
-    # unsharp-mask presets; not aggressive enough to fabricate ringing on
-    # real detail). This can't recover detail the low-res far-side band
-    # never had, but it does make the well-imaged encounter hemisphere
-    # noticeably crisper, which was worth more sharpening headroom.
-    result = result.filter(ImageFilter.UnsharpMask(radius=2, percent=65, threshold=2))
+    # percent=40 (v2) read too soft; percent=65 (Part 31) fixed that but,
+    # combined with the renderer's bumpMap using this same sharpened image,
+    # amplified the sharpening's fine edge contrast into a fake "quilted"
+    # look once lit and shaded as height — the same class of artifact hit on
+    # Uranus earlier this session (Part 19-ish: bumpScale 0.035 amplifying
+    # JPEG-block noise). Settled at percent=50 here, and moved most of the
+    # remaining fix to bumpScale instead (see renderPluto3D / index.html) so
+    # the color map can stay reasonably crisp without the bump map turning
+    # every sharpened edge into visible fake geometry.
+    result = result.filter(ImageFilter.UnsharpMask(radius=1.5, percent=50, threshold=3))
     result.save(OUT, quality=93)
     print(f"saved {OUT}")
 

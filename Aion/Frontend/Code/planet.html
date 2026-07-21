@@ -1348,12 +1348,14 @@ function renderPluto3D(pd) {
     // contrast/saturate raised from 1.1/1.15 — Ricky called the first pass
     // flat next to the other planets, which all use a punchier boost
     // (Uranus 1.5/1.6, Neptune 1.3/1.4, Saturn 1.45/1.7); matched that tier.
-    // bumpScale dropped from 0.03 — the low-res far-side band's smooth
-    // brightness gradient was reading as "melty" once lit and shaded as
-    // real height, dialing it back keeps real craters readable without
-    // exaggerating that region.
-    loadEnhancedTexture(loader, THREE, 'textures/tex_pluto.jpg?v=5', { contrast: 1.3, saturate: 1.25 }, tex => {
-      plutoMat.map = tex; plutoMat.bumpMap = tex; plutoMat.bumpScale = 0.022; plutoMat.needsUpdate = true;
+    // bumpScale dropped twice now (0.03 -> 0.022 -> 0.012): at close zoom
+    // the bump map was turning the sharpened texture's fine edge contrast
+    // into a fake "quilted" look once lit and shaded as real height — same
+    // class of artifact as Uranus's JPEG-block quilting earlier this
+    // session. 0.012 keeps real crater rims readable without amplifying
+    // every sharpened edge into fake geometry.
+    loadEnhancedTexture(loader, THREE, 'textures/tex_pluto.jpg?v=6', { contrast: 1.3, saturate: 1.25 }, tex => {
+      plutoMat.map = tex; plutoMat.bumpMap = tex; plutoMat.bumpScale = 0.012; plutoMat.needsUpdate = true;
     });
 
     setupPlanetDrag(canvas, camera, plutoGroup, THREE, pd.slug);
