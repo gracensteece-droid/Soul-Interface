@@ -639,7 +639,12 @@ function renderEarth3D(pd) {
     const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
     camera.position.set(0, 0.25, 3.4);
 
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    // preserveDrawingBuffer — needed so the Texture Look panel's "Blend
+    // edges" overlay (planet.html's final <script>) can reliably drawImage()
+    // this canvas at an arbitrary time, not just immediately after render().
+    // Without it, WebGL is free to clear the buffer between frames, which
+    // made the overlay silently capture blank/stale frames.
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, preserveDrawingBuffer:true });
     renderer.setPixelRatio(Math.min(devicePixelRatio,2));
     renderer.setSize(innerWidth, innerHeight);
 
@@ -740,7 +745,12 @@ function renderJupiter3D(pd) {
     const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
     camera.position.set(0, 0.2, 3.8);
 
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    // preserveDrawingBuffer — needed so the Texture Look panel's "Blend
+    // edges" overlay (planet.html's final <script>) can reliably drawImage()
+    // this canvas at an arbitrary time, not just immediately after render().
+    // Without it, WebGL is free to clear the buffer between frames, which
+    // made the overlay silently capture blank/stale frames.
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, preserveDrawingBuffer:true });
     renderer.setPixelRatio(Math.min(devicePixelRatio,2));
     renderer.setSize(innerWidth, innerHeight);
 
@@ -813,7 +823,12 @@ function renderSaturn3D(pd) {
     const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
     camera.position.set(0, 0.9, 5.6); // pulled back further than Jupiter — the rings need room in frame
 
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    // preserveDrawingBuffer — needed so the Texture Look panel's "Blend
+    // edges" overlay (planet.html's final <script>) can reliably drawImage()
+    // this canvas at an arbitrary time, not just immediately after render().
+    // Without it, WebGL is free to clear the buffer between frames, which
+    // made the overlay silently capture blank/stale frames.
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, preserveDrawingBuffer:true });
     renderer.setPixelRatio(Math.min(devicePixelRatio,2));
     renderer.setSize(innerWidth, innerHeight);
 
@@ -930,7 +945,12 @@ function renderVenus3D(pd) {
     const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
     camera.position.set(0, 0.2, 3.6);
 
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    // preserveDrawingBuffer — needed so the Texture Look panel's "Blend
+    // edges" overlay (planet.html's final <script>) can reliably drawImage()
+    // this canvas at an arbitrary time, not just immediately after render().
+    // Without it, WebGL is free to clear the buffer between frames, which
+    // made the overlay silently capture blank/stale frames.
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, preserveDrawingBuffer:true });
     renderer.setPixelRatio(Math.min(devicePixelRatio,2));
     renderer.setSize(innerWidth, innerHeight);
 
@@ -1004,7 +1024,12 @@ function renderMercury3D(pd) {
     const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
     camera.position.set(0, 0.15, 3.2);
 
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    // preserveDrawingBuffer — needed so the Texture Look panel's "Blend
+    // edges" overlay (planet.html's final <script>) can reliably drawImage()
+    // this canvas at an arbitrary time, not just immediately after render().
+    // Without it, WebGL is free to clear the buffer between frames, which
+    // made the overlay silently capture blank/stale frames.
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, preserveDrawingBuffer:true });
     renderer.setPixelRatio(Math.min(devicePixelRatio,2));
     renderer.setSize(innerWidth, innerHeight);
 
@@ -1067,7 +1092,12 @@ function renderMars3D(pd) {
     const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
     camera.position.set(0, 0.2, 3.4);
 
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    // preserveDrawingBuffer — needed so the Texture Look panel's "Blend
+    // edges" overlay (planet.html's final <script>) can reliably drawImage()
+    // this canvas at an arbitrary time, not just immediately after render().
+    // Without it, WebGL is free to clear the buffer between frames, which
+    // made the overlay silently capture blank/stale frames.
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, preserveDrawingBuffer:true });
     renderer.setPixelRatio(Math.min(devicePixelRatio,2));
     renderer.setSize(innerWidth, innerHeight);
 
@@ -1148,7 +1178,12 @@ function renderUranus3D(pd) {
     const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
     camera.position.set(0, 0.2, 3.6);
 
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    // preserveDrawingBuffer — needed so the Texture Look panel's "Blend
+    // edges" overlay (planet.html's final <script>) can reliably drawImage()
+    // this canvas at an arbitrary time, not just immediately after render().
+    // Without it, WebGL is free to clear the buffer between frames, which
+    // made the overlay silently capture blank/stale frames.
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, preserveDrawingBuffer:true });
     renderer.setPixelRatio(Math.min(devicePixelRatio,2));
     renderer.setSize(innerWidth, innerHeight);
 
@@ -1234,7 +1269,12 @@ function renderNeptune3D(pd) {
     const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
     camera.position.set(0, 0.2, 3.6);
 
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    // preserveDrawingBuffer — needed so the Texture Look panel's "Blend
+    // edges" overlay (planet.html's final <script>) can reliably drawImage()
+    // this canvas at an arbitrary time, not just immediately after render().
+    // Without it, WebGL is free to clear the buffer between frames, which
+    // made the overlay silently capture blank/stale frames.
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, preserveDrawingBuffer:true });
     renderer.setPixelRatio(Math.min(devicePixelRatio,2));
     renderer.setSize(innerWidth, innerHeight);
 
@@ -1319,7 +1359,12 @@ function renderPluto3D(pd) {
     const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
     camera.position.set(0, 0.15, 3.2);
 
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    // preserveDrawingBuffer — needed so the Texture Look panel's "Blend
+    // edges" overlay (planet.html's final <script>) can reliably drawImage()
+    // this canvas at an arbitrary time, not just immediately after render().
+    // Without it, WebGL is free to clear the buffer between frames, which
+    // made the overlay silently capture blank/stale frames.
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, preserveDrawingBuffer:true });
     renderer.setPixelRatio(Math.min(devicePixelRatio,2));
     renderer.setSize(innerWidth, innerHeight);
 
@@ -1967,6 +2012,128 @@ document.getElementById('veil').classList.add('clear');
 
   // Keep badges tracking their blocks (window resize, tab switches, etc.)
   setInterval(positionBadges, 200);
+
+  // ── Live "Texture Look" controls — Contrast / Saturation / Focus / Blend.
+  // Grew out of the Pluto texture-tuning back-and-forth this session: every
+  // adjustment needed a Python re-composite + screenshot round trip. This
+  // lets Ricky dial the look in-browser instead, per planet, persisted.
+  const LOOK_KEY = 'soulinterface_planet3d_look_v1';
+  let allLooks = {};
+  try { allLooks = JSON.parse(localStorage.getItem(LOOK_KEY)) || {}; } catch(e){}
+  const DEFAULT_LOOK = { contrast: 100, saturate: 100, focus: 0, blend: 0 };
+  let look = Object.assign({}, DEFAULT_LOOK, allLooks[planetSlug] || {});
+
+  const lookCanvas = document.getElementById('planet-scene');
+
+  function applyLookFilters(){
+    // focus is soften-only (0=native sharpness, 100=max blur) — CSS has no
+    // real "sharpen" filter, and fabricating fake sharpness beyond what's
+    // actually in the texture would misrepresent real photo data, same
+    // principle this whole session's texture work has stuck to.
+    const blurPx = look.focus / 100 * 4;
+    lookCanvas.style.filter = `contrast(${look.contrast}%) saturate(${look.saturate}%)` + (blurPx > 0 ? ` blur(${blurPx.toFixed(2)}px)` : '');
+  }
+  applyLookFilters();
+
+  // "Blend edges" — a live, general-purpose analog to compose_pluto_texture.py's
+  // per-pixel detail-tier blending (Part 33): that one is computed offline,
+  // baked into the file, and specific to Pluto's real crisp/soft data
+  // boundary. This is a cheap universal approximation any planet can use —
+  // a radial blur overlay, masked so the sphere's center stays untouched and
+  // only the limb softens, which is where hard texture-detail transitions
+  // (or just the terminator) tend to read as jarring.
+  let blendOverlay = null, blendInterval = null;
+  function ensureBlendOverlay(){
+    if (blendOverlay) return blendOverlay;
+    blendOverlay = document.createElement('canvas');
+    blendOverlay.style.cssText = 'position:fixed;inset:0;z-index:1;pointer-events:none;';
+    lookCanvas.parentNode.insertBefore(blendOverlay, lookCanvas.nextSibling);
+    return blendOverlay;
+  }
+  function updateBlendOverlay(){
+    if (look.blend <= 0){
+      if (blendOverlay) blendOverlay.style.opacity = '0';
+      if (blendInterval) { clearInterval(blendInterval); blendInterval = null; }
+      return;
+    }
+    const ov = ensureBlendOverlay();
+    ov.width = lookCanvas.clientWidth;
+    ov.height = lookCanvas.clientHeight;
+    const blurPx = (look.blend / 100 * 14).toFixed(1);
+    ov.style.filter = `blur(${blurPx}px)`;
+    ov.style.opacity = String(0.25 + look.blend / 100 * 0.55);
+    // "circle" with no size keyword defaults to farthest-corner, which for a
+    // 1280x720 box is ~735px from center — far past the sphere's actual
+    // on-screen radius (~275px at default zoom), so the transition landed
+    // almost entirely outside the visible disk and was invisible no matter
+    // how high blend was set. closest-side anchors 100% to the nearest
+    // viewport edge instead (the vertical half-height on a landscape frame),
+    // which stays in the sphere's neighborhood across reasonable zoom levels.
+    const innerPct = 62 - look.blend * 0.15;
+    ov.style.maskImage = `radial-gradient(closest-side circle at 50% 50%, transparent ${innerPct}%, black 95%)`;
+    ov.style.webkitMaskImage = ov.style.maskImage;
+    const ctx = ov.getContext('2d');
+    function draw(){
+      if (look.blend <= 0) return;
+      ctx.clearRect(0, 0, ov.width, ov.height);
+      ctx.drawImage(lookCanvas, 0, 0, ov.width, ov.height);
+    }
+    draw();
+    if (blendInterval) clearInterval(blendInterval);
+    // Throttled, not per-frame — this is a slow sway/spin, doesn't need 60fps,
+    // and copying the WebGL canvas every animation frame is real overhead.
+    blendInterval = setInterval(draw, 180);
+  }
+  updateBlendOverlay();
+
+  function persistLook(){
+    allLooks[planetSlug] = look;
+    try { localStorage.setItem(LOOK_KEY, JSON.stringify(allLooks)); } catch(e){}
+  }
+
+  const lookPanel = document.createElement('div');
+  lookPanel.style.cssText = 'position:fixed;z-index:52;right:14px;top:14px;'
+    + 'background:rgba(10,8,6,0.9);border:1px solid rgba(200,175,135,0.35);border-radius:6px;'
+    + 'font-family:monospace;color:rgba(230,215,190,0.92);padding:8px 12px;display:flex;flex-direction:column;gap:7px;width:150px;';
+  function lookSliderRow(labelText, key, min, max){
+    return `<label style="font-size:9px;display:flex;flex-direction:column;gap:2px;">
+      <span style="display:flex;justify-content:space-between;"><span>${labelText}</span><span id="lookVal_${key}">${look[key]}</span></span>
+      <input type="range" id="lookSlider_${key}" min="${min}" max="${max}" step="1" value="${look[key]}" style="width:100%;">
+    </label>`;
+  }
+  lookPanel.innerHTML = `
+    <div style="font-size:9px;opacity:0.6;display:flex;justify-content:space-between;align-items:center;">
+      <span>TEXTURE LOOK</span>
+      <button id="lookResetBtn" style="background:rgba(255,120,120,0.1);border:1px solid rgba(255,120,120,0.3);color:rgba(255,180,180,0.9);font-family:inherit;font-size:8px;padding:2px 6px;border-radius:3px;cursor:pointer;">RESET</button>
+    </div>
+    ${lookSliderRow('Contrast', 'contrast', 50, 200)}
+    ${lookSliderRow('Saturation', 'saturate', 50, 200)}
+    ${lookSliderRow('Focus', 'focus', 0, 100)}
+    ${lookSliderRow('Blend edges', 'blend', 0, 100)}
+  `;
+  document.body.appendChild(lookPanel);
+
+  ['contrast', 'saturate', 'focus', 'blend'].forEach(key => {
+    const slider = lookPanel.querySelector(`#lookSlider_${key}`);
+    const valEl = lookPanel.querySelector(`#lookVal_${key}`);
+    slider.addEventListener('input', () => {
+      look[key] = Number(slider.value);
+      valEl.textContent = look[key];
+      applyLookFilters();
+      updateBlendOverlay();
+      persistLook();
+    });
+  });
+  lookPanel.querySelector('#lookResetBtn').addEventListener('click', () => {
+    look = Object.assign({}, DEFAULT_LOOK);
+    ['contrast', 'saturate', 'focus', 'blend'].forEach(key => {
+      lookPanel.querySelector(`#lookSlider_${key}`).value = look[key];
+      lookPanel.querySelector(`#lookVal_${key}`).textContent = look[key];
+    });
+    applyLookFilters();
+    updateBlendOverlay();
+    persistLook();
+  });
 })();
 </script>
 </body>
