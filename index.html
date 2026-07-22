@@ -2175,11 +2175,17 @@ const beltMats = []; // stored so we can hide during early cosmo phases
     p[i*3] = r * Math.cos(a); p[i*3+1] = (Math.random() - 0.5) * 0.7; p[i*3+2] = r * Math.sin(a);
   }
   g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  // uMouse: world-space point where the cursor ray hits the belt's y=0
+  // plane, updated every frame in animate() by reusing the existing
+  // raycaster/mouse pair (originally built for planet-hover detection).
+  // Defaults far outside the belt radius (r=21-25) so there's no effect
+  // before the first mousemove or once the cursor leaves the canvas.
   const bm1 = new THREE.ShaderMaterial({
-    uniforms: { time: { value: 0 }, baseOp: { value: 0 } },
+    uniforms: { time: { value: 0 }, baseOp: { value: 0 }, uMouse: { value: new THREE.Vector3(9999, 0, 9999) } },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     vertexShader: `
       uniform float time;
+      uniform vec3 uMouse;
       varying vec3 vColor;
       vec3 hsl2rgb(float h, float s, float l){
         vec3 rgb = clamp(abs(mod(h*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
@@ -2194,9 +2200,22 @@ const beltMats = []; // stored so we can hide during early cosmo phases
         float hue   = fract(tCol * 0.6 + angle * 0.3 + time * 0.04);
         hue = hue < 0.5 ? hue * 0.30 : 0.55 + (hue - 0.5) * 0.70;
         vec3 base   = hsl2rgb(hue, 0.70, 0.42);
-        vColor = base * (0.05 + fade * 1.1);
-        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = max(1.0, (0.09 + fade * 0.07) * 960.0 / -mvPos.z);
+
+        // Interactive stream disturbance — asteroids within range of the
+        // cursor's projected position get pushed radially outward from it
+        // and brighten, like the belt is parting around your pointer. Only
+        // the rendered position/brightness shift, not the color-generating
+        // position variable above, so hue stays stable as particles get pushed.
+        float distToMouse = distance(position.xz, uMouse.xz);
+        float influenceRadius = 5.5;
+        float push = smoothstep(influenceRadius, 0.0, distToMouse);
+        vec3 pushDir = vec3(position.x - uMouse.x, 0.0, position.z - uMouse.z);
+        float pushLen = length(pushDir);
+        vec3 displaced = position + (pushLen > 0.0001 ? pushDir / pushLen : vec3(0.0)) * push * 3.2;
+
+        vColor = base * (0.05 + fade * 1.1) * (1.0 + push * 1.8);
+        vec4 mvPos = modelViewMatrix * vec4(displaced, 1.0);
+        gl_PointSize = max(1.0, (0.09 + fade * 0.07 + push * 0.10) * 960.0 / -mvPos.z);
         gl_Position  = projectionMatrix * mvPos;
       }
     `,
@@ -2996,6 +3015,9 @@ function navigateToPlanet(idx) {
 // ── Raycasting — click on planet mesh also navigates ─────────────────────────
 const raycaster = new THREE.Raycaster();
 const mouse     = new THREE.Vector2();
+// Belt interaction plane (y=0) — where the cursor ray gets projected into
+// 3D so the asteroid belt's shader knows a world-space point to react to.
+const beltInteractionPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
 // ── Planet labels: names only, appear on hover/click in post-cosmo idle ──────
 // During sequence: labels appear as planets form (existing logic)
@@ -3034,6 +3056,15 @@ document.getElementById('scene').addEventListener('mousemove', function(e) {
     }
     window._hoveredPlanetIdx = -1;
     document.getElementById('scene').style.cursor = 'default';
+  }
+});
+
+// Move the belt's interaction point far away when the cursor leaves the
+// canvas — without this, uMouse would stick at wherever the pointer last
+// was and keep parting the belt even after the mouse is gone.
+document.getElementById('scene').addEventListener('mouseleave', function() {
+  if (window._beltMat && window._beltMat.uniforms) {
+    window._beltMat.uniforms.uMouse.value.set(9999, 0, 9999);
   }
 });
 
@@ -3792,6 +3823,21 @@ function animate() {
   if (window._beltMat && window._beltMat.uniforms) {
     window._beltMat.uniforms.time.value   = t;
     window._beltMat.uniforms.baseOp.value = window._beltMat.opacity;
+    // Reproject the cursor onto the belt's y=0 plane every frame (not just
+    // on mousemove) so the interaction point stays correct as the camera
+    // orbits even without new mouse movement. Reuses the existing
+    // raycaster/mouse pair (planet-hover detection, above) rather than a
+    // second one. window._labelsPostCosmo gates it to the idle scene, same
+    // as hover labels — no point parting the belt mid-cosmogenesis.
+    if (window._labelsPostCosmo) {
+      raycaster.setFromCamera(mouse, camera);
+      const hit = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(beltInteractionPlane, hit)) {
+        window._beltMat.uniforms.uMouse.value.copy(hit);
+      }
+    } else {
+      window._beltMat.uniforms.uMouse.value.set(9999, 0, 9999);
+    }
   }
 
   // ── Camera — always lerp toward sphTarget, never snap ────────────────────

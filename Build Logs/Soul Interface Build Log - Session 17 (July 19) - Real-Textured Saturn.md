@@ -482,9 +482,23 @@ Verified beyond just "it renders": checked the dissolve function first (grepped 
 
 ---
 
+### Part 41 — Interactive Asteroid Belt: Cursor Parts the Stream
+
+Ricky linked `github.com/yiwenl/WebGL_Particle_Stream` and asked for the asteroid belt to become an interactive particle stream. The repo has no license listed, so didn't port its code directly (it's also built around Leap Motion input, GPGPU render-to-texture — hardware-specific and heavier than this needed); instead built an original mouse-interactive effect for the belt's own existing particle shader, inspired by the same idea.
+
+The belt's primary layer (`bm1`, a `THREE.ShaderMaterial` with an existing animated hue-cycling vertex shader) already had everything needed except a way to know where the cursor is in world space. Added a `uMouse` `vec3` uniform, reprojected every frame in `animate()` by reusing the page's *existing* raycaster/mouse pair (already there for planet-hover detection) against a new `THREE.Plane` at y=0 — the belt's own plane. In the vertex shader, particles within a radius of that point get pushed radially outward (displacing only the position used for `gl_Position`/`gl_PointSize`, not the one the hue calculation reads, so color stays stable while particles move) and brighten, reading as the belt visibly parting and glowing around the cursor.
+
+Hit a real bug during this: an English comment inside the GLSL shader string used backtick-quoted `` `position` `` (a normal markdown convention for inline code) — but the whole shader is itself a JS template literal, and JS doesn't know or care that it's "inside a GLSL comment"; the stray backticks terminated the outer JS string early and threw `Unexpected identifier 'position'`, silently breaking the *entire* inline script block (cascading into `beginCosmo is not defined` and other unrelated-looking errors). Caught it by extracting each `<script>` block's source and running it through `new Function()` outside the browser to get a clean syntax-error location, rather than guessing from the confusing cascade of runtime symptoms. Fixed by dropping the backticks from the comment.
+
+Verified the actual displacement effect, not just "no errors" — direct mouse-driven screenshots showed camera drift and an unrelated periodic title-reveal animation confounding simple before/after comparisons, so isolated the shader's own behavior with a tight-timing test (mouse to a fixed belt-area screen position, screenshot, then immediately move far off-canvas, screenshot again) — the hover shot shows a clearly sparser, parted patch in the belt with a brightened particle at its edge; the away shot shows the same region fully repopulated. Also fixed a related bug: `uMouse` needed a `mouseleave` handler resetting it far away, since otherwise it would stick at the last cursor position after the pointer left the canvas. Synced to `Aion/Frontend/Code/`.
+
+---
+
 ### Next Session
 
+- Part 41 (interactive asteroid belt) is ready to commit as a follow-up if not already done.
 - Part 40 (real sun texture wired into `index.html`) is ready to commit as a follow-up if not already done.
+- Still open from Ricky: a coronal-loop solar flare burst effect was written for `sun-texture-test.html` (arcing particle streams from one surface point to another, plus live shader-uniform sliders and a Copy-JSON button) but not yet verified live or committed — pick this up next.
 - Part 39 (Bloom spots) is ready to commit as a follow-up if not already done.
 - Part 38 (Bloom slider) is ready to commit as a follow-up if not already done.
 - Part 37 (separate bump/color textures) is ready to commit as a follow-up if not already done.
