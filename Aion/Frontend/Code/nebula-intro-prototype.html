@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Nebula — Formation Flythrough Intro</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{position:fixed;inset:0}
+#info{
+  position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+  font-family:monospace;font-size:9px;letter-spacing:0.2em;
+  color:rgba(200,175,135,0.35);pointer-events:none;
+  text-align:center;
+}
+#fadeOverlay{
+  position:fixed;inset:0;background:#000;opacity:0;
+  pointer-events:none;z-index:20;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="fadeOverlay"></div>
+<div id="info">FORMATION FLYTHROUGH — PREVIEW FADE INTO COSMOGENESIS.HTML (see build log)</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+window.onerror = function(msg,src,line){
+  document.body.innerHTML += `<div style="position:fixed;bottom:20px;left:20px;right:20px;background:#1a0000;color:#ff8080;font-family:monospace;font-size:12px;padding:16px;z-index:9999;border:1px solid #660000;">JS Error (line ${line}): ${msg}</div>`;
+};
+
+const canvas   = document.getElementById('c');
+// Restored to the same antialias/pixel-ratio as the interactive prototype —
+// dropping them last pass traded clarity for fill-rate that the path itself
+// should be buying back instead (see FLY_PATH clearance notes below).
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.1));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000308, 1);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 3000);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+const smoothstep = (t) => t*t*(3-2*t);
+const lerp = (a,b,t) => a+(b-a)*t;
+
+// ── Scripted flythrough camera — a real dolly through 3D space, not an orbit
+// around a fixed point. The first version drove sph.r/theta/phi (spherical,
+// always looking at the origin) which is why it read as "close up then back
+// away" — decreasing r *is* moving toward the origin, and the last waypoint
+// increasing r again *is* pulling back out. A push-through instead needs
+// actual position waypoints that keep moving the same direction the whole
+// way, which is what this is: real XYZ points threading from outside the
+// nebula, through the core, and out into the far cluster, never doubling
+// back. One THREE.CatmullRomCurve3 over those points (this is exactly what
+// that class is for — actual positions, not a repurposed 3-tuple like last
+// time), sampled with getPointAt() (arc-length based, so equal-time steps
+// cover equal distance — no per-segment speed-up/slow-down) and a single
+// smoothstep ease applied ONCE over the whole duration (not per-waypoint,
+// which is what caused the stop-start stutter before).
+// Pulled off dead-center of the Core (0,0,0) — that point has 5-6 pieces
+// (Core, Hot Knot, Gap Filler, Bridging Arm, Wall, Seam Fills) all
+// overlapping simultaneously, the single worst spot on the whole map for
+// this per-piece-draw technique's overdraw ceiling. This path still threads
+// past/through that cluster's edge (still reads as flying through the
+// nebula) then on through the Bridge chain, just without sitting dead center
+// in the densest possible overlap.
+const FLY_PATH = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(20, 200, 700),   // wide establishing, outside the nebula
+  new THREE.Vector3(15, 70, 340),    // approaching
+  new THREE.Vector3(100, 30, 150),   // past the Core cluster's edge
+  new THREE.Vector3(170, 40, -60),   // past the Bridge chain's edge — was
+                                       // (150,15,-80), which cut straight
+                                       // through the middle of Bridge B; this
+                                       // grazes the cluster instead of a
+                                       // second dead-center overlap hotspot
+  new THREE.Vector3(230, 15, -230),  // emerging among Rose Reach / Backdrop —
+                                       // holds here once the path finishes
+], false, 'catmullrom', 0.5);
+FLY_PATH.arcLengthDivisions = 1000; // default (200) is coarse enough for this
+                                     // curve's shape that getPointAt's speed
+                                     // sampling could itself read as slightly
+                                     // uneven — cheap to raise, computed once.
+const INTRO_DURATION = 24;
+const LOOKAHEAD = 0.05; // look a little further down the same path, not back
+                         // at a fixed point — keeps the "flying forward" feel
+
+// Position moves at a smooth constant pace along the spline (getPointAt is
+// arc-length based), but snapping lookAt() straight to the look-ahead point
+// every frame means the camera's *rotation* still whips instantly through any
+// sharp bend in the path — position glides, view direction jerks. That reads
+// exactly as "stop motion." Damping the aim point toward its target (instead
+// of jumping straight to it) decouples rotation smoothness from the path's
+// local curvature. Frame-rate-independent (uses dt, not a fixed per-frame
+// factor) so it damps the same regardless of actual FPS.
+const currentAim = new THREE.Vector3();
+let aimInitialized = false;
+
+function updateCameraPath(simTime, dt){
+  const u = smoothstep(clamp(simTime/INTRO_DURATION, 0, 1));
+  camera.position.copy(FLY_PATH.getPointAt(u));
+
+  const targetAim = FLY_PATH.getPointAt(clamp(u+LOOKAHEAD, 0, 1));
+  if (!aimInitialized){ currentAim.copy(targetAim); aimInitialized = true; }
+  const damping = 1 - Math.pow(0.0004, dt);
+  currentAim.lerp(targetAim, damping);
+  camera.lookAt(currentAim);
+}
+
+// ── Star field (rendered behind — the volume composites over it) ────────────
+function makeDiscTexture(){
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 32;
+  const ctx = cv.getContext('2d');
+  const g = ctx.createRadialGradient(16,16,0,16,16,16);
+  g.addColorStop(0,   'rgba(255,255,255,1)');
+  g.addColorStop(0.4, 'rgba(255,255,255,0.9)');
+  g.addColorStop(1,   'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,32,32);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.needsUpdate = true;
+  return tex;
+}
+{
+  const N=4500,geo=new THREE.BufferGeometry();
+  const p=new Float32Array(N*3),c=new Float32Array(N*3);
+  const pal=[[0.88,0.94,1],[1,1,0.88],[0.68,0.80,1],[1,0.82,0.62]];
+  for(let i=0;i<N;i++){
+    const a=Math.random()*Math.PI*2,b=Math.acos(2*Math.random()-1),r=300+Math.random()*700;
+    p[i*3]=r*Math.sin(b)*Math.cos(a); p[i*3+1]=r*Math.sin(b)*Math.sin(a); p[i*3+2]=r*Math.cos(b);
+    const sc=pal[Math.floor(Math.random()*pal.length)];
+    c[i*3]=sc[0]; c[i*3+1]=sc[1]; c[i*3+2]=sc[2];
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+  geo.setAttribute('color',new THREE.BufferAttribute(c,3));
+  scene.add(new THREE.Points(geo,new THREE.PointsMaterial({
+    size:2.2,sizeAttenuation:true,vertexColors:true,
+    map:makeDiscTexture(), alphaTest:0.01,
+    transparent:true,opacity:0.55,depthWrite:false,blending:THREE.AdditiveBlending
+  })));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VOLUMETRIC NEBULA — v2: same 19 pieces, same per-blob math from
+// nebula-volumetric-prototype.html (commit 5571083), but grouped into 6
+// shared shaders by spatial proximity instead of 19 separate draw calls.
+//
+// The flythrough camera (unlike the interactive prototype's orbit) passes
+// close to several pieces at once, and every overlapping full-screen raymarch
+// draw is a real GPU cost on every shared pixel — waypoint nudging just moves
+// that problem to the next cluster. This fixes the actual cause: each group
+// below is a SINGLE shader that loops over its own (small, fixed) blob list,
+// so pieces that overlap on screen no longer multiply the draw count. A full
+// 16-piece single-shader merge was tried once before and reverted as too
+// expensive to compile/run — this is deliberately much smaller (max 4 blobs
+// per group, not 19), reusing the exact same density/color math per blob.
+// ═══════════════════════════════════════════════════════════════════════════════
+function makeBlob(center, size, seed, name, densityThreshold, erosionStrength, paletteOpts){
+  const pal = warmPalette(seed, paletteOpts);
+  return { center, size, seed, name, densityThreshold, erosionStrength, rimColor: pal.rim, deepColor: pal.deep };
+}
+
+const hsl = (h,s,l) => { const c = new THREE.Color(); c.setHSL(h,s,l); return c; };
+
+function warmPalette(seed, opts){
+  opts = opts || {};
+  const jitter = Math.sin(seed*12.9898) * 0.5 + 0.5;
+  const rimHue = (opts.rimHue !== undefined ? opts.rimHue : 0.09) + (jitter-0.5)*0.025;
+  const rimLum = (opts.rimLum !== undefined ? opts.rimLum : 0.62) + (jitter-0.5)*0.08;
+  const deepHue = ((opts.deepHue !== undefined ? opts.deepHue : 0.98) + (jitter-0.5)*0.02 + 1) % 1;
+  const deepLum = (opts.deepLum !== undefined ? opts.deepLum : 0.22) + (jitter-0.5)*0.05;
+  return {
+    rim:  hsl(rimHue, opts.rimSat !== undefined ? opts.rimSat : 0.90, rimLum),
+    deep: hsl(deepHue, opts.deepSat !== undefined ? opts.deepSat : 0.78, deepLum),
+  };
+}
+
+// Formation timing constants — tune these to retime the coalescing effect.
+// Eased back up from 3/6 to 4/8 for a slower, smoother reveal on first
+// appearance — safe to loosen again now that base step counts were cut ~30%
+// for performance since these were last tightened, so mid-formation (the
+// expensive, semi-transparent, early-exit-rarely-triggers window) costs
+// meaningfully less in absolute terms even with a slightly longer window.
+const FORM_STAGGER_MAX = 4;   // seconds: how much later the farthest piece
+                               // starts forming vs. the core (t=0)
+const FORM_DURATION    = 8;   // seconds: how long each piece takes to fade
+                               // from invisible to its full tuned density
+const INVISIBLE_THRESHOLD = 1.05; // above the shader's theoretical max
+                                    // "shape" value (~0.995) — guaranteed
+                                    // fully transparent as a starting point
+
+function createNebulaGroup(blobs, name, steps){
+  const N = blobs.length;
+
+  // Group's own bounding box, computed from every member blob's extent
+  // (falloff reaches ~1.18x each blob's own size, same margin the per-piece
+  // version used) plus a little extra padding.
+  const min = new THREE.Vector3(Infinity, Infinity, Infinity);
+  const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+  for (const b of blobs){
+    const ext = b.size.clone().multiplyScalar(1.18);
+    min.min(b.center.clone().sub(ext));
+    max.max(b.center.clone().add(ext));
+  }
+  const groupCenter   = min.clone().add(max).multiplyScalar(0.5);
+  const groupHalfSize = max.clone().sub(min).multiplyScalar(0.5 * 1.08);
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uCameraPos:      { value: new THREE.Vector3() },
+      uGroupCenter:    { value: groupCenter.clone() },
+      uGroupHalfSize:  { value: groupHalfSize.clone() },
+      uTime:           { value: 0 },
+      uStepBudget:     { value: steps },
+      uCenter:            { value: blobs.map(b => b.center.clone()) },
+      uHalfSize:          { value: blobs.map(b => b.size.clone()) },
+      uSeed:              { value: blobs.map(b => b.seed) },
+      uRimColor:          { value: blobs.map(b => b.rimColor) },
+      uDeepColor:         { value: blobs.map(b => b.deepColor) },
+      uDensityThreshold:  { value: blobs.map(b => b.densityThreshold) },
+      uErosionStrength:   { value: blobs.map(b => b.erosionStrength) },
+    },
+    vertexShader: `
+      varying vec3 vWorldPos;
+      void main(){
+        vWorldPos = (modelMatrix * vec4(position,1.0)).xyz;
+        gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position,1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3  uCameraPos;
+      uniform vec3  uGroupCenter;
+      uniform vec3  uGroupHalfSize;
+      uniform float uTime;
+      uniform int   uStepBudget;
+      uniform vec3  uCenter[${N}];
+      uniform vec3  uHalfSize[${N}];
+      uniform float uSeed[${N}];
+      uniform vec3  uRimColor[${N}];
+      uniform vec3  uDeepColor[${N}];
+      uniform float uDensityThreshold[${N}];
+      uniform float uErosionStrength[${N}];
+      varying vec3  vWorldPos;
+
+      float hash31(vec3 p){
+        p = fract(p*0.3183099+0.1);
+        p *= 17.0;
+        return fract(p.x*p.y*p.z*(p.x+p.y+p.z));
+      }
+      float noise3(vec3 x){
+        vec3 i=floor(x), f=fract(x);
+        f = f*f*(3.0-2.0*f);
+        return mix(
+          mix(mix(hash31(i+vec3(0,0,0)),hash31(i+vec3(1,0,0)),f.x),
+              mix(hash31(i+vec3(0,1,0)),hash31(i+vec3(1,1,0)),f.x),f.y),
+          mix(mix(hash31(i+vec3(0,0,1)),hash31(i+vec3(1,0,1)),f.x),
+              mix(hash31(i+vec3(0,1,1)),hash31(i+vec3(1,1,1)),f.x),f.y),
+        f.z);
+      }
+      float fbm3(vec3 p, int octaves){
+        float v=0.0, a=0.5;
+        for(int i=0;i<3;i++){
+          if(i>=octaves) break;
+          v += a*noise3(p);
+          p *= 2.02;
+          a *= 0.5;
+        }
+        return v;
+      }
+
+      // Same shape/vein math as the per-piece version's density(), just
+      // parameterized by blob index b so one shader can evaluate any of this
+      // group's blobs at a shared sample point.
+      float blobDensity(vec3 p, int b){
+        float r = length(p);
+        float falloff = smoothstep(1.18, 0.09, r);
+        if (falloff <= 0.0) return 0.0;
+
+        vec3 drift = vec3(0.05, 0.012, -0.03) * uTime;
+        vec3 q = p * 0.95 + drift + uSeed[b];
+
+        float macro = fbm3(q*1.5, 2);
+        float wisps = fbm3(q*4.2 + 5.0, 2);
+        float grain = fbm3(q*14.0 + 9.0, 2);
+        float shape = macro*0.50 + wisps*0.28 + grain*0.22 + 0.12;
+
+        float erosionRaw = fbm3(q*2.1 + 20.0, 2);
+        float veins = pow(1.0 - abs(erosionRaw*2.0 - 1.0), 2.2);
+        shape -= veins * uErosionStrength[b] * 0.9;
+
+        return clamp((shape - uDensityThreshold[b]) * 3.6, 0.0, 1.0) * falloff;
+      }
+
+      vec2 boxIntersect(vec3 ro, vec3 rd){
+        vec3 inv = 1.0/rd;
+        vec3 t0 = (-1.0 - ro)*inv;
+        vec3 t1 = ( 1.0 - ro)*inv;
+        vec3 tmin = min(t0,t1), tmax = max(t0,t1);
+        float tN = max(max(tmin.x,tmin.y),tmin.z);
+        float tF = min(min(tmax.x,tmax.y),tmax.z);
+        return vec2(tN,tF);
+      }
+
+      const int N_BLOBS  = ${N};
+      const int MAX_STEPS = ${steps};
+
+      void main(){
+        vec3 ro = (uCameraPos - uGroupCenter) / uGroupHalfSize;
+        vec3 rd = normalize((vWorldPos - uCameraPos) / uGroupHalfSize);
+
+        vec2 tb = boxIntersect(ro, rd);
+        if (tb.x > tb.y || tb.y < 0.0) { discard; }
+        float tStart = max(tb.x, 0.0);
+        float tEnd   = tb.y;
+
+        int budget = min(uStepBudget, MAX_STEPS);
+        float stepSize = (tEnd - tStart) / float(budget);
+        vec3 pos = ro + rd*tStart;
+
+        vec3  accumColor = vec3(0.0);
+        float accumAlpha = 0.0;
+        float depthAccum = 0.0;
+
+        for (int i=0; i<MAX_STEPS; i++){
+          if (i >= budget) break;
+          if (accumAlpha > 0.97) break;
+
+          vec3 worldP = uGroupCenter + pos*uGroupHalfSize;
+
+          // Combine this step's contribution across the group's blobs — a
+          // soft union (same math as the voxel-bake attempt's envelope
+          // combine) so overlapping blobs saturate smoothly instead of
+          // simply summing past 1, plus a density-weighted color blend.
+          float envelope = 1.0;
+          float wsum = 0.0;
+          vec3 rimAccum = vec3(0.0), deepAccum = vec3(0.0);
+          for (int b=0; b<N_BLOBS; b++){
+            vec3 blobLocal = (worldP - uCenter[b]) / uHalfSize[b];
+            float db = blobDensity(blobLocal, b);
+            if (db > 0.0001){
+              envelope *= (1.0 - db);
+              rimAccum  += uRimColor[b]  * db;
+              deepAccum += uDeepColor[b] * db;
+              wsum += db;
+            }
+          }
+          float d = 1.0 - envelope;
+
+          if (d > 0.003){
+            depthAccum += d*stepSize;
+            float depthFrac = clamp(depthAccum*2.4, 0.0, 1.0);
+            vec3 rim  = wsum > 0.0001 ? rimAccum/wsum  : vec3(0.0);
+            vec3 deep = wsum > 0.0001 ? deepAccum/wsum : vec3(0.0);
+            // Both constants bumped up from the original 1.5/2.6 — dropping
+            // fbm3 to 2 octaves (for speed) lowered the average density value
+            // coming out of blobDensity, which made clouds read as thinner
+            // and dimmer even though nothing about their shape/color changed.
+            // This compensates in the accumulation math instead of paying
+            // for the extra octave back.
+            vec3 col  = mix(rim, deep, depthFrac) * 1.8;
+
+            float alpha = d * stepSize * 3.3;
+            accumColor += col * alpha * (1.0-accumAlpha);
+            accumAlpha += alpha * (1.0-accumAlpha);
+          }
+          pos += rd*stepSize;
+        }
+
+        if (accumAlpha < 0.01) discard;
+        gl_FragColor = vec4(accumColor, accumAlpha);
+      }
+    `,
+    side: THREE.BackSide,
+    transparent: true,
+    depthWrite: false,
+  });
+
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), mat);
+  mesh.position.copy(groupCenter);
+  mesh.scale.copy(groupHalfSize);
+  scene.add(mesh);
+
+  mat.userData.mesh       = mesh;
+  mat.userData.baseSteps  = steps;
+  mat.userData.center     = groupCenter.clone(); // used for LOD distance
+  mat.userData.charRadius = (groupHalfSize.x + groupHalfSize.y + groupHalfSize.z) / 3;
+  mat.userData.name       = name;
+  // Per-blob formation data — each blob still fades in independently on its
+  // own delay/threshold, just written into this shared material's uniform
+  // arrays every frame instead of onto its own material.
+  mat.userData.blobBaseThreshold = blobs.map(b => b.densityThreshold);
+  mat.userData.blobBaseErosion   = blobs.map(b => b.erosionStrength);
+  mat.userData.blobFormDelay     = blobs.map(b => clamp(b.center.length()/400, 0, 1) * FORM_STAGGER_MAX);
+  return mat;
+}
+
+// Same 19 pieces as nebula-volumetric-prototype.html (verbatim
+// centers/sizes/seeds/colors/thresholds), grouped by spatial proximity into
+// 6 shared shaders instead of 19 separate draw calls.
+const nebulaVolumes = [
+  createNebulaGroup([ // Group A — the tightest cluster (was the worst overlap)
+    makeBlob(new THREE.Vector3(0, 0, 0),      new THREE.Vector3(85, 85, 85), 0.0,  'Core',     0.27, 0.48),
+    makeBlob(new THREE.Vector3(22, -18, 32),  new THREE.Vector3(55, 58, 55), 15.6, 'Hot Knot', 0.27, 0.40, {rimLum:0.72, rimSat:0.95}),
+    makeBlob(new THREE.Vector3(-22, 22, -28), new THREE.Vector3(48, 45, 50), 300.1,'Gap Filler',0.31, 0.42),
+  ], 'Group A (Core)', 34),
+
+  createNebulaGroup([ // Group B — adjacent cluster
+    makeBlob(new THREE.Vector3(-58, -22, 58), new THREE.Vector3(72, 78, 62), 87.7,  'Wall',         0.29, 0.50, {deepHue:0.99}),
+    makeBlob(new THREE.Vector3(-65, 32, -55), new THREE.Vector3(70, 46, 56), 61.2,  'Bridging Arm', 0.30, 0.46, {rimHue:0.03, deepHue:0.85}),
+    makeBlob(new THREE.Vector3(8, 42, -35),   new THREE.Vector3(40, 40, 42), 951.2, 'Seam Fill 1',  0.35, 0.36, {rimHue:0.30, rimSat:0.60, deepHue:0.75}),
+    makeBlob(new THREE.Vector3(-30, 20, -42), new THREE.Vector3(38, 38, 38), 988.1, 'Seam Fill 3',  0.35, 0.36, {rimHue:0.02, deepHue:0.90}),
+  ], 'Group B (Wall)', 25),
+
+  createNebulaGroup([ // Group C
+    makeBlob(new THREE.Vector3(110, 10, -15), new THREE.Vector3(130, 42, 48), 41.3,  'Filament',    0.31, 0.42),
+    makeBlob(new THREE.Vector3(18, 55, -75),  new THREE.Vector3(46, 50, 58),  133.9, 'Top Pocket',  0.28, 0.44, {rimHue:0.54, rimLum:0.62, rimSat:0.75, deepHue:0.70, deepLum:0.20}),
+    makeBlob(new THREE.Vector3(50, 62, -80),  new THREE.Vector3(38, 40, 40),  972.6, 'Seam Fill 2', 0.35, 0.36, {rimHue:0.60, rimSat:0.55, deepHue:0.74}),
+  ], 'Group C (Filament)', 25),
+
+  createNebulaGroup([ // Group D — the Bridge chain (was the second overlap hotspot)
+    makeBlob(new THREE.Vector3(85, 58, -95),   new THREE.Vector3(72, 68, 68), 620.3, 'Bridge A', 0.30, 0.42, {rimHue:0.68, rimSat:0.68, rimLum:0.56, deepHue:0.78, deepLum:0.20}),
+    makeBlob(new THREE.Vector3(140, 40, -115), new THREE.Vector3(65, 62, 64), 641.1, 'Bridge B', 0.29, 0.44, {rimHue:0.78, rimSat:0.70, rimLum:0.54, deepHue:0.80, deepLum:0.19}),
+    makeBlob(new THREE.Vector3(195, 62, -135), new THREE.Vector3(68, 60, 62), 664.7, 'Bridge C', 0.29, 0.44, {rimHue:0.86, rimSat:0.75, rimLum:0.52, deepHue:0.79, deepLum:0.19}),
+    makeBlob(new THREE.Vector3(120, 25, -150), new THREE.Vector3(60, 56, 58), 688.4, 'Bridge D', 0.30, 0.42, {rimHue:0.82, rimSat:0.72, rimLum:0.50, deepHue:0.79, deepLum:0.18}),
+  ], 'Group D (Bridge)', 18),
+
+  createNebulaGroup([ // Group E
+    makeBlob(new THREE.Vector3(235, -8, -55),  new THREE.Vector3(95, 32, 34),  202.4, 'Far Streamer', 0.33, 0.40, {rimHue:0.96, deepHue:0.80}),
+    makeBlob(new THREE.Vector3(330, 22, -115), new THREE.Vector3(105, 52, 60), 411.8, 'Rose Reach 1', 0.32, 0.42, {rimHue:0.90, rimSat:0.80, deepHue:0.76, deepLum:0.20}),
+    makeBlob(new THREE.Vector3(300, 65, -190), new THREE.Vector3(92, 62, 72),  455.2, 'Rose Reach 2', 0.34, 0.40, {rimHue:0.88, rimSat:0.75, rimLum:0.55, deepHue:0.74, deepLum:0.18}),
+  ], 'Group E (Rose Reach)', 13),
+
+  createNebulaGroup([ // Group F — distant background
+    makeBlob(new THREE.Vector3(-50, 15, -230),  new THREE.Vector3(150, 105, 95), 512.6, 'Backdrop A', 0.37, 0.38, {rimHue:0.58, rimSat:0.55, rimLum:0.48, deepHue:0.72, deepLum:0.16}),
+    makeBlob(new THREE.Vector3(160, -65, -260), new THREE.Vector3(125, 95, 85),  561.9, 'Backdrop B', 0.38, 0.38, {rimHue:0.60, rimSat:0.50, rimLum:0.44, deepHue:0.70, deepLum:0.15}),
+  ], 'Group F (Backdrop)', 8),
+];
+
+// ── Fade-into-cosmogenesis preview ───────────────────────────────────────────
+// This is a preview of the join, not the real merge — a plain fade-to-black
+// then a page navigate. The actual seamless version (this camera/formation
+// logic living inside cosmogenesis.html's own scene, no reload) is a separate
+// follow-up once the feel of this is approved.
+const fadeOverlay  = document.getElementById('fadeOverlay');
+const FADE_START   = 17; // nudged slightly sooner from 19
+const FADE_DURATION = 2.5;
+const FADE_END     = FADE_START + FADE_DURATION;
+let navigated = false;
+
+// ── Render loop ───────────────────────────────────────────────────────────────
+const PLAYBACK_SPEED = 1.8; // compresses the whole timeline into less wall-clock
+                              // time — every other constant (FLY_PATH, FADE_START,
+                              // formation timing) is in simTime units, so this is
+                              // the one knob for "make it faster" overall.
+const infoEl = document.getElementById('info');
+let last = performance.now();
+let simTime = 0;
+function tick(){
+  requestAnimationFrame(tick);
+  const now = performance.now();
+  // Capped at 50ms/frame (20fps-equivalent) so a real hitch (tab backgrounded,
+  // GC pause) reads as a brief slowdown instead of the whole scene jumping
+  // forward in one frame — that jump is its own kind of "glitchy."
+  const dt = Math.min((now-last)/1000, 0.05); last = now;
+  simTime += dt * PLAYBACK_SPEED;
+
+  for (const mat of nebulaVolumes){
+    mat.uniforms.uTime.value = simTime;
+    mat.uniforms.uCameraPos.value.copy(camera.position);
+
+    // Formation fade-in: each blob's own threshold eases from fully-invisible
+    // down to its real tuned value, staggered by distance from origin so it
+    // reads as condensing outward rather than a flat fade. Erosion (veins)
+    // ramps in alongside it. Written as fresh arrays each frame (rather than
+    // mutated in place) so three.js's uniform diffing reliably picks up the
+    // change on these array uniforms.
+    const n = mat.userData.blobBaseThreshold.length;
+    const thresholds = new Array(n), erosions = new Array(n);
+    let formTSum = 0;
+    for (let i=0; i<n; i++){
+      const formT = smoothstep(clamp((simTime - mat.userData.blobFormDelay[i]) / FORM_DURATION, 0, 1));
+      thresholds[i] = lerp(INVISIBLE_THRESHOLD, mat.userData.blobBaseThreshold[i], formT);
+      erosions[i]   = lerp(0, mat.userData.blobBaseErosion[i], formT);
+      formTSum += formT;
+    }
+    mat.uniforms.uDensityThreshold.value = thresholds;
+    mat.uniforms.uErosionStrength.value  = erosions;
+    const avgFormT = formTSum / n;
+
+    // This LOD formula (inherited from the interactive prototype) actually
+    // gives pieces the camera is CLOSE to fewer steps, not more — because
+    // being close means that piece covers a huge share of the screen, so
+    // cutting its per-pixel cost is what keeps overdraw bounded. The floor
+    // was 0.22 (6 steps minimum), which reads as visibly blurry/undersampled
+    // exactly on whichever piece is currently biggest in frame — raised here
+    // since the path no longer sits dead-center in the worst overlap spots,
+    // so there's headroom to spend on clarity without reintroducing stutter.
+    //
+    // formBudget scales steps down while a group is still mid-formation: a
+    // semi-transparent, still-forming cloud rarely triggers the raymarch
+    // loop's early opacity break, so it was paying close to the full step
+    // budget for every group at once during the fade-in — the actual cost
+    // spike that made ~t=9s (when several groups were mid-fade) the worst
+    // moment in the whole sequence. Full detail only once mostly solid.
+    const dist       = camera.position.distanceTo(mat.userData.center);
+    const ratio      = dist / mat.userData.charRadius;
+    const lod        = clamp(ratio / 2.2, 0.4, 1.0);
+    const formBudget = lerp(0.45, 1.0, avgFormT);
+    mat.uniforms.uStepBudget.value = Math.max(10, Math.round(mat.userData.baseSteps * lod * formBudget));
+  }
+
+  updateCameraPath(simTime, dt);
+  renderer.render(scene, camera);
+
+  const fadeT = smoothstep(clamp((simTime - FADE_START) / FADE_DURATION, 0, 1));
+  fadeOverlay.style.opacity = fadeT;
+  if (!navigated && simTime >= FADE_END){
+    navigated = true;
+    window.location.href = 'cosmogenesis.html?startT=11';
+  }
+
+  infoEl.textContent = navigated
+    ? 'FORMATION FLYTHROUGH — HANDING OFF TO COSMOGENESIS.HTML…'
+    : `FORMATION FLYTHROUGH — t=${simTime.toFixed(1)}s / ${FADE_END.toFixed(1)}s — PREVIEW FADE`;
+}
+tick();
+</script>
+</body>
+</html>
