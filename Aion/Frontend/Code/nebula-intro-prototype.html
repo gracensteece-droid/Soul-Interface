@@ -18,12 +18,39 @@ canvas{position:fixed;inset:0}
   position:fixed;inset:0;background:#000;opacity:0;
   pointer-events:none;z-index:20;
 }
+#tunePanel{
+  position:fixed;top:16px;right:16px;z-index:30;
+  background:rgba(10,10,14,0.78);border:1px solid rgba(200,175,135,0.25);
+  border-radius:6px;padding:12px 14px;
+  font-family:monospace;font-size:11px;color:rgba(230,220,200,0.9);
+  width:230px;
+}
+#tunePanel h3{
+  font-size:10px;letter-spacing:0.15em;font-weight:normal;
+  color:rgba(200,175,135,0.7);margin-bottom:8px;text-transform:uppercase;
+}
+#tunePanel label{display:block;margin-top:8px;display:flex;justify-content:space-between}
+#tunePanel input[type=range]{width:100%;display:block;margin-top:2px}
+#tunePanel button{
+  margin-top:10px;width:100%;font-family:monospace;font-size:10px;
+  background:rgba(200,175,135,0.15);color:inherit;border:1px solid rgba(200,175,135,0.3);
+  border-radius:4px;padding:4px;cursor:pointer;
+}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <div id="fadeOverlay"></div>
 <div id="info">FORMATION FLYTHROUGH — PREVIEW FADE INTO COSMOGENESIS.HTML (see build log)</div>
+<div id="tunePanel">
+  <h3>Cloud Movement Tuning</h3>
+  <label>Speed <span id="vSpeed"></span><input type="range" id="sSpeed" min="0" max="3" step="0.01"></label>
+  <label>Swirl amount <span id="vMag"></span><input type="range" id="sMag" min="0" max="3" step="0.01"></label>
+  <label>Swirl scale <span id="vFreq"></span><input type="range" id="sFreq" min="0.05" max="0.6" step="0.005"></label>
+  <label>Formation duration (s) <span id="vFormDur"></span><input type="range" id="sFormDur" min="3" max="20" step="0.5"></label>
+  <label>Formation stagger (s) <span id="vFormStag"></span><input type="range" id="sFormStag" min="0" max="8" step="0.25"></label>
+  <button id="btnReset">Reset to defaults</button>
+</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 window.onerror = function(msg,src,line){
@@ -116,6 +143,7 @@ function updateCameraPath(simTime, dt){
 }
 
 // ── Star field (rendered behind — the volume composites over it) ────────────
+let starPoints;
 function makeDiscTexture(){
   const cv = document.createElement('canvas');
   cv.width = cv.height = 32;
@@ -142,11 +170,12 @@ function makeDiscTexture(){
   }
   geo.setAttribute('position',new THREE.BufferAttribute(p,3));
   geo.setAttribute('color',new THREE.BufferAttribute(c,3));
-  scene.add(new THREE.Points(geo,new THREE.PointsMaterial({
+  starPoints = new THREE.Points(geo,new THREE.PointsMaterial({
     size:2.2,sizeAttenuation:true,vertexColors:true,
     map:makeDiscTexture(), alphaTest:0.01,
     transparent:true,opacity:0.55,depthWrite:false,blending:THREE.AdditiveBlending
-  })));
+  }));
+  scene.add(starPoints);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -190,10 +219,11 @@ function warmPalette(seed, opts){
 // for performance since these were last tightened, so mid-formation (the
 // expensive, semi-transparent, early-exit-rarely-triggers window) costs
 // meaningfully less in absolute terms even with a slightly longer window.
-const FORM_STAGGER_MAX = 4;   // seconds: how much later the farthest piece
-                               // starts forming vs. the core (t=0)
-const FORM_DURATION    = 8;   // seconds: how long each piece takes to fade
-                               // from invisible to its full tuned density
+// let, not const — both are live-adjustable from the tuning panel now.
+let FORM_STAGGER_MAX = 4;   // seconds: how much later the farthest piece
+                             // starts forming vs. the core (t=0)
+let FORM_DURATION    = 11;  // seconds: how long each piece takes to fade
+                             // from invisible to its full tuned density
 const INVISIBLE_THRESHOLD = 1.05; // above the shader's theoretical max
                                     // "shape" value (~0.995) — guaranteed
                                     // fully transparent as a starting point
@@ -220,6 +250,9 @@ function createNebulaGroup(blobs, name, steps){
       uGroupCenter:    { value: groupCenter.clone() },
       uGroupHalfSize:  { value: groupHalfSize.clone() },
       uTime:           { value: 0 },
+      uSwirlSpeed:     { value: 1 },
+      uSwirlMag:       { value: 1 },
+      uSwirlFreq:      { value: 0.22 },
       uStepBudget:     { value: steps },
       uCenter:            { value: blobs.map(b => b.center.clone()) },
       uHalfSize:          { value: blobs.map(b => b.size.clone()) },
@@ -241,6 +274,9 @@ function createNebulaGroup(blobs, name, steps){
       uniform vec3  uGroupCenter;
       uniform vec3  uGroupHalfSize;
       uniform float uTime;
+      uniform float uSwirlSpeed;
+      uniform float uSwirlMag;
+      uniform float uSwirlFreq;
       uniform int   uStepBudget;
       uniform vec3  uCenter[${N}];
       uniform vec3  uHalfSize[${N}];
@@ -285,7 +321,30 @@ function createNebulaGroup(blobs, name, steps){
         float falloff = smoothstep(1.18, 0.09, r);
         if (falloff <= 0.0) return 0.0;
 
-        vec3 drift = vec3(0.05, 0.012, -0.03) * uTime;
+        // Curl noise instead of a single rigid vector — the old version
+        // added the SAME offset to every sample point, so the whole noise
+        // field just slid in one direction under the shape (a scrolling
+        // background, not gas moving). This derives drift from the curl of
+        // a slowly-time-evolving potential field (Bridson et al.'s standard
+        // technique for turbulent-looking, divergence-free flow), so
+        // different points in the cloud swirl in different directions.
+        // Only the horizontal (x/z) component is true curl — cheaper than
+        // full 3D curl (4 noise taps instead of 12) and most of what reads
+        // as "real gas motion" is horizontal turbulence anyway; vertical
+        // motion is a simple bounded oscillation instead.
+        float curlEps = 0.35;
+        // Base rates (0.008 potential evolution, 0.02 Y-oscillation, 0.035
+        // magnitude) times the uSwirlSpeed/uSwirlMag/uSwirlFreq uniforms —
+        // driven live from the on-screen sliders instead of hardcoded, so
+        // the motion can actually be dialed in by eye instead of guessed
+        // blind and re-shipped over and over.
+        vec3 potP = p*uSwirlFreq + uSeed[b]*0.31 + uTime*0.008*uSwirlSpeed;
+        float psiX1 = noise3(potP + vec3(curlEps,0.0,0.0));
+        float psiX0 = noise3(potP - vec3(curlEps,0.0,0.0));
+        float psiZ1 = noise3(potP + vec3(0.0,0.0,curlEps));
+        float psiZ0 = noise3(potP - vec3(0.0,0.0,curlEps));
+        vec2 swirl = vec2(psiZ1-psiZ0, -(psiX1-psiX0)) / (2.0*curlEps);
+        vec3 drift = vec3(swirl.x, 0.35*sin(uTime*0.02*uSwirlSpeed + uSeed[b]), swirl.y) * 0.035 * uSwirlMag * uTime;
         vec3 q = p * 0.95 + drift + uSeed[b];
 
         float macro = fbm3(q*1.5, 2);
@@ -399,7 +458,10 @@ function createNebulaGroup(blobs, name, steps){
   // arrays every frame instead of onto its own material.
   mat.userData.blobBaseThreshold = blobs.map(b => b.densityThreshold);
   mat.userData.blobBaseErosion   = blobs.map(b => b.erosionStrength);
-  mat.userData.blobFormDelay     = blobs.map(b => clamp(b.center.length()/400, 0, 1) * FORM_STAGGER_MAX);
+  // Ratio only (0-1), not the delay itself — FORM_STAGGER_MAX is now live-
+  // adjustable from the tuning panel, so the actual delay is computed each
+  // frame in tick() as ratio * (current) FORM_STAGGER_MAX, not baked in here.
+  mat.userData.blobFormDelayRatio = blobs.map(b => clamp(b.center.length()/400, 0, 1));
   return mat;
 }
 
@@ -445,6 +507,62 @@ const nebulaVolumes = [
   ], 'Group F (Backdrop)', 8),
 ];
 
+// ── Live tuning panel ────────────────────────────────────────────────────────
+// Direct control over the motion instead of numbers guessed blind and shipped
+// one round-trip at a time. Persists to this browser's localStorage (per the
+// pattern the interactive prototypes already use here) so it survives reload
+// while dialing it in — this is a tuning aid, not something that ships with
+// the final scene, so it's fine that it's not visible across browsers.
+const TUNE_DEFAULTS = { speed: 1, mag: 1, freq: 0.22, formDur: 11, formStag: 4 };
+const TUNE_KEY = 'nebulaIntroTuning';
+let tuneState = Object.assign({}, TUNE_DEFAULTS);
+try {
+  const saved = JSON.parse(localStorage.getItem(TUNE_KEY));
+  if (saved) Object.assign(tuneState, saved);
+} catch(e){}
+
+function applyTuning(){
+  for (const mat of nebulaVolumes){
+    mat.uniforms.uSwirlSpeed.value = tuneState.speed;
+    mat.uniforms.uSwirlMag.value   = tuneState.mag;
+    mat.uniforms.uSwirlFreq.value  = tuneState.freq;
+  }
+  FORM_DURATION    = tuneState.formDur;
+  FORM_STAGGER_MAX = tuneState.formStag;
+
+  document.getElementById('sSpeed').value    = tuneState.speed;
+  document.getElementById('sMag').value      = tuneState.mag;
+  document.getElementById('sFreq').value     = tuneState.freq;
+  document.getElementById('sFormDur').value  = tuneState.formDur;
+  document.getElementById('sFormStag').value = tuneState.formStag;
+  document.getElementById('vSpeed').textContent    = tuneState.speed.toFixed(2);
+  document.getElementById('vMag').textContent      = tuneState.mag.toFixed(2);
+  document.getElementById('vFreq').textContent     = tuneState.freq.toFixed(3);
+  document.getElementById('vFormDur').textContent  = tuneState.formDur.toFixed(1);
+  document.getElementById('vFormStag').textContent = tuneState.formStag.toFixed(2);
+}
+
+function bindSlider(id, key, isFloat3){
+  document.getElementById(id).addEventListener('input', (e) => {
+    tuneState[key] = parseFloat(e.target.value);
+    localStorage.setItem(TUNE_KEY, JSON.stringify(tuneState));
+    applyTuning();
+  });
+}
+bindSlider('sSpeed', 'speed');
+bindSlider('sMag', 'mag');
+bindSlider('sFreq', 'freq');
+bindSlider('sFormDur', 'formDur');
+bindSlider('sFormStag', 'formStag');
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  tuneState = Object.assign({}, TUNE_DEFAULTS);
+  localStorage.setItem(TUNE_KEY, JSON.stringify(tuneState));
+  applyTuning();
+});
+
+applyTuning();
+
 // ── Fade-into-cosmogenesis preview ───────────────────────────────────────────
 // This is a preview of the join, not the real merge — a plain fade-to-black
 // then a page navigate. The actual seamless version (this camera/formation
@@ -487,7 +605,8 @@ function tick(){
     const thresholds = new Array(n), erosions = new Array(n);
     let formTSum = 0;
     for (let i=0; i<n; i++){
-      const formT = smoothstep(clamp((simTime - mat.userData.blobFormDelay[i]) / FORM_DURATION, 0, 1));
+      const delay = mat.userData.blobFormDelayRatio[i] * FORM_STAGGER_MAX;
+      const formT = smoothstep(clamp((simTime - delay) / FORM_DURATION, 0, 1));
       thresholds[i] = lerp(INVISIBLE_THRESHOLD, mat.userData.blobBaseThreshold[i], formT);
       erosions[i]   = lerp(0, mat.userData.blobBaseErosion[i], formT);
       formTSum += formT;
@@ -514,7 +633,11 @@ function tick(){
     const dist       = camera.position.distanceTo(mat.userData.center);
     const ratio      = dist / mat.userData.charRadius;
     const lod        = clamp(ratio / 2.2, 0.4, 1.0);
-    const formBudget = lerp(0.45, 1.0, avgFormT);
+    // Raised again, 0.65 -> 0.85 — still visibly soft at 0.65. Cost is only
+    // paid during formation (~15s of this ~24s clip), and the temporal-
+    // accumulation experiment that shared this budget window is gone now,
+    // so there's headroom to spend here that wasn't available before.
+    const formBudget = lerp(0.85, 1.0, avgFormT);
     mat.uniforms.uStepBudget.value = Math.max(10, Math.round(mat.userData.baseSteps * lod * formBudget));
   }
 

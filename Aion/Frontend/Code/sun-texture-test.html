@@ -8,6 +8,17 @@
 </head>
 <body>
 <div id="hint">drag to orbit · scroll to zoom · real 2k_sun.jpg + your live sun's FBM turbulence/glow shader, blended</div>
+<div id="sunPanel" style="position:fixed;z-index:10;right:14px;top:14px;max-height:calc(100vh - 28px);overflow-y:auto;
+  background:rgba(10,8,6,0.92);border:1px solid rgba(220,175,110,0.35);border-radius:6px;
+  font-family:monospace;color:rgba(240,225,200,0.92);padding:8px 12px;display:flex;flex-direction:column;gap:6px;width:190px;">
+  <div style="font-size:9px;opacity:0.6;display:flex;justify-content:space-between;align-items:center;">
+    <span>SUN SHADER</span>
+    <button id="sunResetBtn" style="background:rgba(255,120,120,0.1);border:1px solid rgba(255,120,120,0.3);color:rgba(255,180,180,0.9);font-family:inherit;font-size:8px;padding:2px 6px;border-radius:3px;cursor:pointer;">RESET</button>
+  </div>
+  <div id="sunSliders"></div>
+  <button id="sunCopyBtn" style="background:rgba(140,200,255,0.12);border:1px solid rgba(140,200,255,0.4);color:rgba(200,225,255,0.95);font-family:inherit;font-size:9px;padding:5px;border-radius:4px;cursor:pointer;">📋 COPY VALUES AS JSON</button>
+  <div id="sunCopyStatus" style="font-size:8px;opacity:0.6;text-align:center;height:10px;"></div>
+</div>
 <script type="importmap">
 { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -124,6 +135,140 @@ scene.add(corona);
 const pointLight = new THREE.PointLight(0xfff2cc, 2.5, 0, 0);
 scene.add(pointLight);
 
+// ── Solar flare bursts — small particle "splashes" erupting from random
+// points on the surface, like a solar prominence flinging off material.
+// A fixed-size particle pool with a single Points/BufferGeometry (not one
+// object per particle — cheap to update, easy to draw-range down to just
+// the active count). Each burst spawns a cluster from one random surface
+// point, particles fly outward along the local normal (plus some spread)
+// and fade out over their individual lifetime; a new burst spawns every
+// ~0.4-1.2s at a different random location.
+const FLARE_MAX = 500;
+const flarePositions = new Float32Array(FLARE_MAX * 3);
+const flareAges = new Float32Array(FLARE_MAX);
+const flareSizes = new Float32Array(FLARE_MAX);
+const flareGeo = new THREE.BufferGeometry();
+flareGeo.setAttribute('position', new THREE.BufferAttribute(flarePositions, 3));
+flareGeo.setAttribute('aAge', new THREE.BufferAttribute(flareAges, 1));
+flareGeo.setAttribute('aSize', new THREE.BufferAttribute(flareSizes, 1));
+const flareMat = new THREE.ShaderMaterial({
+  uniforms: { color: { value: new THREE.Color(1.0, 0.72, 0.25) } },
+  vertexShader: `
+    attribute float aAge, aSize;
+    varying float vAge;
+    void main(){
+      vAge = aAge;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      // Scale constant recalibrated (was 280, miscalibrated against a much
+      // greater viewing distance) — this camera sits ~2-4 units from these
+      // particles (versus the starfield's 60-260), so the same constant
+      // used there would blow these up to hundreds of pixels wide, likely
+      // clamped/washed out past visibility. 6.0 keeps aSize's 1-16 slider
+      // range mapping to single-digit-to-tens-of-pixels sparks at this
+      // distance instead.
+      gl_PointSize = aSize * (6.0 / -mv.z);
+      gl_Position = projectionMatrix * mv;
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 color;
+    varying float vAge;
+    void main(){
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = length(uv);
+      if (d > 0.5) discard;
+      float alpha = (1.0 - vAge) * smoothstep(0.5, 0.0, d);
+      gl_FragColor = vec4(color, alpha);
+    }
+  `,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+});
+const flarePoints = new THREE.Points(flareGeo, flareMat);
+scene.add(flarePoints);
+
+// Real coronal loops arc from one point on the surface, bulge outward
+// along the magnetic field line, and come back down to land at a nearby
+// second point — not a radial splash that flies off and vanishes (that
+// was the first version; Ricky pointed at real NASA/SDO footage showing
+// the actual looping shape and asked for that instead). Each burst is now
+// one THREE.QuadraticBezierCurve3 from point A to a nearby point B, bulged
+// outward at the midpoint; particles flow ALONG that curve (t: 0 to 1)
+// rather than drifting in a straight line, so the loop shape is what
+// you actually see, with several particles staggered along the same arc
+// at once to read as a continuous flowing stream rather than one dot.
+const FLARE_SETTINGS = { rate: 1.0, particleCount: 18, speed: 0.32, size: 6.5, spread: 0.5 };
+let activeFlareParticles = [];
+let nextFlareBurstIn = 0.3;
+
+function spawnFlareBurst(){
+  const theta = Math.random() * Math.PI * 2, phi = Math.acos(2 * Math.random() - 1);
+  const normalA = new THREE.Vector3(Math.sin(phi) * Math.cos(theta), Math.sin(phi) * Math.sin(theta), Math.cos(phi));
+  // Point B: nearby A on the surface (an angular offset, not a straight-line
+  // offset, so it stays ON the sphere) — spread controls how far the loop's
+  // two feet are from each other, same slider as before, now bent to a new job.
+  const arcAngle = (0.25 + FLARE_SETTINGS.spread * 0.9) * (0.6 + Math.random() * 0.8);
+  const tangent = new THREE.Vector3(-normalA.y, normalA.x, 0.0001).normalize(); // any vector orthogonal-ish to normalA
+  const normalB = normalA.clone().applyAxisAngle(tangent.cross(normalA).normalize(), arcAngle).normalize();
+  const pointA = normalA.clone().multiplyScalar(1.005);
+  const pointB = normalB.clone().multiplyScalar(1.005);
+  // Bulge the control point outward along the averaged normal, height
+  // scaled by how far apart the two feet are — short loops stay low and
+  // stubby, wide ones arch higher, matching how real prominence loops scale.
+  const mid = pointA.clone().add(pointB).multiplyScalar(0.5);
+  const bulgeDir = mid.clone().normalize();
+  const bulgeHeight = pointA.distanceTo(pointB) * (0.9 + Math.random() * 0.5);
+  const control = mid.clone().addScaledVector(bulgeDir, bulgeHeight);
+  const curve = new THREE.QuadraticBezierCurve3(pointA, control, pointB);
+
+  const count = Math.round(FLARE_SETTINGS.particleCount * (0.7 + Math.random() * 0.6));
+  const burstLife = (1.0 + Math.random() * 0.6) / Math.max(FLARE_SETTINGS.speed, 0.05) * 0.32;
+  for (let i = 0; i < count && activeFlareParticles.length < FLARE_MAX; i++){
+    activeFlareParticles.push({
+      curve, t: -Math.random() * 0.5, // staggered start — negative t means "not visible yet", creates a trickling-in stream instead of all particles popping in at once
+      speed: (0.7 + Math.random() * 0.6) / burstLife,
+      size: FLARE_SETTINGS.size * (0.6 + Math.random() * 0.8),
+    });
+  }
+}
+
+function updateFlareBursts(dt){
+  nextFlareBurstIn -= dt;
+  if (nextFlareBurstIn <= 0 && FLARE_SETTINGS.rate > 0){
+    spawnFlareBurst();
+    nextFlareBurstIn = (0.5 + Math.random() * 1.0) / FLARE_SETTINGS.rate;
+  }
+  for (let i = activeFlareParticles.length - 1; i >= 0; i--){
+    const p = activeFlareParticles[i];
+    p.t += p.speed * dt;
+    if (p.t >= 1){ activeFlareParticles.splice(i, 1); continue; }
+  }
+  const n = Math.min(activeFlareParticles.length, FLARE_MAX);
+  const tmp = new THREE.Vector3();
+  for (let i = 0; i < n; i++){
+    const p = activeFlareParticles[i];
+    if (p.t < 0){
+      // Not born yet (staggered start) — park off-geometry so it doesn't
+      // flash at the curve's start point before its turn.
+      flarePositions[i*3] = 0; flarePositions[i*3+1] = 0; flarePositions[i*3+2] = 0;
+      flareAges[i] = 1; // alpha = (1-vAge) -> fully transparent
+      flareSizes[i] = 0;
+      continue;
+    }
+    p.curve.getPoint(p.t, tmp);
+    flarePositions[i*3] = tmp.x; flarePositions[i*3+1] = tmp.y; flarePositions[i*3+2] = tmp.z;
+    // Fade in over the first 15% of travel, fade out over the last 20% —
+    // brightest mid-arc, same as how real loop plasma glows hottest at apex.
+    const fadeIn = Math.min(p.t / 0.15, 1);
+    const fadeOut = Math.min((1 - p.t) / 0.2, 1);
+    flareAges[i] = 1 - Math.min(fadeIn, fadeOut);
+    flareSizes[i] = p.size;
+  }
+  flareGeo.setDrawRange(0, n);
+  flareGeo.attributes.position.needsUpdate = true;
+  flareGeo.attributes.aAge.needsUpdate = true;
+  flareGeo.attributes.aSize.needsUpdate = true;
+}
+
 // Starfield backdrop
 {
   const N=2000, pos=new Float32Array(N*3);
@@ -135,19 +280,157 @@ scene.add(pointLight);
 
 addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
 
+// ── Live shader controls — Ricky asked to be able to adjust these values
+// directly rather than going through another round-trip. Sliders write
+// straight to sunMat.uniforms, the same uniforms this shader (and, once
+// baked in, index.html's real sunMaterial) actually read every frame — no
+// intermediate CSS-filter layer like the planet Texture Look panel, since
+// here we have direct access to the real shader inputs.
+//
+// hotColor/emissiveColor are exposed as <input type="color"> pickers, which
+// can only represent 0-255 per channel. emissiveColor's real starting value
+// is (1.6, 0.90, 0.28) — the red channel intentionally goes over 1.0 for
+// extra HDR-style punch once multiplied into the glow. The hex default
+// below is that value clamped to 1.0 red, which the picker can show; the
+// Emissive strength slider is what actually controls overall glow
+// brightness day-to-day, so this only affects the top end of what the
+// color picker alone can reach, not the usable range.
+const DEFAULT_SUN_VALUES = {
+  hotColor: '#ffe014', emissiveColor: '#ffe647',
+  distortionStrength: 0.5, emissiveStrength: 1.2, fbmFrequency: 4.5,
+  brightness: 1.15, contrastPower: 1.5, fbmScale: 1.8, fbmOffset: 0.2,
+  emissiveThresholdMin: 0.72, emissiveThresholdMax: 1.0,
+};
+const SUN_NUMERIC_RANGES = {
+  distortionStrength:   [0, 2, 0.01],
+  emissiveStrength:     [0, 3, 0.01],
+  fbmFrequency:         [1, 10, 0.1],
+  brightness:           [0.3, 2.5, 0.01],
+  contrastPower:        [0.3, 4, 0.01],
+  fbmScale:             [0.3, 4, 0.01],
+  fbmOffset:            [-1, 1, 0.01],
+  emissiveThresholdMin: [0, 1, 0.01],
+  emissiveThresholdMax: [0, 1, 0.01],
+};
+function colorToHex(c){ return '#' + c.getHexString(); }
+function applySunValues(v){
+  sunMat.uniforms.hotColor.value.set(v.hotColor);
+  sunMat.uniforms.emissiveColor.value.set(v.emissiveColor);
+  Object.keys(SUN_NUMERIC_RANGES).forEach(key => { sunMat.uniforms[key].value = v[key]; });
+}
+
+// Flare bursts get their own slider group — a plain JS object
+// (FLARE_SETTINGS), not shader uniforms, but treated the same way for
+// reset/copy so the whole look (surface + eruptions) round-trips as one
+// JSON blob.
+const DEFAULT_FLARE_VALUES = Object.assign({}, FLARE_SETTINGS);
+const FLARE_NUMERIC_RANGES = {
+  rate:          [0, 3, 0.05],   // bursts/sec multiplier; 0 turns flares off
+  particleCount: [4, 40, 1],
+  speed:         [0.05, 1, 0.01],
+  size:          [1, 16, 0.5],
+  spread:        [0, 1.5, 0.05],
+};
+
+const sliderHost = document.getElementById('sunSliders');
+let sunRows = '';
+function groupHeader(text){
+  return `<div style="font-size:8px;opacity:0.55;letter-spacing:0.08em;margin:2px 0 4px;border-top:1px solid rgba(220,175,110,0.2);padding-top:5px;">${text}</div>`;
+}
+sunRows += groupHeader('SURFACE SHADER');
+sunRows += `<label style="font-size:9px;display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+  <span>Hot color</span><input type="color" id="sun_hotColor" value="${DEFAULT_SUN_VALUES.hotColor}" style="width:34px;height:18px;border:none;background:none;cursor:pointer;">
+</label>`;
+sunRows += `<label style="font-size:9px;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+  <span>Emissive color</span><input type="color" id="sun_emissiveColor" value="${DEFAULT_SUN_VALUES.emissiveColor}" style="width:34px;height:18px;border:none;background:none;cursor:pointer;">
+</label>`;
+Object.entries(SUN_NUMERIC_RANGES).forEach(([key, [min, max, step]]) => {
+  sunRows += `<label style="font-size:9px;display:flex;flex-direction:column;gap:2px;margin-bottom:5px;">
+    <span style="display:flex;justify-content:space-between;"><span>${key}</span><span id="sunVal_${key}">${DEFAULT_SUN_VALUES[key]}</span></span>
+    <input type="range" id="sunSlider_${key}" min="${min}" max="${max}" step="${step}" value="${DEFAULT_SUN_VALUES[key]}" style="width:100%;">
+  </label>`;
+});
+sunRows += groupHeader('SOLAR FLARE BURSTS');
+Object.entries(FLARE_NUMERIC_RANGES).forEach(([key, [min, max, step]]) => {
+  sunRows += `<label style="font-size:9px;display:flex;flex-direction:column;gap:2px;margin-bottom:5px;">
+    <span style="display:flex;justify-content:space-between;"><span>${key}</span><span id="flareVal_${key}">${DEFAULT_FLARE_VALUES[key]}</span></span>
+    <input type="range" id="flareSlider_${key}" min="${min}" max="${max}" step="${step}" value="${DEFAULT_FLARE_VALUES[key]}" style="width:100%;">
+  </label>`;
+});
+sliderHost.innerHTML = sunRows;
+
+document.getElementById('sun_hotColor').addEventListener('input', e => { sunMat.uniforms.hotColor.value.set(e.target.value); });
+document.getElementById('sun_emissiveColor').addEventListener('input', e => { sunMat.uniforms.emissiveColor.value.set(e.target.value); });
+Object.keys(SUN_NUMERIC_RANGES).forEach(key => {
+  const slider = document.getElementById(`sunSlider_${key}`);
+  const valEl = document.getElementById(`sunVal_${key}`);
+  slider.addEventListener('input', () => {
+    const v = Number(slider.value);
+    sunMat.uniforms[key].value = v;
+    valEl.textContent = v;
+  });
+});
+Object.keys(FLARE_NUMERIC_RANGES).forEach(key => {
+  const slider = document.getElementById(`flareSlider_${key}`);
+  const valEl = document.getElementById(`flareVal_${key}`);
+  slider.addEventListener('input', () => {
+    const v = Number(slider.value);
+    FLARE_SETTINGS[key] = v;
+    valEl.textContent = v;
+  });
+});
+document.getElementById('sunResetBtn').addEventListener('click', () => {
+  applySunValues(DEFAULT_SUN_VALUES);
+  document.getElementById('sun_hotColor').value = DEFAULT_SUN_VALUES.hotColor;
+  document.getElementById('sun_emissiveColor').value = DEFAULT_SUN_VALUES.emissiveColor;
+  Object.keys(SUN_NUMERIC_RANGES).forEach(key => {
+    document.getElementById(`sunSlider_${key}`).value = DEFAULT_SUN_VALUES[key];
+    document.getElementById(`sunVal_${key}`).textContent = DEFAULT_SUN_VALUES[key];
+  });
+  Object.assign(FLARE_SETTINGS, DEFAULT_FLARE_VALUES);
+  Object.keys(FLARE_NUMERIC_RANGES).forEach(key => {
+    document.getElementById(`flareSlider_${key}`).value = DEFAULT_FLARE_VALUES[key];
+    document.getElementById(`flareVal_${key}`).textContent = DEFAULT_FLARE_VALUES[key];
+  });
+});
+document.getElementById('sunCopyBtn').addEventListener('click', async () => {
+  const current = {
+    hotColor: colorToHex(sunMat.uniforms.hotColor.value),
+    emissiveColor: colorToHex(sunMat.uniforms.emissiveColor.value),
+  };
+  Object.keys(SUN_NUMERIC_RANGES).forEach(key => { current[key] = sunMat.uniforms[key].value; });
+  current.flares = {};
+  Object.keys(FLARE_NUMERIC_RANGES).forEach(key => { current.flares[key] = FLARE_SETTINGS[key]; });
+  const json = JSON.stringify(current, null, 2);
+  const statusEl = document.getElementById('sunCopyStatus');
+  try {
+    await navigator.clipboard.writeText(json);
+    statusEl.textContent = 'copied to clipboard';
+  } catch(e) {
+    statusEl.textContent = 'copy failed — see console';
+    console.log(json);
+  }
+  setTimeout(() => { statusEl.textContent = ''; }, 2500);
+});
+
 // Real elapsed seconds, same as index.html's `clock.getElapsedTime()` — the FBM
 // turbulence speed above was tuned against that clock, so matching it here keeps
 // the churn rate identical to how it looks in the live scene.
 const clock = new THREE.Clock();
+let lastT = 0;
 function tick(){
   requestAnimationFrame(tick);
   const t = clock.getElapsedTime();
+  const dt = Math.min(t - lastT, 0.1); // clamp — a stalled/backgrounded tab shouldn't dump a huge dt into the particle sim
+  lastT = t;
   sun.rotation.y = t * 0.08;
   sunMat.uniforms.time.value = t;
+  updateFlareBursts(dt);
   controls.update();
   renderer.render(scene, camera);
 }
 tick();
+window._debugFlare = { activeFlareParticles, flareGeo, flarePoints, FLARE_SETTINGS, camera, sun };
 </script>
 </body>
 </html>

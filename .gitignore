@@ -12,3 +12,6 @@ dist/
 
 # Obsidian vault config
 .obsidian/
+
+# Claude Code worktree checkouts (tool-internal state, not project content)
+.claude/worktrees/

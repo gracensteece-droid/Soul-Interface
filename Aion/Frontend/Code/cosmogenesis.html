@@ -1,230 +1,178 @@
-<!DOCTYPE html>
+\<!doctype html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Soul Interface — The Origin</title>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Cinzel:wght@400;500;600&display=swap" rel="stylesheet"/>
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{width:100%;height:100%;background:#000;overflow:hidden;font-family:'Cormorant Garamond',serif;color:#e8e2f4;}
-canvas#scene{position:fixed;inset:0;z-index:1;}
-
-:root{
-  --gold:rgba(232,215,168,0.85);
-  --dim: rgba(200,175,130,0.40);
+<style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;background:#000;overflow:hidden}canvas{position:fixed;inset:0}</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://esm.sh/three@0.128.0",
+    "@theatre/core": "https://esm.sh/@theatre/core@0.6.2",
+    "@theatre/studio": "https://esm.sh/@theatre/studio@0.6.2"
+  }
 }
-
-/* ── Begin screen ── */
-#begin{
-  position:fixed;inset:0;z-index:30;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  background:#000008;
-  transition:opacity 1.4s ease;
-}
-#begin.out{opacity:0;pointer-events:none;}
-.begin-eyebrow{
-  font-family:'Cinzel',serif;font-size:7px;
-  letter-spacing:0.65em;text-transform:uppercase;
-  color:rgba(200,175,130,0.28);margin-bottom:30px;
-}
-.begin-title{
-  font-family:'Cinzel',serif;
-  font-size:clamp(20px,2.8vw,40px);font-weight:400;
-  letter-spacing:0.48em;color:rgba(232,215,168,0.80);
-  text-transform:uppercase;margin-bottom:14px;
-  text-shadow:0 0 80px rgba(180,140,80,0.22);
-}
-.begin-sub{
-  font-style:italic;font-size:clamp(13px,1.1vw,17px);
-  color:rgba(190,160,110,0.38);letter-spacing:0.1em;margin-bottom:64px;
-}
-.begin-btn{
-  font-family:'Cinzel',serif;font-size:8px;letter-spacing:0.52em;
-  text-transform:uppercase;color:rgba(200,180,140,0.42);
-  border:1px solid rgba(200,175,130,0.16);padding:14px 36px;
-  background:none;cursor:pointer;border-radius:1px;
-  transition:color 0.6s,border-color 0.6s,text-shadow 0.6s;
-}
-.begin-btn:hover{
-  color:rgba(240,220,170,0.92);border-color:rgba(220,185,110,0.55);
-  text-shadow:0 0 28px rgba(220,185,110,0.55);
-}
-
-/* ── Phase label ── */
-#phase-label{
-  position:fixed;top:clamp(30px,4vh,52px);left:clamp(30px,4vw,58px);
-  z-index:10;font-family:'Cinzel',serif;font-size:clamp(8px,0.65vw,11px);
-  letter-spacing:0.72em;text-transform:uppercase;
-  color:rgba(200,180,140,0.45);pointer-events:none;
-  opacity:0;transition:opacity 1.8s ease;
-}
-#phase-label.on{opacity:1;}
-
-/* ── Narration panel ── */
-#narration{
-  position:fixed;z-index:10;pointer-events:none;
-  opacity:0;transition:opacity 2.4s ease;
-  max-width:min(500px,38vw);
-}
-#narration.on{opacity:1;}
-#narration.left {top:clamp(58px,7.5vh,94px);left:clamp(30px,4vw,62px);text-align:left;}
-#narration.right{top:clamp(58px,7.5vh,94px);right:clamp(30px,4vw,62px);left:auto;text-align:right;}
-#narration.center{
-  bottom:clamp(110px,13vh,150px);left:50%;transform:translateX(-50%);
-  text-align:center;max-width:min(600px,52vw);
-}
-.nar-line{
-  display:block;font-style:italic;
-  font-size:clamp(13.5px,1.18vw,18px);line-height:1.78;
-  color:rgba(235,220,190,0.0);letter-spacing:0.035em;
-  margin-bottom:0.52em;transition:color 2.6s ease;
-}
-.nar-line.on{color:rgba(235,220,190,0.84);}
-.nar-line.bright{
-  font-style:normal;font-family:'Cinzel',serif;
-  font-size:clamp(10px,0.88vw,13.5px);letter-spacing:0.38em;
-  color:rgba(220,195,140,0.0);transition:color 2.8s ease;
-}
-.nar-line.bright.on{color:rgba(220,195,140,0.72);}
-
-/* ── Continue ── */
-#continue-btn{
-  position:fixed;bottom:clamp(26px,3.8vh,44px);right:clamp(30px,4vw,56px);
-  z-index:12;font-family:'Cinzel',serif;font-size:9px;letter-spacing:0.5em;
-  text-transform:uppercase;color:rgba(200,180,140,0.0);
-  background:none;border:none;cursor:pointer;pointer-events:none;
-  opacity:0;transition:color 0.5s,text-shadow 0.5s,opacity 1.4s ease;
-}
-#continue-btn.on{opacity:1;pointer-events:all;color:rgba(215,195,155,0.72);}
-#continue-btn:hover{color:rgba(250,230,180,0.96);text-shadow:0 0 22px rgba(220,185,110,0.55);}
-
-/* ── Explore hint ── */
-#explore-hint{
-  position:fixed;bottom:clamp(26px,3.8vh,44px);left:clamp(30px,4vw,56px);
-  z-index:10;font-family:'Cinzel',serif;font-size:6.5px;letter-spacing:0.42em;
-  text-transform:uppercase;color:rgba(200,180,140,0.0);pointer-events:none;
-  transition:color 2s ease;
-}
-#explore-hint.on{color:rgba(200,180,140,0.20);}
-
-/* ── Phase dots ── */
-#phase-dots{
-  position:fixed;bottom:clamp(26px,3.8vh,44px);left:50%;transform:translateX(-50%);
-  z-index:10;display:flex;gap:9px;pointer-events:none;
-  opacity:0;transition:opacity 1.2s ease;
-}
-#phase-dots.on{opacity:1;}
-.dot{width:3.5px;height:3.5px;border-radius:50%;background:rgba(200,175,130,0.16);transition:background 0.8s ease;}
-.dot.active{background:rgba(220,195,140,0.60);}
-
-/* ── End card ── */
-#end-card{
-  position:fixed;inset:0;z-index:20;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  pointer-events:none;opacity:0;transition:opacity 3.5s ease;
-}
-#end-card.on{opacity:1;pointer-events:all;}
-.end-line{
-  font-style:italic;font-size:clamp(12px,1vw,15px);
-  color:rgba(190,160,110,0.45);letter-spacing:0.14em;margin-bottom:24px;
-}
-.end-title{
-  font-family:'Cinzel',serif;font-size:clamp(24px,3vw,46px);font-weight:400;
-  letter-spacing:0.5em;color:rgba(235,215,170,0.85);text-transform:uppercase;
-  margin-bottom:52px;text-shadow:0 0 80px rgba(180,140,60,0.35);
-}
-.end-btn{
-  font-family:'Cinzel',serif;font-size:8px;letter-spacing:0.52em;
-  text-transform:uppercase;color:rgba(200,180,140,0.42);
-  border:1px solid rgba(200,175,130,0.16);padding:14px 36px;
-  background:none;cursor:pointer;border-radius:1px;text-decoration:none;
-  display:inline-block;transition:color 0.6s,border-color 0.6s,text-shadow 0.6s;
-}
-.end-btn:hover{
-  color:rgba(240,220,170,0.92);border-color:rgba(220,185,110,0.55);
-  text-shadow:0 0 28px rgba(220,185,110,0.55);
-}
-</style>
+</script>
 </head>
 <body>
-<canvas id="scene"></canvas>
+<canvas id="c"></canvas>
+<script type="module">
+import * as THREE from 'three';
+import * as TheatreCore from '@theatre/core';
+import * as TheatreStudio from '@theatre/studio';
+const { getProject, types } = TheatreCore.default;
+const studio = TheatreStudio.default;
+studio.initialize();
 
-<div id="begin">
-  <div class="begin-eyebrow">Soul Interface</div>
-  <div class="begin-title">The Origin</div>
-  <div class="begin-sub">Before you arrived, the universe spent 13.8 billion years preparing</div>
-  <button class="begin-btn" onclick="startSequence()">Enter the Origin</button>
-</div>
+// ── Theatre.js ────────────────────────────────────────────────────────────────
+const project = getProject('Origin Scene v3');
+const sheet   = project.sheet('Timeline');
 
-<div id="phase-label"></div>
-<div id="narration" class="left"></div>
-<div id="explore-hint">Drag &nbsp;·&nbsp; Scroll to zoom</div>
-<div id="phase-dots"></div>
-<button id="continue-btn" onclick="nextPhase()">Continue &nbsp;→</button>
+// Playback — speed multiplier (set to 0 to pause from Theatre side)
+const playbackObj = sheet.object('Playback', {
+  speed: types.number(1.0, { range: [0, 4] }),
+});
 
-<div id="end-card">
-  <div class="end-line">The cosmos prepared for 13.8 billion years.</div>
-  <div class="end-title">Tell Us When</div>
-  <a class="end-btn" href="../../../index.html">Enter the Solar System</a>
-</div>
+// Nebula — particle appearance during void/nebula phase
+const nebulaObj = sheet.object('Nebula', {
+  brightMult: types.number(1.0,  { range: [0, 3] }),
+  warmBias:   types.number(0.0,  { range: [0, 1] }),
+  formLock:   types.number(-1,   { range: [-1, 1] }), // -1 = auto, 0-1 = locked formation stage
+});
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script>
-// Surface any init error directly on screen so it's visible without dev tools
-window.onerror = function(msg, src, line) {
-  document.body.innerHTML += `<div style="position:fixed;bottom:20px;left:20px;right:20px;background:#1a0000;color:#ff8080;font-family:monospace;font-size:12px;padding:16px;z-index:9999;border:1px solid #660000;border-radius:3px;">JS Error (line ${line}): ${msg}</div>`;
+// Collapse — how the spiral drain looks
+const collapseObj = sheet.object('Collapse', {
+  brightMult:   types.number(1.0, { range: [0, 3] }),
+  warmBias:     types.number(0.0, { range: [0, 1] }),
+  collapseLock: types.number(-1,  { range: [-1, 1] }), // -1 = auto, 0-1 = locked collapse stage
+});
+
+// Ignition — timing and intensity of the birth flash
+const ignitionObj = sheet.object('Ignition', {
+  duration:        types.number(4,    { range: [1, 30] }),
+  flashIntensity:  types.number(1.0,  { range: [0, 3] }),
+  distortAmt:      types.number(1.0,  { range: [0, 3] }),
+  emergenceStart:  types.number(0.68, { range: [0, 0.99] }), // when sun texture appears (0=early, 0.99=late)
+  coreGlow:        types.number(1.0,  { range: [0, 4] }),    // intensity of the ambient warm light halo
+});
+
+// Sun — post-ignition surface appearance
+const sunObj = sheet.object('Sun', {
+  hueMode:   types.number(0.0, { range: [0, 5] }),
+  coronaGlow: types.number(1.0, { range: [0, 3] }),
+  coronaHueShift:     types.number(0.0, { range: [0, 1] }),   // rotates the corona's color cycle
+  coronaFlareStrength:types.number(1.0, { range: [0, 3] }),   // how bright/spiky the flare rays are
+  coronaSpread:       types.number(1.0, { range: [0.2, 3] }), // how quickly the glow/flares fall off with distance
+  spinSpeed:          types.number(0.0, { range: [-15, 15] }), // rotates the sun mesh on its own axis — negative = reverse direction
+  sizeMult:           types.number(1.0, { range: [0.01, 6] }), // multiplies the sun's scale on top of its own growth/shrink animation
+  ripple:             types.number(0.0, { range: [0, 3] }),    // traveling surface-wave crests, ported from sun-prototype.html
+  dissolve:           types.number(0.0, { range: [0, 1] }),    // 0 = solid sun, 1 = fully broken apart into drifting particles
+});
+
+// Galaxy Cloud — takes over driving the shared cloud particle materials' color/warmth/
+// brightness once ignition completes, since CollapseCloud's own keyframes stop at 74s
+// and would otherwise just freeze in place for the rest of the scene.
+const galaxyCloudObj = sheet.object('GalaxyCloud', {
+  hue:        types.number(0.07, { range: [0, 1] }),
+  satMult:    types.number(1.0,  { range: [0, 2] }),
+  warmBias:   types.number(0.0,  { range: [0, 1] }),
+  brightMult: types.number(1.0,  { range: [0, 3] }),
+});
+
+// Collapse Cloud — shape/color of the collapsing nebula as it nears ignition (T≈56-74, esp. the 72-74 tail)
+const cloudShapeObj = sheet.object('CollapseCloud', {
+  turbulence:  types.number(1.0,  { range: [0, 3] }),    // multiplies the inward-fall turbulence amplitude
+  spiralTight: types.number(1.0,  { range: [0.3, 3] }),  // multiplies how tightly wound the drain spiral looks
+  coreSize:    types.number(1.0,  { range: [0.2, 3] }),  // >1 = core cluster concentrates/brightens sooner
+  hotHue:      types.number(0.07, { range: [0, 1] }),    // hue of the hottest (innermost) particles
+  satMult:     types.number(1.0,  { range: [0, 2] }),    // saturation multiplier
+  spinSpeed:   types.number(1.0,  { range: [0.2, 25] }),  // multiplies the whole collapse rotation rate
+  spinRampShape: types.number(3.0, { range: [1, 6] }),    // shape of the ramp-in curve (3 = default cubic, 1 = linear)
+  cloudSize:   types.number(1.0,  { range: [0.0005, 3] }),  // scales the collapse spiral's overall radius
+  coreLightHue:types.number(0.0,  { range: [0, 1] }),    // hue rotation applied to the core-glow light/shells
+  ballForm:    types.number(0.0,  { range: [0, 3] }),     // 0 = flat collapse to a point, higher = rounds into a ball
+  coreGlowSize:types.number(1.0,  { range: [0.01, 3] }),  // scales the 4 fixed core-glow spheres (independent of cloudSize)
+});
+
+// Explosion Ball — shape/blend of the ignition flash + sun emergence (T≈74-80)
+const ballObj = sheet.object('ExplosionBall', {
+  radius:      types.number(1.0,  { range: [0.3, 3] }),   // flash sphere + sun peak-scale multiplier
+  distortFreq: types.number(1.0,  { range: [0.2, 4] }),   // ripple frequency multiplier on the sun surface
+  distortAmp:  types.number(1.0,  { range: [0, 3] }),     // ripple amplitude multiplier (stacks with Ignition.distortAmt)
+  asymmetry:   types.number(0.0,  { range: [0, 1] }),     // lumpy/non-spherical distortion on the flash itself
+  blendWidth:  types.number(0.36, { range: [0.05, 0.8] }),// how gradually the flash fades — widen to soften the handoff
+  coronaStart: types.number(0.80, { range: [0.3, 0.95] }),// ignition-pct where corona begins fading in
+  igniteLock:  types.number(-1,   { range: [-1, 1] }),    // -1 = auto, 0-1 = freeze ignition progress at a fixed pct
+  flashHue:    types.number(0.08, { range: [0, 1] }),     // hue tint applied to the flash sphere
+  flashTint:   types.number(0.0,  { range: [0, 1] }),     // 0 = default near-white flash, 1 = fully tinted to flashHue
+  bgTintAmount:types.number(1.0,  { range: [0, 3] }),     // multiplies the background's warm shift during ignition
+});
+
+let tVals = {
+  speed: 1, nebulaBright: 1, nebulaWarm: 0, formLock: -1,
+  collapseBright: 1, collapseWarm: 0, collapseLock: -1,
+  igniteDuration: 4, flashIntensity: 1, distortAmt: 1, emergenceStart: 0.68, coreGlow: 1,
+  sunHue: 0, coronaGlow: 1, coronaHueShift: 0, coronaFlareStrength: 1, coronaSpread: 1, sunSpinSpeed: 0,
+  sunSizeMult: 1, sunRipple: 0, sunDissolve: 0,
+  flashHue: 0.08, flashTint: 0, bgTintAmount: 1,
+  cloudTurb: 1, cloudSpiral: 1, cloudCore: 1, cloudHotHue: 0.07, cloudSat: 1,
+  cloudSpin: 1, cloudSpinCurve: 3, cloudScale: 1, coreHue: 0, cloudBallForm: 0, coreGlowSize: 1,
+  galaxyCloudHue: 0.07, galaxyCloudSat: 1, galaxyCloudWarm: 0, galaxyCloudBright: 1,
+  ballRadius: 1, ballFreq: 1, ballAmp: 1, ballAsym: 0, ballBlend: 0.36, ballCoronaStart: 0.80, igniteLock: -1,
 };
+playbackObj.onValuesChange(v  => { tVals.speed           = v.speed; });
+nebulaObj.onValuesChange(v    => { tVals.nebulaBright = v.brightMult; tVals.nebulaWarm = v.warmBias; tVals.formLock = v.formLock; });
+collapseObj.onValuesChange(v  => { tVals.collapseBright = v.brightMult; tVals.collapseWarm = v.warmBias; tVals.collapseLock = v.collapseLock; });
+ignitionObj.onValuesChange(v  => { tVals.igniteDuration = v.duration; tVals.flashIntensity = v.flashIntensity; tVals.distortAmt = v.distortAmt; tVals.emergenceStart = v.emergenceStart; tVals.coreGlow = v.coreGlow; });
+sunObj.onValuesChange(v       => { tVals.sunHue = v.hueMode; tVals.coronaGlow = v.coronaGlow; tVals.coronaHueShift = v.coronaHueShift; tVals.coronaFlareStrength = v.coronaFlareStrength; tVals.coronaSpread = v.coronaSpread; tVals.sunSpinSpeed = v.spinSpeed; tVals.sunSizeMult = v.sizeMult; tVals.sunRipple = v.ripple; tVals.sunDissolve = v.dissolve; });
+galaxyCloudObj.onValuesChange(v => { tVals.galaxyCloudHue = v.hue; tVals.galaxyCloudSat = v.satMult; tVals.galaxyCloudWarm = v.warmBias; tVals.galaxyCloudBright = v.brightMult; });
+cloudShapeObj.onValuesChange(v => { tVals.cloudTurb = v.turbulence; tVals.cloudSpiral = v.spiralTight; tVals.cloudCore = v.coreSize; tVals.cloudHotHue = v.hotHue; tVals.cloudSat = v.satMult; tVals.cloudSpin = v.spinSpeed; tVals.cloudSpinCurve = v.spinRampShape; tVals.cloudScale = v.cloudSize; tVals.coreHue = v.coreLightHue; tVals.cloudBallForm = v.ballForm; tVals.coreGlowSize = v.coreGlowSize; });
+ballObj.onValuesChange(v      => { tVals.ballRadius = v.radius; tVals.ballFreq = v.distortFreq; tVals.ballAmp = v.distortAmp; tVals.ballAsym = v.asymmetry; tVals.ballBlend = v.blendWidth; tVals.ballCoronaStart = v.coronaStart; tVals.igniteLock = v.igniteLock; tVals.flashHue = v.flashHue; tVals.flashTint = v.flashTint; tVals.bgTintAmount = v.bgTintAmount; });
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// SOUL INTERFACE — COSMOGENESIS SEQUENCE
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const canvas   = document.getElementById('scene');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+// ── Renderer ──────────────────────────────────────────────────────────────────
+const canvas   = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x000008, 1);
+renderer.setClearColor(0x000004, 1);
 
 const scene  = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 5000);
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 2000);
 
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.aspect = window.innerWidth/window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// ── Utilities ─────────────────────────────────────────────────────────────────
-const easeIn    = t => t * t * t;
-const easeOut   = t => 1 - Math.pow(1-t,3);
-const easeInOut = t => t < 0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2;
-const clamp     = (v,a,b) => Math.max(a,Math.min(b,v));
-const lerp      = (a,b,t) => a+(b-a)*t;
-
-// Background color lerp — huge atmosphere tool
-const bgCurrent = { r:0, g:0, b:0.031 };
-const bgTarget  = { r:0, g:0, b:0.031 };
-function setBgTarget(hex) {
-  bgTarget.r = ((hex>>16)&255)/255;
-  bgTarget.g = ((hex>>8)&255)/255;
-  bgTarget.b = (hex&255)/255;
+const clamp    = (v,a,b) => Math.max(a,Math.min(b,v));
+const easeOut  = t => 1-Math.pow(1-t,3);
+const easeIn   = t => t*t*t;
+const slowForm = t => Math.pow(t, 2.4);
+// Deterministic pseudo-random — same seed always gives the same value, so the
+// emission-loop reseeding below plays out identically every run instead of
+// drifting with wall-clock Math.random().
+const detRand = seed => { const x = Math.sin(seed*127.1+311.7)*43758.5453; return x-Math.floor(x); };
+// Seeded PRNG for one-time particle-geometry generation at module load — with a fixed
+// seed, every reload builds the exact same nebula/spiral/collapse layout instead of a
+// fresh random one, so the scene's look no longer depends on reload luck.
+function mulberry32(seed){
+  return function(){
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
-function lerpBg(speed) {
-  bgCurrent.r = lerp(bgCurrent.r, bgTarget.r, speed);
-  bgCurrent.g = lerp(bgCurrent.g, bgTarget.g, speed);
-  bgCurrent.b = lerp(bgCurrent.b, bgTarget.b, speed);
-  renderer.setClearColor(
-    new THREE.Color(bgCurrent.r, bgCurrent.g, bgCurrent.b), 1
-  );
-}
+const SCENE_SEED = 20260704;
+const rand = mulberry32(SCENE_SEED);
 
 // ── Spherical camera ──────────────────────────────────────────────────────────
-const sph       = { r:140, theta:0.22, phi:0.45 };
-const sphTarget = { r:140, theta:0.22, phi:0.45 };
-const RMIN=16, RMAX=400;
+const sph       = { r:380, theta:0.30, phi:0.46 };
+const sphTarget = { r:380, theta:0.30, phi:0.46 };
 
-function applyCamera() {
+function applyCamera(){
   camera.position.set(
     sph.r*Math.sin(sph.phi)*Math.sin(sph.theta),
     sph.r*Math.cos(sph.phi),
@@ -233,1290 +181,2498 @@ function applyCamera() {
   camera.lookAt(0,0,0);
 }
 
-function lerpCamera(spd) {
-  sph.r     += (sphTarget.r-sph.r)*spd;
-  sph.theta += (sphTarget.theta-sph.theta)*spd;
-  sph.phi   += (sphTarget.phi-sph.phi)*spd;
-  applyCamera();
+// ── Clock HUD ─────────────────────────────────────────────────────────────────
+const clockEl = document.createElement('div');
+clockEl.style.cssText = [
+  'position:fixed', 'bottom:80px', 'left:50%', 'transform:translateX(-50%)',
+  'font:15px/1 monospace', 'color:rgba(255,255,255,0.90)',
+  'background:rgba(0,0,0,0.60)', 'backdrop-filter:blur(6px)',
+  'padding:8px 18px', 'border-radius:20px',
+  'border:1px solid rgba(255,255,255,0.15)',
+  'cursor:grab', 'z-index:9999',
+  'letter-spacing:0.04em', 'white-space:nowrap',
+  'user-select:none'
+].join(';');
+document.body.appendChild(clockEl);
+
+// Make clock draggable
+{
+  let dragging = false, ox = 0, oy = 0;
+  clockEl.addEventListener('mousedown', e => {
+    dragging = true;
+    const r = clockEl.getBoundingClientRect();
+    ox = e.clientX - r.left;
+    oy = e.clientY - r.top;
+    clockEl.style.transform = 'none';
+    clockEl.style.cursor = 'grabbing';
+    e.stopPropagation();
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    clockEl.style.left   = (e.clientX - ox) + 'px';
+    clockEl.style.top    = (e.clientY - oy) + 'px';
+    clockEl.style.bottom = 'auto';
+  });
+  window.addEventListener('mouseup', () => {
+    dragging = false;
+    clockEl.style.cursor = 'grab';
+  });
 }
 
-// ── Orbit controls ─────────────────────────────────────────────────────────────
-let orbitEnabled = false;
-let drag=false, prev={x:0,y:0};
-
-canvas.addEventListener('mousedown', e => {
-  if(!orbitEnabled)return; drag=true; prev={x:e.clientX,y:e.clientY};
+// ── Live-controls status panel ────────────────────────────────────────────────
+// Answers "which Theatre.js panel actually does something right now" — computed
+// from real uniform/state values every frame, not guessed from a fixed time range,
+// so it stays true even if a stage's timing or a control's wiring changes later.
+// ── On-canvas transport (play/pause/reset) — no separate window needed ────────
+const transportEl = document.createElement('div');
+transportEl.style.cssText = [
+  'position:fixed', 'bottom:80px', 'left:50%', 'transform:translateX(calc(-50% - 160px))',
+  'display:flex', 'gap:6px', 'z-index:9999',
+].join(';');
+const localPlayBtn = document.createElement('button');
+const localResetBtn = document.createElement('button');
+[localPlayBtn, localResetBtn].forEach(b => {
+  b.style.cssText = [
+    'font:13px monospace', 'padding:8px 12px', 'border-radius:8px',
+    'background:rgba(0,0,0,0.65)', 'color:#fff', 'border:1px solid rgba(255,255,255,0.2)',
+    'cursor:pointer',
+  ].join(';');
 });
+localResetBtn.textContent = '⟲';
+localResetBtn.title = 'Reset (R)';
+localResetBtn.addEventListener('click', () => resetScene());
+localPlayBtn.addEventListener('click', () => { paused = !paused; });
+transportEl.appendChild(localPlayBtn); transportEl.appendChild(localResetBtn);
+document.body.appendChild(transportEl);
+
+// ── Live-controls status panel ────────────────────────────────────────────────
+// Answers "which Theatre.js panel actually does something right now" — computed
+// from real uniform/state values every frame, not guessed from a fixed time range,
+// so it stays true even if a stage's timing or a control's wiring changes later.
+// Each row's 🔁 loops playback within that group's own window — same loopGroupName
+// state as the Controls popout, so toggling it here or there stays in sync.
+const STATUS_ROWS = [
+  { name:'Playback',      flag:'true',           text:()=>`0–90s      — always on` },
+  { name:'Nebula',        flag:'fine',           text:f=>`~14–74s    — fine-spiral particles${f.fine?'':'  (inert now)'}` },
+  { name:'Collapse',      flag:'cloud',          text:f=>`~12–74s    — cloud-puff warmBias only${f.cloud?'':'  (inert now)'}; brightMult ⚠ unwired` },
+  { name:'CollapseCloud', flag:'collapseShape',  text:f=>`56–74s     — shape/color during collapse${f.collapseShape?'':'  (inert now)'}` },
+  { name:'Ignition',      flag:'ignite',         text:f=>`74–${(74+tVals.igniteDuration).toFixed(1)}s  — flash + sun emergence${f.ignite?'':'  (inert now)'}` },
+  { name:'ExplosionBall', flag:'ignite',         text:f=>`74–${(74+tVals.igniteDuration).toFixed(1)}s  — flash/sun ripple shape${f.ignite?'':'  (inert now)'}` },
+  { name:'Sun',           flag:'sun',            text:f=>`74–90s     — hueMode + corona${f.sun?'':'  (inert now)'}` },
+  { name:'Galaxy disc',   flag:'galaxy',         text:f=>`${(74+tVals.igniteDuration).toFixed(1)}–90s — disc formation${f.galaxy?'':'  (inert now)'}`, noLoop:true },
+];
+
+const statusEl = document.createElement('div');
+statusEl.style.cssText = [
+  'position:fixed', 'bottom:130px', 'left:50%', 'transform:translateX(-50%)',
+  'font:12px/1.7 monospace', 'color:rgba(255,255,255,0.88)',
+  'background:rgba(0,0,0,0.65)', 'backdrop-filter:blur(6px)',
+  'padding:10px 16px', 'border-radius:10px',
+  'border:1px solid rgba(255,255,255,0.15)',
+  'cursor:grab', 'z-index:9999',
+  'user-select:none'
+].join(';');
+document.body.appendChild(statusEl);
+{
+  let dragging = false, ox = 0, oy = 0;
+  statusEl.addEventListener('mousedown', e => {
+    if (e.target.tagName === 'BUTTON') return;
+    dragging = true;
+    const r = statusEl.getBoundingClientRect();
+    ox = e.clientX - r.left; oy = e.clientY - r.top;
+    statusEl.style.transform = 'none';
+    statusEl.style.cursor = 'grabbing';
+    e.stopPropagation();
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    statusEl.style.left   = (e.clientX - ox) + 'px';
+    statusEl.style.top    = (e.clientY - oy) + 'px';
+    statusEl.style.bottom = 'auto';
+  });
+  window.addEventListener('mouseup', () => { dragging = false; statusEl.style.cursor = 'grab'; });
+}
+const statusRowEls = STATUS_ROWS.map(row => {
+  const rowEl = document.createElement('div');
+  rowEl.style.cssText = 'display:flex;align-items:center;gap:6px;white-space:pre;';
+  const dotEl = document.createElement('span');
+  const nameEl = document.createElement('span');
+  nameEl.style.cssText = 'display:inline-block;width:118px;';
+  const textEl = document.createElement('span');
+  rowEl.appendChild(dotEl); rowEl.appendChild(nameEl); rowEl.appendChild(textEl);
+  if (!row.noLoop) {
+    const loopBtn = document.createElement('button');
+    loopBtn.textContent = '🔁';
+    loopBtn.title = `Loop playback within ${row.name}'s own window`;
+    loopBtn.style.cssText = 'margin-left:6px;font-size:10px;padding:0px 5px;border-radius:4px;background:rgba(255,255,255,0.08);color:#aaa;border:1px solid rgba(255,255,255,0.15);cursor:pointer;';
+    loopBtn.addEventListener('click', () => {
+      if (loopGroupName === row.name) {
+        loopGroupName = null;
+      } else {
+        loopGroupName = row.name;
+        customLoopRange = null;
+        const g = CONTROL_GROUPS.find(cg => cg.name === row.name);
+        if (g) T = g.window()[0];
+      }
+    });
+    rowEl.appendChild(loopBtn);
+    row._loopBtn = loopBtn;
+  }
+  row._dotEl = dotEl; row._nameEl = nameEl; row._textEl = textEl;
+  statusEl.appendChild(rowEl);
+  return row;
+});
+function updateStatusPanel(f){
+  localPlayBtn.textContent = paused ? '▶' : '⏸';
+  localPlayBtn.title = paused ? 'Play (Space)' : 'Pause (Space)';
+  STATUS_ROWS.forEach(row => {
+    const on = row.flag === 'true' ? true : f[row.flag];
+    row._dotEl.textContent = on ? '●' : '○';
+    row._nameEl.textContent = row.name;
+    row._textEl.textContent = row.text(f);
+    if (row._loopBtn) {
+      const looping = loopGroupName === row.name;
+      row._loopBtn.style.background = looping ? '#2a5a3a' : 'rgba(255,255,255,0.08)';
+      row._loopBtn.style.color = looping ? '#9fe6b0' : '#aaa';
+    }
+  });
+}
+
+// ── Pop-out controls window ────────────────────────────────────────────────────
+// Plain sliders bound straight to tVals (the same object Theatre.js writes into),
+// grouped by scene stage, each labeled with the exact second-range it affects.
+// Opens in a real separate browser window so it can live on a second monitor.
+const CONTROL_GROUPS = [
+  { name:'Playback', window: () => [0,90], range: () => `0–90s (always)`, props:[
+    { key:'speed', label:'speed', min:0, max:4, step:0.01 },
+  ]},
+  { name:'Nebula', window: () => [14,74], range: () => `~14–74s (fine-spiral particles; fades fast once ignition starts)`, props:[
+    { key:'nebulaBright', label:'brightMult', min:0, max:3, step:0.01 },
+    { key:'nebulaWarm',   label:'warmBias',   min:0, max:1, step:0.01 },
+    { key:'formLock',     label:'formLock',   min:-1, max:1, step:0.01 },
+  ]},
+  { name:'Collapse', window: () => [12,74], range: () => `~12–74s (cloud puffs — warmBias only; brightMult ⚠ unwired)`, props:[
+    { key:'collapseBright', label:'brightMult ⚠', min:0, max:3, step:0.01 },
+    { key:'collapseWarm',   label:'warmBias',      min:0, max:1, step:0.01 },
+    { key:'collapseLock',   label:'collapseLock',  min:-1, max:1, step:0.01 },
+  ]},
+  { name:'CollapseCloud', window: () => [56,74], range: () => `56–74s`, props:[
+    { key:'cloudTurb',   label:'turbulence',  min:0,   max:3, step:0.01 },
+    { key:'cloudSpiral', label:'spiralTight', min:0.3, max:3, step:0.01 },
+    { key:'cloudCore',   label:'coreSize',    min:0.2, max:3, step:0.01 },
+    { key:'cloudHotHue', label:'hotHue',      min:0,   max:1, step:0.01 },
+    { key:'cloudSat',    label:'satMult',     min:0,   max:2, step:0.01 },
+    { key:'cloudSpin',   label:'spinSpeed',   min:0.2, max:25, step:0.05 },
+    { key:'cloudSpinCurve', label:'spinRampShape', min:1, max:6, step:0.05 },
+    { key:'cloudScale',  label:'cloudSize',   min:0.0005, max:3, step:0.001, log:true },
+    { key:'coreHue',     label:'coreLightHue',min:0,   max:1, step:0.01 },
+    { key:'cloudBallForm', label:'ballForm',  min:0,   max:3, step:0.02 },
+    { key:'coreGlowSize',  label:'coreGlowSize', min:0.01, max:3, step:0.01, log:true },
+  ]},
+  { name:'Ignition', window: () => [74, 74+tVals.igniteDuration], range: () => `74–${(74+tVals.igniteDuration).toFixed(1)}s`, props:[
+    { key:'igniteDuration', label:'duration',       min:1, max:30,   step:0.1 },
+    { key:'flashIntensity', label:'flashIntensity', min:0, max:3,    step:0.01 },
+    { key:'distortAmt',     label:'distortAmt',     min:0, max:3,    step:0.01 },
+    { key:'emergenceStart', label:'emergenceStart', min:0, max:0.99, step:0.01 },
+    { key:'coreGlow',       label:'coreGlow',       min:0, max:4,    step:0.01 },
+  ]},
+  { name:'ExplosionBall', window: () => [74, 74+tVals.igniteDuration], range: () => `74–${(74+tVals.igniteDuration).toFixed(1)}s (same window as Ignition)`, props:[
+    { key:'ballRadius',      label:'radius',      min:0.3,  max:3,    step:0.01 },
+    { key:'ballFreq',        label:'distortFreq', min:0.2,  max:4,    step:0.01 },
+    { key:'ballAmp',         label:'distortAmp',  min:0,    max:3,    step:0.01 },
+    { key:'ballAsym',        label:'asymmetry',   min:0,    max:1,    step:0.01 },
+    { key:'ballBlend',       label:'blendWidth',  min:0.05, max:0.8,  step:0.01 },
+    { key:'ballCoronaStart', label:'coronaStart', min:0.3,  max:0.95, step:0.01 },
+    { key:'igniteLock',      label:'igniteLock',  min:-1,   max:1,    step:0.01 },
+    { key:'flashHue',        label:'flashHue',    min:0,    max:1,    step:0.01 },
+    { key:'flashTint',       label:'flashTint',   min:0,    max:1,    step:0.01 },
+    { key:'bgTintAmount',    label:'bgTintAmount',min:0,    max:3,    step:0.01 },
+  ]},
+  { name:'Sun', window: () => [74,90], range: () => `74–90s (post-ignition)`, props:[
+    { key:'sunHue',             label:'hueMode',           min:0, max:5, step:0.01 },
+    { key:'coronaGlow',         label:'coronaGlow',        min:0, max:3, step:0.01 },
+    { key:'coronaHueShift',     label:'coronaHueShift',    min:0, max:1, step:0.01 },
+    { key:'coronaFlareStrength',label:'coronaFlareStrength',min:0, max:3, step:0.01 },
+    { key:'coronaSpread',       label:'coronaSpread',      min:0.2, max:3, step:0.01 },
+    { key:'sunSpinSpeed',       label:'spinSpeed',         min:-15, max:15, step:0.05 },
+    { key:'sunSizeMult',        label:'size',              min:0.01, max:6, step:0.01, log:true },
+    { key:'sunRipple',          label:'ripple',            min:0,   max:3, step:0.01 },
+    { key:'sunDissolve',        label:'dissolve',          min:0,   max:1, step:0.01 },
+  ]},
+  // The collapse cloud's own color controls (CollapseCloud group) only keyframe
+  // within 56-74s — past that their last value just freezes and keeps silently
+  // driving the same shared particle materials. This group takes over driving
+  // those same materials once ignition completes, so the cloud's color/warmth/
+  // brightness can be keyframed all the way through the galaxy phase — e.g. to
+  // gradually blend it toward the sun's own color instead of staying frozen.
+  { name:'GalaxyCloud', window: () => [74+tVals.igniteDuration, 90], range: () => `${(74+tVals.igniteDuration).toFixed(1)}–90s (post-ignition cloud color)`, props:[
+    { key:'galaxyCloudHue',    label:'hue',        min:0, max:1, step:0.01 },
+    { key:'galaxyCloudSat',    label:'satMult',    min:0, max:2, step:0.01 },
+    { key:'galaxyCloudWarm',   label:'warmBias',   min:0, max:1, step:0.01 },
+    { key:'galaxyCloudBright', label:'brightMult', min:0, max:3, step:0.01 },
+  ]},
+];
+
+// ── Per-property keyframe sequencers ───────────────────────────────────────────
+// Each control-group property can be keyframed on its own local timeline (that
+// group's own active window mapped to 0–1) — a home-grown stand-in for Theatre.js
+// sequencing, scoped per group so a 56–74s window isn't a sliver of one shared
+// global timeline. Persisted to localStorage so keyframes survive reloads.
+const SEQ_STORAGE_KEY = 'originSceneSequencers_v1';
+// Baked-in fallback — Ricky's tuned keyframes as of 2026-07-08, exported from
+// localStorage so a fresh browser/profile (or a different machine) starts from
+// this sequence instead of an empty one. Any browser that already has its own
+// saved localStorage under SEQ_STORAGE_KEY still wins below — this only fills
+// the gap when that key is completely unset.
+const BAKED_SEQ_DATA = {"Playback":{"speed":[]},"Nebula":{"nebulaBright":[],"nebulaWarm":[],"formLock":[]},"Collapse":{"collapseBright":[],"collapseWarm":[],"collapseLock":[]},"CollapseCloud":{"cloudTurb":[],"cloudSpiral":[],"cloudCore":[],"cloudHotHue":[],"cloudSat":[{"t":0.005479452054794521,"v":0.9795918367346939,"curve":"linear"},{"t":0.9963470319634703,"v":0.9387755102040816,"curve":"linear"},{"t":1,"v":0,"curve":"linear"}],"cloudSpin":[{"t":0.0009132420091324201,"v":1.2122448979591844,"curve":"linear"},{"t":0.038356164383561646,"v":2.477551020408164,"curve":"easeIn"},{"t":0.09954337899543379,"v":5.5142857142857125,"curve":"easeIn"},{"t":0.15707762557077626,"v":9.057142857142855,"curve":"easeIn"},{"t":0.20730593607305936,"v":11.84081632653061,"curve":"easeIn","strength":8},{"t":0.2502283105022831,"v":15.130612244897959,"curve":"easeIn","strength":7},{"t":0.28858447488584477,"v":17.155102040816324,"curve":"easeIn"},{"t":0.3333333333333333,"v":20.19183673469388,"curve":"easeIn","strength":3},{"t":0.365296803652968,"v":24.746938775510205,"curve":"linear","strength":1},{"t":0.9954337899543378,"v":24.493877551020407,"curve":"linear"}],"cloudScale":[{"t":0.0009132420091324201,"v":1.264285714285714,"curve":"linear"},{"t":0.8894977168949771,"v":2.8622448979591835,"curve":"easeIn","strength":8},{"t":0.9908675799086758,"v":0.000500000000000167,"curve":"easeIn","strength":7},{"t":1,"v":1.4795918367346939,"curve":"linear"}],"coreHue":[{"t":0.9378995433789954,"v":0.9693877551020408,"curve":"linear"}],"cloudSpinCurve":[],"cloudBallForm":[{"t":0.0009132420091324201,"v":0.03061224489795933,"curve":"linear"},{"t":0.011054382986657577,"v":0.47336071004024394,"curve":"easeIn","strength":6},{"t":0.9954337899543378,"v":2.510204081632653,"curve":"easeIn","strength":8}],"coreGlowSize":[]},"Ignition":{"igniteDuration":[],"flashIntensity":[{"t":0.010958904109589041,"v":1.0714285714285712,"curve":"linear"}],"distortAmt":[],"emergenceStart":[{"t":0.0045662100456621,"v":0.04040816326530616,"curve":"easeIn"},{"t":0.9591836469894675,"v":0.7932172719489125,"curve":"easeOut","strength":2},{"t":0.976190449931222,"v":0.05274594889697015,"curve":"easeOut"}],"coreGlow":[]},"ExplosionBall":{"ballRadius":[],"ballFreq":[],"ballAmp":[],"ballAsym":[{"t":0.006392694063926941,"v":0.9285714285714286,"curve":"easeOut"},{"t":0.026627151819424415,"v":0.5471310153887861,"curve":"easeOut"},{"t":0.18195259911243955,"v":0.5368851135892574,"curve":"easeIn"},{"t":0.24112419808120722,"v":0.03483592541234881,"curve":"linear"},{"t":0.6764183808342039,"v":0,"curve":"linear"}],"ballBlend":[],"ballCoronaStart":[{"t":0,"v":0.5530737236378424,"curve":"easeIn"},{"t":0.44897955873683437,"v":0.8727458597831391,"curve":"easeIn"}],"igniteLock":[],"flashHue":[],"flashTint":[],"bgTintAmount":[]},"Sun":{"sunHue":[],"coronaGlow":[],"coronaHueShift":[],"coronaFlareStrength":[],"coronaSpread":[],"sunSpinSpeed":[{"t":0.036564587399289236,"v":0.06147330020643871,"curve":"linear"},{"t":0.22363941975858806,"v":0.24590140867860732,"curve":"linear","strength":1},{"t":0.4872448653557818,"v":5.2868832179661,"curve":"linear"},{"t":0.7423469094820984,"v":7.131145541881272,"curve":"easeIn","strength":1},{"t":0.9846938514020991,"v":0.29508192492441143,"curve":"linear"}],"sunSizeMult":[{"t":0,"v":1.0223634108085613,"curve":"linear"},{"t":0.2679658706820511,"v":1.4132303983687593,"curve":"easeIn"},{"t":0.28440923121356987,"v":0.08941733228943481,"curve":"linear"},{"t":0.42509131576100834,"v":0.09139789962808123,"curve":"easeInOut"},{"t":0.5895249210761961,"v":1.2123097587114653,"curve":"easeIn"},{"t":0.6626065234385019,"v":1.2123097587114653,"curve":"easeIn"},{"t":1,"v":1.1655599817729785,"curve":"easeIn","strength":8}],"sunRipple":[{"t":0.18962581387507918,"v":0,"curve":"linear"},{"t":0.2491496241712197,"v":0.15368923052317562,"curve":"easeInOut"},{"t":0.9804421506666605,"v":0.2274595358717173,"curve":"linear"}],"sunDissolve":[{"t":0,"v":0.07876725186995281,"curve":"linear"},{"t":0.6187575620211184,"v":0.08904122420425353,"curve":"easeIn"},{"t":0.8014615679268827,"v":0.2328768368844637,"curve":"linear"},{"t":1,"v":0,"curve":"easeInOut"}]},"GalaxyCloud":{"galaxyCloudHue":[{"t":0.036564587399289236,"v":0.10040979073336542,"curve":"easeIn"},{"t":0.16836731019788612,"v":0.8073770149008488,"curve":"linear"},{"t":0.44897955873683437,"v":0.838114720299435,"curve":"easeIn"},{"t":0.7891156175719231,"v":0,"curve":"easeInOut"}],"galaxyCloudSat":[{"t":0.036564587399289236,"v":0,"curve":"linear"},{"t":0.6615645955087648,"v":1.6270495497132842,"curve":"easeIn","strength":8}],"galaxyCloudWarm":[],"galaxyCloudBright":[{"t":0.032312886663850626,"v":1.8934426056508955,"curve":"linear"}]}};
+let seqData = {};
+try { seqData = JSON.parse(localStorage.getItem(SEQ_STORAGE_KEY)) || BAKED_SEQ_DATA; } catch(e) { seqData = BAKED_SEQ_DATA; }
+function saveSeqData(){
+  try { localStorage.setItem(SEQ_STORAGE_KEY, JSON.stringify(seqData)); } catch(e) {}
+}
+
+// Per-property "default" values — separate from keyframes. Each group gets a
+// Reset button (snap every prop in that group back to its stored default) and
+// a Set button (capture the current values as the new default going forward).
+// Defaults start out equal to the code's built-in tVals values and persist once changed.
+const DEFAULTS_STORAGE_KEY = 'originSceneParamDefaults_v1';
+let paramDefaults = {};
+try { paramDefaults = JSON.parse(localStorage.getItem(DEFAULTS_STORAGE_KEY)) || {}; } catch(e) { paramDefaults = {}; }
+function saveParamDefaults(){
+  try { localStorage.setItem(DEFAULTS_STORAGE_KEY, JSON.stringify(paramDefaults)); } catch(e) {}
+}
+function getKeyframes(groupName, key){
+  if (!seqData[groupName]) seqData[groupName] = {};
+  if (!seqData[groupName][key]) seqData[groupName][key] = [];
+  return seqData[groupName][key];
+}
+// Easing shapes a segment's 0-1 progress before it's used to blend two keyframe
+// values — "linear" is a flat rate of change, the others accelerate/decelerate.
+// Stored per-keyframe as the curve used for the segment going OUT of it; missing
+// or unrecognized values fall back to linear, so every keyframe saved before this
+// feature existed keeps behaving exactly as it did.
+// Each non-linear shape takes a "strength" exponent — 3 matches the original
+// fixed cubic curve, so every keyframe saved before this existed looks identical.
+// Lower = closer to linear, higher = a sharper hook (holds flat, then rockets).
+const DEFAULT_EASE_STRENGTH = 3;
+const EASE_FNS = {
+  linear:    (t) => t,
+  easeIn:    (t,k) => Math.pow(t, k),
+  easeOut:   (t,k) => 1-Math.pow(1-t, k),
+  easeInOut: (t,k) => t<0.5 ? 0.5*Math.pow(2*t, k) : 1-0.5*Math.pow(2-2*t, k),
+};
+const EASE_ORDER = ['linear','easeIn','easeOut','easeInOut'];
+const EASE_LABEL = { linear:'', easeIn:'in', easeOut:'out', easeInOut:'in-out' };
+
+function evalKeyframes(kfs, t){
+  if (kfs.length === 0) return null;
+  if (kfs.length === 1) return kfs[0].v;
+  if (t <= kfs[0].t) return kfs[0].v;
+  if (t >= kfs[kfs.length-1].t) return kfs[kfs.length-1].v;
+  for (let i=0;i<kfs.length-1;i++){
+    if (t >= kfs[i].t && t <= kfs[i+1].t){
+      const span = kfs[i+1].t - kfs[i].t;
+      const lt = span<=0 ? 0 : (t-kfs[i].t)/span;
+      const ease = EASE_FNS[kfs[i].curve] || EASE_FNS.linear;
+      const strength = kfs[i].strength || DEFAULT_EASE_STRENGTH;
+      return kfs[i].v + (kfs[i+1].v - kfs[i].v)*ease(lt, strength);
+    }
+  }
+  return kfs[kfs.length-1].v;
+}
+function applySequencers(){
+  CONTROL_GROUPS.forEach(group => {
+    const [start,end] = group.window();
+    const span = end-start;
+    const localT = span<=0 ? 0 : clamp((T-start)/span, 0, 1);
+    group.props.forEach(p => {
+      const kfs = getKeyframes(group.name, p.key);
+      if (kfs.length >= 1) tVals[p.key] = evalKeyframes(kfs, localT);
+    });
+  });
+}
+
+const PANEL_FONT = "'JetBrains Mono','SF Mono',Consolas,monospace";
+const panelStyleTag = document.createElement('style');
+panelStyleTag.textContent = `
+  .osc-panel input[type=range] { accent-color: #5cf; height:4px; }
+  .osc-panel input[type=range]:hover { accent-color: #7de; }
+  .osc-panel * { box-sizing: border-box; }
+`;
+document.head.appendChild(panelStyleTag);
+
+const panelEl = document.createElement('div');
+panelEl.className = 'osc-panel';
+panelEl.style.cssText = `display:none;font:12px/1.4 ${PANEL_FONT};color:#e4e4ea;background:#0d0d13;padding:0;`;
+
+const panelHeader = document.createElement('div');
+panelHeader.style.cssText = `padding:12px 14px;border-bottom:1px solid #23232e;background:#111118;`;
+const panelTitleRow = document.createElement('div');
+panelTitleRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
+panelTitleRow.innerHTML = `<div style="font-size:12px;font-weight:700;letter-spacing:.12em;color:#8fd6ff;">ORIGIN SCENE — SEQUENCER</div>`;
+const transportRow = document.createElement('div');
+transportRow.style.cssText = 'display:flex;gap:6px;';
+const playBtn = document.createElement('button');
+const resetBtn = document.createElement('button');
+const collapseAllBtn = document.createElement('button');
+[playBtn, resetBtn, collapseAllBtn].forEach(b => {
+  b.style.cssText = 'font:11px monospace;padding:4px 10px;border-radius:5px;background:#1c1c26;color:#cfe6ff;border:1px solid #33333f;cursor:pointer;';
+});
+resetBtn.textContent = '⟲ Reset';
+resetBtn.addEventListener('click', () => resetScene());
+playBtn.addEventListener('click', () => { paused = !paused; });
+let allCollapsed = false;
+collapseAllBtn.textContent = '▾ Collapse All';
+collapseAllBtn.addEventListener('click', () => {
+  allCollapsed = !allCollapsed;
+  collapsibleGroups.forEach(({ groupBody, collapseBtn }) => {
+    groupBody.style.display = allCollapsed ? 'none' : '';
+    collapseBtn.textContent = allCollapsed ? '▸' : '▾';
+  });
+  collapseAllBtn.textContent = allCollapsed ? '▸ Expand All' : '▾ Collapse All';
+});
+const exportBtn = document.createElement('button');
+exportBtn.textContent = '📋 Export Values';
+exportBtn.style.cssText = 'font:11px monospace;padding:4px 10px;border-radius:5px;background:#1c1c26;color:#cfe6ff;border:1px solid #33333f;cursor:pointer;';
+transportRow.appendChild(playBtn); transportRow.appendChild(resetBtn); transportRow.appendChild(collapseAllBtn); transportRow.appendChild(exportBtn);
+panelTitleRow.appendChild(transportRow);
+panelHeader.appendChild(panelTitleRow);
+
+// Custom loop range — pick any arbitrary section to loop, independent of any
+// single group's window (e.g. a transition that spans two groups). Mutually
+// exclusive with the per-group 🔁 buttons — whichever was set most recently wins.
+const loopRangeRow = document.createElement('div');
+loopRangeRow.style.cssText = 'display:flex;align-items:center;gap:5px;margin-top:8px;';
+const loopRangeLabel = document.createElement('span');
+loopRangeLabel.textContent = 'Loop section:';
+loopRangeLabel.style.cssText = 'font-size:11px;color:#8a8a9a;';
+const loopStartInput = document.createElement('input');
+const loopEndInput = document.createElement('input');
+[loopStartInput, loopEndInput].forEach(inp => {
+  inp.type = 'number'; inp.min = 0; inp.max = 90; inp.step = 0.1;
+  inp.style.cssText = 'width:56px;font:11px monospace;background:#1c1c26;color:#cfe6ff;border:1px solid #33333f;border-radius:4px;padding:2px 4px;';
+});
+loopStartInput.value = '0'; loopEndInput.value = '90';
+let loopRangeInputFocused = false;
+[loopStartInput, loopEndInput].forEach(inp => {
+  inp.addEventListener('focus', () => { loopRangeInputFocused = true; });
+  inp.addEventListener('blur', () => { loopRangeInputFocused = false; });
+});
+const loopRangeToTxt = document.createElement('span');
+loopRangeToTxt.textContent = 'to'; loopRangeToTxt.style.cssText = 'font-size:11px;color:#8a8a9a;';
+const loopRangeToggleBtn = document.createElement('button');
+loopRangeToggleBtn.textContent = '🔁 Off';
+loopRangeToggleBtn.style.cssText = 'font:11px monospace;padding:3px 10px;border-radius:5px;background:#1c1c26;color:#cfe6ff;border:1px solid #33333f;cursor:pointer;';
+loopRangeToggleBtn.addEventListener('click', () => {
+  if (customLoopRange) {
+    customLoopRange = null;
+  } else {
+    const s = parseFloat(loopStartInput.value) || 0;
+    const e = parseFloat(loopEndInput.value) || 90;
+    customLoopRange = [Math.min(s,e), Math.max(s,e)];
+    loopGroupName = null;
+    T = customLoopRange[0];
+  }
+});
+loopRangeRow.appendChild(loopRangeLabel);
+loopRangeRow.appendChild(loopStartInput);
+loopRangeRow.appendChild(loopRangeToTxt);
+loopRangeRow.appendChild(loopEndInput);
+loopRangeRow.appendChild(loopRangeToggleBtn);
+panelHeader.appendChild(loopRangeRow);
+
+// Export current values — nothing about a live (non-keyframed) slider position
+// is saved anywhere, so if a combination looks right, this is the only way to
+// capture it before a reload (or anything else) resets it back to defaults.
+const exportArea = document.createElement('textarea');
+exportArea.readOnly = true;
+exportArea.style.cssText = 'display:none;width:100%;height:200px;margin-top:8px;font:10px monospace;background:#0a0a10;color:#9fe6b0;border:1px solid #33333f;border-radius:4px;padding:6px;white-space:pre;box-sizing:border-box;';
+exportBtn.addEventListener('click', () => {
+  exportArea.value = JSON.stringify(tVals, null, 2);
+  exportArea.style.display = 'block';
+  exportArea.focus();
+  exportArea.select();
+});
+panelHeader.appendChild(exportArea);
+
+const panelHint = document.createElement('div');
+panelHint.style.cssText = 'font-size:10px;color:#5a5a68;margin-top:6px;';
+panelHint.textContent = 'click strip: add keyframe at that time/value · drag diamond: move in time + value · right-click: delete · shift+click: cycle ease curve · scroll over diamond: adjust ease strength';
+panelHeader.appendChild(panelHint);
+panelEl.appendChild(panelHeader);
+
+const panelBody = document.createElement('div');
+panelBody.style.cssText = 'padding:12px;';
+panelEl.appendChild(panelBody);
+
+const groupEls = []; // { dotEl, rangeEl, group, inputs:[{el,numEl,key}] }
+const seqStrips = []; // { canvas, groupName, key, window: ()=>[start,end] }
+
+// Canvas is drawn at native device-pixel resolution (not a fixed 260px) so text
+// and ticks stay sharp at any popup/panel width and on HiDPI screens — a canvas
+// stretched via CSS alone blurs badly, which was the "fuzzy numbers" complaint.
+function syncCanvasRes(canvas){
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = Math.max(1, canvas.clientWidth || 260);
+  const cssH = Math.max(1, canvas.clientHeight || 32);
+  const needW = Math.round(cssW*dpr), needH = Math.round(cssH*dpr);
+  if (canvas.width !== needW || canvas.height !== needH) {
+    canvas.width = needW; canvas.height = needH;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w: cssW, h: cssH };
+}
+
+const collapsibleGroups = []; // { groupBody, collapseBtn } — for the panel-wide Collapse All toggle
+CONTROL_GROUPS.forEach(group => {
+  const box = document.createElement('div');
+  box.style.cssText = 'margin-bottom:12px;padding:10px 12px;border:1px solid #26262f;border-left:3px solid #3a7ca8;border-radius:6px;background:#16161f;box-shadow:0 1px 3px rgba(0,0,0,0.3);';
+  const head = document.createElement('div');
+  head.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;';
+  const dotEl = document.createElement('span');
+  dotEl.textContent = '○';
+  dotEl.style.cssText = 'margin-right:7px;font-size:11px;';
+  const title = document.createElement('span');
+  title.style.cssText = 'font-weight:700;color:#bfe6ff;letter-spacing:.06em;font-size:12px;text-transform:uppercase;';
+  title.textContent = group.name;
+  const rangeEl = document.createElement('span');
+  rangeEl.style.cssText = 'color:#7a7a8a;font-size:10px;';
+  // Capture each prop's code default the first time it's ever seen — later
+  // overwritten only by an explicit "Set" click, and persisted from then on.
+  group.props.forEach(p => {
+    if (!(p.key in paramDefaults)) paramDefaults[p.key] = tVals[p.key];
+  });
+  const groupPlayBtn = document.createElement('button');
+  groupPlayBtn.style.cssText = 'margin-left:8px;font-size:10px;padding:1px 6px;border-radius:4px;background:#1c1c26;color:#cfe6ff;border:1px solid #33333f;cursor:pointer;';
+  groupPlayBtn.addEventListener('click', () => { paused = !paused; });
+  const loopBtn = document.createElement('button');
+  loopBtn.textContent = '🔁';
+  loopBtn.title = `Loop playback within ${group.name}'s own window`;
+  loopBtn.style.cssText = 'margin-left:4px;font-size:10px;padding:1px 6px;border-radius:4px;background:#1c1c26;color:#7a7a8a;border:1px solid #33333f;cursor:pointer;';
+  loopBtn.addEventListener('click', () => {
+    if (loopGroupName === group.name) {
+      loopGroupName = null;
+    } else {
+      loopGroupName = group.name;
+      customLoopRange = null;
+      const [ls] = group.window();
+      T = ls;
+    }
+  });
+  const resetDefaultsBtn = document.createElement('button');
+  resetDefaultsBtn.textContent = '⟲';
+  resetDefaultsBtn.title = `Reset all ${group.name} sliders to their stored default`;
+  resetDefaultsBtn.style.cssText = 'margin-left:4px;font-size:10px;padding:1px 6px;border-radius:4px;background:#1c1c26;color:#cfa65c;border:1px solid #33333f;cursor:pointer;';
+  resetDefaultsBtn.addEventListener('click', () => {
+    group.props.forEach(p => { tVals[p.key] = paramDefaults[p.key]; });
+  });
+  const setDefaultsBtn = document.createElement('button');
+  setDefaultsBtn.textContent = '💾';
+  setDefaultsBtn.title = `Save ${group.name}'s current values as the new default`;
+  setDefaultsBtn.style.cssText = 'margin-left:4px;font-size:10px;padding:1px 6px;border-radius:4px;background:#1c1c26;color:#8fd6ff;border:1px solid #33333f;cursor:pointer;';
+  setDefaultsBtn.addEventListener('click', () => {
+    group.props.forEach(p => { paramDefaults[p.key] = tVals[p.key]; });
+    saveParamDefaults();
+    setDefaultsBtn.style.background = '#2a5a3a';
+    setTimeout(() => { setDefaultsBtn.style.background = '#1c1c26'; }, 300);
+  });
+  const collapseBtn = document.createElement('button');
+  collapseBtn.textContent = '▾';
+  collapseBtn.title = `Collapse ${group.name} down to just its name`;
+  collapseBtn.style.cssText = 'margin-left:4px;font-size:10px;padding:1px 6px;border-radius:4px;background:#1c1c26;color:#7a7a8a;border:1px solid #33333f;cursor:pointer;';
+  const left = document.createElement('span');
+  left.appendChild(dotEl); left.appendChild(title); left.appendChild(groupPlayBtn);
+  left.appendChild(loopBtn); left.appendChild(resetDefaultsBtn); left.appendChild(setDefaultsBtn); left.appendChild(collapseBtn);
+  head.appendChild(left); head.appendChild(rangeEl);
+  box.appendChild(head);
+  const groupBody = document.createElement('div');
+  box.appendChild(groupBody);
+  collapseBtn.addEventListener('click', () => {
+    const collapsed = groupBody.style.display === 'none';
+    groupBody.style.display = collapsed ? '' : 'none';
+    collapseBtn.textContent = collapsed ? '▾' : '▸';
+  });
+  collapsibleGroups.push({ groupBody, collapseBtn });
+  const inputs = [];
+  group.props.forEach(p => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin:4px 0;';
+    const lab = document.createElement('span');
+    lab.textContent = p.label; lab.style.cssText = 'width:112px;color:#c8c8d4;font-size:11px;flex-shrink:0;';
+    const input = document.createElement('input');
+    input.type = 'range'; input.min = p.min; input.max = p.max; input.step = p.step;
+    input.value = tVals[p.key]; input.style.cssText = 'flex:1;';
+    const num = document.createElement('span');
+    num.style.cssText = 'width:50px;text-align:right;color:#8fd6ff;font-variant-numeric:tabular-nums;font-size:11px;';
+    num.textContent = Number(tVals[p.key]).toFixed(2);
+    let held = false; // tracked locally — never touch controlsWin.document (cross-window
+                       // access can throw SecurityError depending on browser COOP policy)
+    input.addEventListener('mousedown', () => {
+      held = true;
+      // Same cross-window issue as the keyframe drag below: if this slider lives
+      // in the popped-out Controls window, a listener on this script's original
+      // `window` would never see the mouseup that happens over that window.
+      const releaseDoc = input.ownerDocument;
+      function onRelease(){ held = false; releaseDoc.removeEventListener('mouseup', onRelease); }
+      releaseDoc.addEventListener('mouseup', onRelease);
+    });
+    input.addEventListener('input', () => {
+      tVals[p.key] = parseFloat(input.value);
+      num.textContent = tVals[p.key].toFixed(2);
+    });
+    row.appendChild(lab); row.appendChild(input); row.appendChild(num);
+    groupBody.appendChild(row);
+
+    // Keyframe strip — click empty space to add/update a keyframe at that time
+    // using the slider's current value, drag a diamond to retime it, right-click
+    // a diamond to delete it. The blue line is the live playhead within this
+    // group's own local window. The top ruler shows real scene-seconds (major
+    // ticks) subdivided into tenths (minor ticks) for millisecond-level placement.
+    const stripWrap = document.createElement('div');
+    stripWrap.style.cssText = 'margin:0 0 2px 120px;';
+    const canvas = document.createElement('canvas');
+    canvas.style.cssText = 'width:100%;height:96px;background:#0a0a10;border:1px solid #262632;border-radius:4px;cursor:crosshair;display:block;user-select:none;-webkit-user-drag:none;touch-action:none;';
+    canvas.draggable = false;
+    stripWrap.appendChild(canvas);
+    groupBody.appendChild(stripWrap);
+    const readout = document.createElement('div');
+    readout.style.cssText = 'margin:0 0 6px 120px;color:#8fd6ff;font-size:10px;height:12px;font-variant-numeric:tabular-nums;';
+    groupBody.appendChild(readout);
+
+    const timeAt = (xCss, wCss) => {
+      const [start,end] = group.window();
+      const t = Math.max(0, Math.min(1, xCss/wCss));
+      return start + t*(end-start);
+    };
+    // Value axis: top of the track = p.max, bottom = p.min — so a keyframe's
+    // vertical position on the strip directly shows its value, same range as its
+    // slider. Dragging a diamond moves it in time (x) AND value (y) at once.
+    // A handful of properties (e.g. cloudSize) span a huge min-to-max ratio so
+    // a value can be shrunk toward ~0. On a linear scale, everything below a
+    // small fraction of max gets squeezed into a few pixels at the bottom of
+    // the track — technically reachable, but impossible to actually aim for
+    // with a mouse. Logarithmic properties spread that low range out instead.
+    const logMin = p.log ? Math.log(p.min) : 0, logMax = p.log ? Math.log(p.max) : 0;
+    const valueAt = (yCss, hCss) => {
+      const f = Math.max(0, Math.min(1, yCss/hCss));
+      if (p.log) return Math.exp(logMax - f*(logMax-logMin));
+      return p.max - f*(p.max-p.min);
+    };
+    const yForValue = (v, hCss) => {
+      let f;
+      if (p.log) f = (Math.log(Math.max(v,p.min))-logMin)/((logMax-logMin) || 1);
+      else f = (v-p.min)/(p.max-p.min || 1);
+      return Math.max(0, Math.min(1, 1-f)) * hCss;
+    };
+    const fmtVal = v => (Math.abs(v) < 0.1 ? v.toFixed(4) : v.toFixed(2));
+    let dragIdx = -1;
+    let dragStartX = 0, dragStartY = 0, dragMoved = false, dragShiftHeld = false;
+    const hitTest = (xCss, yCss, wCss, hCss) => {
+      const kfs = getKeyframes(group.name, p.key);
+      for (let i=0;i<kfs.length;i++){
+        const dx = kfs[i].t*wCss - xCss, dy = yForValue(kfs[i].v, hCss) - yCss;
+        if (Math.sqrt(dx*dx+dy*dy) < 11) return i;
+      }
+      return -1;
+    };
+    canvas.addEventListener('mousedown', e => {
+      e.preventDefault(); // stop native drag-ghost/text-select from hijacking the gesture
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX-rect.left, y = e.clientY-rect.top, wCss = rect.width, hCss = rect.height;
+      const idx = hitTest(x, y, wCss, hCss);
+      if (idx >= 0) {
+        dragIdx = idx;
+        dragShiftHeld = e.shiftKey;
+      } else {
+        const kfs = getKeyframes(group.name, p.key);
+        const t = Math.max(0, Math.min(1, x/wCss));
+        const v = valueAt(y, hCss);
+        const kf = { t, v, curve: 'linear' };
+        kfs.push(kf);
+        kfs.sort((a,b) => a.t - b.t);
+        dragIdx = kfs.indexOf(kf);
+        dragShiftHeld = false;
+        saveSeqData();
+      }
+      dragStartX = x; dragStartY = y; dragMoved = false;
+
+      // The Controls panel can live in a popped-out window, which is a genuinely
+      // separate `Window` object — mouse events over its canvas never reach a
+      // listener registered on this script's original global `window`. Attach
+      // the drag tracking to whichever window/document actually owns the canvas
+      // right now, and tear it down when the drag ends instead of leaving it live.
+      const dragDoc = canvas.ownerDocument;
+      function onDragMove(ev){
+        const r = canvas.getBoundingClientRect();
+        const xx = ev.clientX-r.left, yy = ev.clientY-r.top, ww = r.width, hh = r.height;
+        if (Math.abs(xx-dragStartX) > 2 || Math.abs(yy-dragStartY) > 2) dragMoved = true;
+        const tt = Math.max(0, Math.min(1, xx/ww));
+        const vv = valueAt(yy, hh);
+        const kfs2 = getKeyframes(group.name, p.key);
+        if (kfs2[dragIdx]) { kfs2[dragIdx].t = tt; kfs2[dragIdx].v = vv; }
+        readout.textContent = `t = ${timeAt(xx, ww).toFixed(3)}s   v = ${fmtVal(vv)}`;
+      }
+      function onDragUp(){
+        const kfs2 = getKeyframes(group.name, p.key);
+        if (!dragMoved && dragShiftHeld && kfs2[dragIdx]) {
+          // A real click (no drag) with shift held — cycle the ease curve instead.
+          const cur = kfs2[dragIdx].curve || 'linear';
+          const next = EASE_ORDER[(EASE_ORDER.indexOf(cur)+1) % EASE_ORDER.length];
+          kfs2[dragIdx].curve = next;
+          readout.textContent = `curve → ${next}`;
+        }
+        kfs2.sort((a,b) => a.t - b.t);
+        dragIdx = -1;
+        saveSeqData();
+        dragDoc.removeEventListener('mousemove', onDragMove);
+        dragDoc.removeEventListener('mouseup', onDragUp);
+      }
+      dragDoc.addEventListener('mousemove', onDragMove);
+      dragDoc.addEventListener('mouseup', onDragUp);
+    });
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX-rect.left, y = e.clientY-rect.top;
+      readout.textContent = `t = ${timeAt(x, rect.width).toFixed(3)}s   v = ${fmtVal(valueAt(y, rect.height))}`;
+    });
+    canvas.addEventListener('mouseleave', () => { if (dragIdx < 0) readout.textContent = ''; });
+    canvas.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const idx = hitTest(e.clientX-rect.left, e.clientY-rect.top, rect.width, rect.height);
+      if (idx >= 0) {
+        getKeyframes(group.name, p.key).splice(idx, 1);
+        saveSeqData();
+      }
+    });
+    // Scroll wheel over a keyframe adjusts its ease strength — how sharply that
+    // segment's curve bends, not just which shape it uses (shift+click for that).
+    canvas.addEventListener('wheel', e => {
+      const rect = canvas.getBoundingClientRect();
+      const idx = hitTest(e.clientX-rect.left, e.clientY-rect.top, rect.width, rect.height);
+      if (idx < 0) return;
+      e.preventDefault();
+      const kfs = getKeyframes(group.name, p.key);
+      const kf = kfs[idx];
+      const cur = kf.strength || DEFAULT_EASE_STRENGTH;
+      kf.strength = Math.max(1, Math.min(8, cur + (e.deltaY < 0 ? 1 : -1)));
+      saveSeqData();
+      readout.textContent = `${kf.curve||'linear'} strength: ${kf.strength}`;
+    }, { passive:false });
+    seqStrips.push({ canvas, groupName: group.name, key: p.key, yForValue });
+    inputs.push({ el: input, numEl: num, key: p.key, isHeld: () => held });
+  });
+  panelBody.appendChild(box);
+  groupEls.push({ dotEl, rangeEl, group, inputs, loopBtn, groupPlayBtn });
+});
+document.body.appendChild(panelEl);
+
+let controlsWin = null;
+const controlsBtn = document.createElement('button');
+controlsBtn.textContent = 'Controls ↗';
+controlsBtn.style.cssText = [
+  'position:fixed', 'bottom:80px', 'right:20px',
+  'font:13px monospace', 'padding:8px 14px', 'border-radius:8px',
+  'background:rgba(0,0,0,0.65)', 'color:#fff', 'border:1px solid rgba(255,255,255,0.2)',
+  'cursor:pointer', 'z-index:9999',
+].join(';');
+function showPanelInline(){
+  // Fallback when a real popup window isn't usable (browser COOP isolation can
+  // block cross-window document access even for same-origin popups) — dock the
+  // panel as a floating, scrollable box in the main page instead.
+  controlsWin = null;
+  panelEl.style.cssText = `display:block;position:fixed;top:20px;right:20px;width:360px;max-height:85vh;overflow:auto;font:12px/1.4 ${PANEL_FONT};color:#e4e4ea;background:#0d0d13;border:1px solid #262632;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,0.5);z-index:9998;`;
+  document.body.appendChild(panelEl);
+}
+controlsBtn.addEventListener('click', () => {
+  if (controlsWin && !controlsWin.closed) { controlsWin.focus(); return; }
+  if (panelEl.parentElement === document.body && panelEl.style.display === 'block') {
+    // already docked inline from a previous fallback — nothing more to do
+    return;
+  }
+  try {
+    const win = window.open('', 'OriginControls', 'width=420,height=920');
+    if (!win) throw new Error('popup blocked');
+    win.document.title = 'Origin Scene — Controls';
+    win.document.body.style.margin = '0';
+    win.document.body.style.background = '#0b0b10';
+    panelEl.style.cssText = `display:block;font:12px/1.4 ${PANEL_FONT};color:#e4e4ea;background:#0d0d13;`;
+    win.document.body.appendChild(panelEl);
+    win.addEventListener('beforeunload', () => {
+      document.body.appendChild(panelEl);
+      panelEl.style.display = 'none';
+      controlsWin = null;
+    });
+    controlsWin = win;
+  } catch (e) {
+    console.warn('Popup controls window unavailable, docking inline instead:', e);
+    showPanelInline();
+  }
+});
+document.body.appendChild(controlsBtn);
+
+// Picks a "nice" major-tick interval (in seconds) so a strip shows roughly 4-10
+// labeled ticks regardless of whether its window is 4s (Ignition) or 90s (Playback).
+function niceTickStep(span){
+  const candidates = [0.05,0.1,0.2,0.25,0.5,1,2,5,10,15,30,60];
+  for (const c of candidates) if (span/c <= 10) return c;
+  return 60;
+}
+
+// Snaps a coordinate to a half-pixel so a 1px-wide canvas stroke lands exactly on
+// one physical pixel row/column instead of straddling two and anti-aliasing into
+// a soft 2px smudge — the actual remaining source of "blur" once DPI is correct.
+const snap = v => Math.round(v) + 0.5;
+
+function drawSeqStrips(){
+  const RULER_H = 14;
+  seqStrips.forEach(({ canvas, groupName, key, yForValue }) => {
+    const { ctx, w, h } = syncCanvasRes(canvas);
+    const trackY = RULER_H + 2, trackH = h - trackY;
+    ctx.clearRect(0,0,w,h);
+    ctx.textBaseline = 'alphabetic';
+
+    const group = CONTROL_GROUPS.find(g => g.name === groupName);
+    const [start,end] = group.window();
+    const span = Math.max(0.001, end-start);
+
+    // Ruler: major ticks every niceTickStep seconds (labeled), minor ticks at
+    // tenths of that step (unlabeled) for sub-second/millisecond placement.
+    const step = niceTickStep(span);
+    const minorStep = step/10;
+    const totalMinor = Math.ceil(span/minorStep);
+    ctx.font = `10px ${PANEL_FONT}`; ctx.textAlign = 'left';
+    ctx.lineWidth = 1;
+    for (let i=0;i<=totalMinor;i++){
+      const s = i*minorStep;
+      if (s > span+1e-6) break;
+      const xRaw = (s/span)*w;
+      const x = snap(xRaw);
+      const isMajor = (i%10 === 0);
+      ctx.strokeStyle = isMajor ? '#6b7690' : '#25252f';
+      ctx.beginPath();
+      ctx.moveTo(x, isMajor ? 0 : Math.round(RULER_H*0.45));
+      ctx.lineTo(x, RULER_H);
+      ctx.stroke();
+      if (isMajor) {
+        ctx.fillStyle = '#9db3d6';
+        ctx.fillText((start+s).toFixed(step<1?2:0), Math.round(xRaw)+3, 10);
+      }
+    }
+    ctx.strokeStyle = '#3a3a48';
+    ctx.beginPath(); ctx.moveTo(0,snap(RULER_H)); ctx.lineTo(w,snap(RULER_H)); ctx.stroke();
+
+    // Playhead — a thin line plus a small cap at the top, like a pro NLE cursor
+    const localT = clamp((T-start)/span, 0, 1);
+    const pxRaw = localT*w, px = snap(pxRaw);
+    ctx.strokeStyle = '#5cf';
+    ctx.beginPath(); ctx.moveTo(px,0); ctx.lineTo(px,h); ctx.stroke();
+    ctx.fillStyle = '#5cf';
+    ctx.beginPath(); ctx.moveTo(Math.round(pxRaw)-3,0); ctx.lineTo(Math.round(pxRaw)+3,0); ctx.lineTo(Math.round(pxRaw),4); ctx.closePath(); ctx.fill();
+
+    const kfs = getKeyframes(groupName, key);
+
+    // Connecting curve — samples the actual eased shape between each pair of
+    // keyframes, so you can see whether a segment is linear or accelerating/
+    // decelerating, not just where the keyframes sit in time.
+    if (kfs.length >= 2) {
+      ctx.strokeStyle = '#5a7aa0'; ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      for (let i=0;i<kfs.length-1;i++){
+        const a = kfs[i], b = kfs[i+1];
+        const ease = EASE_FNS[a.curve] || EASE_FNS.linear;
+        const strength = a.strength || DEFAULT_EASE_STRENGTH;
+        const STEPS = 16;
+        for (let s=0;s<=STEPS;s++){
+          const lt = s/STEPS;
+          const vVal = a.v + (b.v-a.v)*ease(lt, strength);
+          const xPx = (a.t + (b.t-a.t)*lt)*w, yPx = yForValue(vVal, h);
+          if (i===0 && s===0) ctx.moveTo(xPx,yPx); else ctx.lineTo(xPx,yPx);
+        }
+      }
+      ctx.stroke();
+    }
+
+    // Keyframes — diamond positioned by both time (x) and value (y), filled with
+    // a dark outline so it reads clearly against the track and ruler. A small
+    // label shows the ease curve going OUT of this keyframe (shift+click to cycle).
+    kfs.forEach(k => {
+      const x = Math.round(k.t*w), cy = Math.round(yForValue(k.v, h)), r = 6;
+      ctx.beginPath();
+      ctx.moveTo(x,cy-r); ctx.lineTo(x+r,cy); ctx.lineTo(x,cy+r); ctx.lineTo(x-r,cy);
+      ctx.closePath();
+      ctx.fillStyle = '#ffc85c'; ctx.fill();
+      ctx.lineWidth = 1; ctx.strokeStyle = '#3a2a08'; ctx.stroke();
+      const label = EASE_LABEL[k.curve];
+      if (label) {
+        ctx.font = `8px ${PANEL_FONT}`; ctx.textAlign = 'center'; ctx.fillStyle = '#9fe6b0';
+        ctx.fillText(label, x, Math.min(h-2, cy+r+9));
+      }
+    });
+  });
+}
+
+function updateControlsPanel(f){
+  // Check panelEl's own visibility rather than controlsWin — the inline fallback
+  // (showPanelInline) never sets controlsWin, so gating on that would leave the
+  // fallback panel permanently stale (sliders/strips/buttons never refreshing).
+  if (panelEl.style.display !== 'block') return;
+  // Defensive: cross-window access to a popup can throw (browser COOP isolation),
+  // and this runs every frame inside tick() before the render call — letting it
+  // throw here would silently freeze the whole scene, not just the controls panel.
+  try {
+    playBtn.textContent = paused ? '▶ Play' : '⏸ Pause';
+    if (customLoopRange) {
+      loopRangeToggleBtn.textContent = `🔁 ${customLoopRange[0].toFixed(1)}–${customLoopRange[1].toFixed(1)}s`;
+      loopRangeToggleBtn.style.background = '#2a5a3a';
+      if (!loopRangeInputFocused) {
+        loopStartInput.value = customLoopRange[0].toFixed(1);
+        loopEndInput.value = customLoopRange[1].toFixed(1);
+      }
+    } else {
+      loopRangeToggleBtn.textContent = '🔁 Off';
+      loopRangeToggleBtn.style.background = '#1c1c26';
+    }
+    const liveMap = { Playback:true, Nebula:f.fine, Collapse:f.cloud, CollapseCloud:f.collapseShape,
+      Ignition:f.ignite, ExplosionBall:f.ignite, Sun:f.sun };
+    groupEls.forEach(({ dotEl, rangeEl, group, inputs, loopBtn, groupPlayBtn }) => {
+      dotEl.textContent = liveMap[group.name] ? '●' : '○';
+      rangeEl.textContent = group.range();
+      groupPlayBtn.textContent = paused ? '▶' : '⏸';
+      const looping = loopGroupName === group.name;
+      loopBtn.style.background = looping ? '#2a5a3a' : '#1c1c26';
+      loopBtn.style.color = looping ? '#9fe6b0' : '#7a7a8a';
+      inputs.forEach(({ el, numEl, key, isHeld }) => {
+        if (isHeld()) return;
+        el.value = tVals[key];
+        numEl.textContent = Number(tVals[key]).toFixed(2);
+      });
+    });
+    drawSeqStrips();
+  } catch (e) {
+    console.warn('Controls panel update skipped:', e);
+  }
+}
+
+function updateClock(T, paused, igniteDur){
+  const phase =
+    T < 12              ? 'Void' :
+    T < 56              ? 'Nebula' :
+    T < 74              ? 'Collapse' :
+    T < 74 + igniteDur  ? 'Ignition' : 'Galaxy';
+  const pct = Math.min(100, (T / 90) * 100).toFixed(0);
+  clockEl.textContent = `${T.toFixed(1)}s  /  90s   [${phase}]   ${pct}%   ${paused ? '⏸' : '▶'}`;
+}
+
+// ── Play / Pause ──────────────────────────────────────────────────────────────
+let paused = false;
+let loopGroupName = null; // when set, T bounces within that group's own window instead of advancing past it
+let customLoopRange = null; // [start,end] in seconds — an arbitrary section, independent of any group's window
+
+function resetScene() {
+  T = 0;
+  paused = false;
+  ignitionTriggered = false;
+  coreVisibility = 0;
+  rotAngleFine = 0; rotAngleCloud = 0; rotAngleSpark = 0;
+  // Full reset also snaps every slider back to its stored default — the per-group
+  // ⟲ buttons in the Controls panel do this scoped to one group only.
+  CONTROL_GROUPS.forEach(group => {
+    group.props.forEach(p => {
+      if (p.key in paramDefaults) tVals[p.key] = paramDefaults[p.key];
+    });
+  });
+
+  sunMesh.visible    = false;
+  sunMat.uniforms.dissolve.value = 0;
+  sunDustMat.uniforms.dissolve.value = 0;
+  flashMesh.visible  = false;
+  flashMesh.material.uniforms.opacity.value = 0;
+  coronaGroup.visible = false;
+
+  coreWhite.material.opacity  = 0;
+  coreAmber.material.opacity  = 0;
+  coreOrange.material.opacity = 0;
+  coreDark.material.opacity   = 0;
+  coreLight.intensity = 0;
+
+  fineMat.uniforms.collapseT.value  = 0;
+  cloudMat.uniforms.collapseT.value = 0;
+  fineMat.uniforms.gAlpha.value     = 0;
+  cloudMat.uniforms.gAlpha.value    = 0;
+  fineMat.uniforms.galaxyT.value    = 0;
+  galaxyDiscMat.uniforms.gAlpha.value = 0;
+  voidMat.opacity = 0;
+  starMat.opacity = 0;
+
+  // Clear loop geometry so old particles don't ghost on restart
+  loopAlp.fill(0);
+  loopPos.fill(0);
+  loopGeo.attributes.alpha.needsUpdate    = true;
+  loopGeo.attributes.position.needsUpdate = true;
+}
+
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' && e.target === document.body) {
+    e.preventDefault();
+    paused = !paused;
+  }
+  if (e.code === 'KeyR') resetScene();
+  if (e.code === 'ArrowLeft')  { paused = true; T = Math.max(0,  T - 1); }
+  if (e.code === 'ArrowRight') { paused = true; T = Math.min(90, T + 1); }
+});
+
+let drag=false, prev={x:0,y:0};
+canvas.addEventListener('mousedown', e=>{ drag=true; prev={x:e.clientX,y:e.clientY}; });
 window.addEventListener('mouseup', ()=>drag=false);
-window.addEventListener('mousemove', e => {
-  if(!drag||!orbitEnabled)return;
+window.addEventListener('mousemove', e=>{
+  if(!drag) return;
   sphTarget.theta -= (e.clientX-prev.x)*0.004;
-  sphTarget.phi    = clamp(sphTarget.phi+(e.clientY-prev.y)*0.004, 0.06, Math.PI*0.88);
+  sphTarget.phi    = clamp(sphTarget.phi+(e.clientY-prev.y)*0.004, 0.05, Math.PI*0.88);
   prev={x:e.clientX,y:e.clientY};
   sph.theta=sphTarget.theta; sph.phi=sphTarget.phi;
 });
 window.addEventListener('wheel', e=>{
-  if(!orbitEnabled)return;
-  sphTarget.r=clamp(sphTarget.r+e.deltaY*0.09,RMIN,RMAX);
-  sph.r=sphTarget.r;
+  sphTarget.r = clamp(sphTarget.r+e.deltaY*0.20, 50, 700);
 },{passive:true});
-let lastTD=0,lastTch=null;
-canvas.addEventListener('touchstart',e=>{
-  if(!orbitEnabled)return;
-  if(e.touches.length===1){drag=true;lastTch={x:e.touches[0].clientX,y:e.touches[0].clientY};}
-  else if(e.touches.length===2){drag=false;lastTD=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);}
-},{passive:true});
-canvas.addEventListener('touchmove',e=>{
-  if(!orbitEnabled)return;
-  if(e.touches.length===1&&drag){
-    sphTarget.theta-=(e.touches[0].clientX-lastTch.x)*0.004;
-    sphTarget.phi=clamp(sphTarget.phi+(e.touches[0].clientY-lastTch.y)*0.004,0.06,Math.PI*0.88);
-    lastTch={x:e.touches[0].clientX,y:e.touches[0].clientY};
-    sph.theta=sphTarget.theta;sph.phi=sphTarget.phi;
-  }else if(e.touches.length===2){
-    const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-    sphTarget.r=clamp(sphTarget.r-(d-lastTD)*0.09,RMIN,RMAX);
-    sph.r=sphTarget.r;lastTD=d;
+
+// ── Shared GLSL ───────────────────────────────────────────────────────────────
+const HSL_GLSL = `
+  vec3 hsl2rgb(float h,float s,float l){
+    vec3 rgb=clamp(abs(mod(h*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
+    return l+s*(rgb-0.5)*(1.0-abs(2.0*l-1.0));
   }
-},{passive:true});
-canvas.addEventListener('touchend',()=>drag=false);
+`;
+const HUE_REMAP_GLSL = `
+  float remapHue(float h){
+    if     (h<0.20) return h*0.30;
+    else if(h<0.45) return 0.55+(h-0.20)*0.60;
+    else if(h<0.65) return 0.48+(h-0.45)*0.35;
+    else if(h<0.82) return 0.75+(h-0.65)*0.59;
+    else            return 0.08+(h-0.82)*0.67;
+  }
+`;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SCENE GEOMETRY
+// VOID — quantum foam field
 // ═══════════════════════════════════════════════════════════════════════════════
-
-// ── Sprite textures ───────────────────────────────────────────────────────────
-function sprite(r,g,b,soft=0.35) {
-  const c=document.createElement('canvas');c.width=c.height=64;
-  const x=c.getContext('2d');
-  const grd=x.createRadialGradient(32,32,0,32,32,32);
-  grd.addColorStop(0,`rgba(${r},${g},${b},1)`);
-  grd.addColorStop(soft,`rgba(${r},${g},${b},0.7)`);
-  grd.addColorStop(1,`rgba(${r},${g},${b},0)`);
-  x.fillStyle=grd;x.beginPath();x.arc(32,32,32,0,Math.PI*2);x.fill();
-  return new THREE.CanvasTexture(c);
-}
-const SP_WHITE = sprite(255,255,255);
-const SP_BLUE  = sprite(100,180,255);
-const SP_CYAN  = sprite(80,220,230);
-const SP_RED   = sprite(255,80,40);
-const SP_AMBER = sprite(255,180,60);
-const SP_VIOLET= sprite(160,80,255);
-const SP_GOLD  = sprite(255,210,80);
-const SP_TEAL  = sprite(40,220,180);
-
-// ── Star field ────────────────────────────────────────────────────────────────
-const starGeo = new THREE.BufferGeometry();
-const STAR_N  = 4500;
-const starPos = new Float32Array(STAR_N*3);
-const starCol = new Float32Array(STAR_N*3);
-// Star color palette — blue giants, yellow dwarfs, red giants
-const starPal = [[0.9,0.95,1],[1,1,0.88],[1,0.82,0.6],[0.7,0.8,1],[1,0.92,0.92]];
-for(let i=0;i<STAR_N;i++){
-  const a=Math.random()*Math.PI*2, b=Math.acos(2*Math.random()-1);
-  const r=380+Math.random()*200;
-  starPos[i*3]=r*Math.sin(b)*Math.cos(a); starPos[i*3+1]=r*Math.sin(b)*Math.sin(a); starPos[i*3+2]=r*Math.cos(b);
-  const sc=starPal[Math.floor(Math.random()*starPal.length)];
-  starCol[i*3]=sc[0];starCol[i*3+1]=sc[1];starCol[i*3+2]=sc[2];
-}
-starGeo.setAttribute('position',new THREE.BufferAttribute(starPos,3));
-starGeo.setAttribute('color',new THREE.BufferAttribute(starCol,3));
-const starMat = new THREE.PointsMaterial({
-  size:2.8,sizeAttenuation:true,vertexColors:true,
-  transparent:true,opacity:0,depthWrite:false,
-  blending:THREE.AdditiveBlending,map:SP_WHITE
-});
-scene.add(new THREE.Points(starGeo,starMat));
-
-// ── VOID quantum-foam field ───────────────────────────────────────────────────
-// Very faint sub-perceptual field — purple-blue, near invisible
+const VOID_N = 3200;
 const voidGeo = new THREE.BufferGeometry();
-const VOID_N  = 2000;
-const voidPos = new Float32Array(VOID_N*3);
-for(let i=0;i<VOID_N;i++){
-  const a=Math.random()*Math.PI*2,b=Math.acos(2*Math.random()-1),r=25+Math.random()*100;
-  voidPos[i*3]=r*Math.sin(b)*Math.cos(a);voidPos[i*3+1]=r*Math.sin(b)*Math.sin(a);voidPos[i*3+2]=r*Math.cos(b);
+{
+  const p = new Float32Array(VOID_N*3);
+  const c = new Float32Array(VOID_N*3);
+  for(let i=0;i<VOID_N;i++){
+    const a=rand()*Math.PI*2, b=Math.acos(2*rand()-1);
+    const r=30+rand()*280;
+    p[i*3]=r*Math.sin(b)*Math.cos(a); p[i*3+1]=r*Math.sin(b)*Math.sin(a); p[i*3+2]=r*Math.cos(b);
+    const t=rand();
+    c[i*3]=0.18+t*0.22; c[i*3+1]=0.04+t*0.08; c[i*3+2]=0.45+t*0.35;
+  }
+  voidGeo.setAttribute('position',new THREE.BufferAttribute(p,3));
+  voidGeo.setAttribute('color',  new THREE.BufferAttribute(c,3));
 }
-voidGeo.setAttribute('position',new THREE.BufferAttribute(voidPos,3));
 const voidMat = new THREE.PointsMaterial({
-  size:1.4,sizeAttenuation:true,color:0x6020cc,
-  transparent:true,opacity:0,depthWrite:false,
-  blending:THREE.AdditiveBlending,map:SP_VIOLET
+  size:1.8, sizeAttenuation:true, vertexColors:true,
+  transparent:true, opacity:0, depthWrite:false,
+  blending:THREE.AdditiveBlending
 });
-const voidField = new THREE.Points(voidGeo,voidMat);
-scene.add(voidField);
+scene.add(new THREE.Points(voidGeo, voidMat));
 
-// Void volumetric sphere — very faint deep purple haze
-const voidHaze = new THREE.Mesh(
-  new THREE.SphereGeometry(95,32,32),
-  new THREE.MeshBasicMaterial({
-    color:0x2a0850,transparent:true,opacity:0,
-    side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false
-  })
-);
-scene.add(voidHaze);
-
-// ── NEBULA particle cloud ─────────────────────────────────────────────────────
-// 12k particles, rich palette from reference images:
-// Horsehead: deep pink/red. Crab: electric blue/teal. Cygnus: pure electric blue.
-// Infrared: warm gold/yellow-green. Carina: crimson+blue.
-const NEB_N = 12000;
-const nebGeo  = new THREE.BufferGeometry();
-const nebPos0 = new Float32Array(NEB_N*3); // initial positions
-const nebCol  = new Float32Array(NEB_N*3);
-
-const nebPalette = [
-  [0.92,0.15,0.28], // deep crimson — hydrogen emission
-  [0.95,0.32,0.18], // rust orange
-  [0.88,0.10,0.40], // hot pink — Ha emission
-  [0.10,0.55,0.95], // electric blue — Cygnus Loop
-  [0.05,0.30,0.92], // deep cobalt
-  [0.08,0.80,0.88], // cyan-teal — ionized gas
-  [0.04,0.65,0.72], // teal
-  [0.85,0.72,0.12], // warm gold — infrared dust
-  [0.70,0.88,0.15], // yellow-green — shocked gas
-  [0.48,0.08,0.88], // violet
-  [0.25,0.05,0.78], // deep violet
-  [0.92,0.55,0.08], // amber — warm dust
-];
-
-// 5 lobes — multi-lobe structure like real molecular clouds
-const lobeConfig = [
-  {ox:55, oy:6,  oz:-28, sp:120, fy:0.14},
-  {ox:-75,oy:-12,oz:40,  sp:100, fy:0.12},
-  {ox:20, oy:-32,oz:65,  sp:90,  fy:0.16},
-  {ox:-35,oy:22, oz:-55, sp:80,  fy:0.13},
-  {ox:10, oy:5,  oz:10,  sp:65,  fy:0.10},
-];
-for(let i=0;i<NEB_N;i++){
-  const L  = lobeConfig[i%lobeConfig.length];
-  const a  = Math.random()*Math.PI*2;
-  const b  = Math.acos(2*Math.random()-1);
-  // Dense filamentary structure: particles cluster toward edges of each lobe
-  const rn = Math.random();
-  const r  = L.sp*(0.2 + 0.8*Math.pow(rn,0.55));
-  nebPos0[i*3]  = L.ox + r*Math.sin(b)*Math.cos(a);
-  nebPos0[i*3+1]= L.oy + r*Math.sin(b)*Math.sin(a)*L.fy;
-  nebPos0[i*3+2]= L.oz + r*Math.cos(b);
-  const col = nebPalette[Math.floor(Math.random()*nebPalette.length)];
-  nebCol[i*3]=col[0];nebCol[i*3+1]=col[1];nebCol[i*3+2]=col[2];
-}
-const nebPosCurrent = new Float32Array(nebPos0);
-nebGeo.setAttribute('position',new THREE.BufferAttribute(nebPosCurrent,3));
-nebGeo.setAttribute('color',new THREE.BufferAttribute(nebCol,3));
-const nebSeedArr=new Float32Array(NEB_N);
-for(let i=0;i<NEB_N;i++) nebSeedArr[i]=Math.random();
-nebGeo.setAttribute('nSeed',new THREE.BufferAttribute(nebSeedArr,1));
-
-const nebMat = new THREE.ShaderMaterial({
-  uniforms:{
-    time:   {value:0},
-    baseOp: {value:0},
-    ptSize: {value:2.2},
-  },
-  transparent:true, depthWrite:false,
-  blending:THREE.AdditiveBlending,
-  vertexShader:`
-    attribute float nSeed;
-    uniform float time, ptSize;
-    varying vec3 vColor;
-    varying float vBright;
-    vec3 hsl2rgb(float h,float s,float l){
-      vec3 rgb=clamp(abs(mod(h*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
-      return l+s*(rgb-0.5)*(1.0-abs(2.0*l-1.0));
-    }
-    void main(){
-      float s=nSeed;
-      // Three-axis turbulent oscillation — each particle has unique phase & rate
-      float t1=time*(0.055+s*0.040)+s*6.2832;
-      float t2=time*(0.082+s*0.028)+s*4.1888;
-      float t3=time*(0.068+s*0.046)+s*2.0944;
-      float amp=3.0+s*9.5;
-      vec3 drift=vec3(
-        sin(t1)*amp + cos(t2*0.67)*amp*0.38,
-        (cos(t2)*0.14 + sin(t3)*0.09)*amp,
-        cos(t3)*amp + sin(t1*0.73)*amp*0.38
-      );
-      vec3 pos=position+drift;
-      // Nebula HSL palette — hue drifts slowly, avoids yellow-green
-      float hue=fract(s*1.618+time*0.010);
-      if(hue<0.20)      hue=hue*0.30;                   // deep crimson 0.00-0.06
-      else if(hue<0.45) hue=0.55+(hue-0.20)*0.60;       // electric blue 0.55-0.70
-      else if(hue<0.65) hue=0.48+(hue-0.45)*0.35;       // teal/cyan 0.48-0.55
-      else if(hue<0.82) hue=0.75+(hue-0.65)*0.59;       // violet/pink 0.75-0.85
-      else              hue=0.08+(hue-0.82)*0.67;        // gold/amber 0.08-0.19
-      // Per-particle brightness pulse at individual rate
-      float pulse=0.45+0.55*sin(time*(0.45+s*0.70)+s*12.566);
-      vColor=hsl2rgb(hue,0.84,0.30+s*0.24)*(0.35+pulse*0.85);
-      vBright=pulse;
-      vec4 mvPos=modelViewMatrix*vec4(pos,1.0);
-      float pSize=(ptSize*(0.55+s*1.50))*640.0/-mvPos.z;
-      gl_PointSize=clamp(pSize,1.2,32.0);
-      gl_Position=projectionMatrix*mvPos;
-    }
-  `,
-  fragmentShader:`
-    varying vec3 vColor;
-    varying float vBright;
-    uniform float baseOp;
-    void main(){
-      if(baseOp<0.004) discard;
-      vec2 c=gl_PointCoord-0.5;
-      float d=length(c)*2.0;
-      if(d>1.0) discard;
-      float soft=(1.0-d)*(1.0-d);
-      float alpha=baseOp*soft*(0.45+vBright*0.65);
-      if(alpha<0.003) discard;
-      gl_FragColor=vec4(vColor,alpha);
-    }
-  `,
-});
-nebMat.size=2.2; // tracked by tick loop, synced to ptSize uniform
-const nebula = new THREE.Points(nebGeo,nebMat);
-scene.add(nebula);
-
-// Nebula volumetric hazes — colored layers for depth
-function nebHaze(color,radius,op){
-  const m=new THREE.Mesh(new THREE.SphereGeometry(radius,24,24),
-    new THREE.MeshBasicMaterial({color,transparent:true,opacity:op,
-    side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
-  scene.add(m); return m;
-}
-const nebHazeRed  = nebHaze(0x6a0018,130,0);
-const nebHazeBlue = nebHaze(0x0030cc,110,0);
-const nebHazeGold = nebHaze(0x4a2c00,100,0);
-
-// ── COLLAPSE bipolar jets — L1527 reference ───────────────────────────────────
-// Vivid orange jets (top) + blue jets (bottom), hourglass shape
-const JET_N   = 3500;
-const jetGroup = new THREE.Group();
-scene.add(jetGroup);
-
-function makeJetSide(side, colA, colB, spA, spB) {
-  const geo = new THREE.BufferGeometry();
-  const pos = new Float32Array(JET_N*3);
-  const col = new Float32Array(JET_N*3);
-  for(let i=0;i<JET_N;i++){
-    const t     = Math.pow(Math.random(),0.7); // bias toward core
-    const reach = 2 + t*48;
-    const spread= t*reach*0.28;
-    const a     = Math.random()*Math.PI*2;
-    pos[i*3]   = Math.cos(a)*spread;
-    pos[i*3+1] = side*(reach);
-    pos[i*3+2] = Math.sin(a)*spread;
-    const cA   = Math.random()<0.6 ? colA : colB;
-    const bright= 0.7+Math.random()*0.3;
-    col[i*3]=cA[0]*bright;col[i*3+1]=cA[1]*bright;col[i*3+2]=cA[2]*bright;
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYER 1 — FINE SPIRAL PARTICLES
+// ═══════════════════════════════════════════════════════════════════════════════
+const NUM_ARMS = 3;
+const FINE_N   = 14000;
+let fineMat;
+{
+  const geo  = new THREE.BufferGeometry();
+  const pos  = new Float32Array(FINE_N*3);
+  const seed = new Float32Array(FINE_N);
+  for(let i=0;i<FINE_N;i++){
+    const arm  = i % NUM_ARMS;
+    const t    = rand();
+    const r    = 5 + t*130;
+    const spin = r * 0.022;
+    const base = (arm/NUM_ARMS)*Math.PI*2;
+    const u    = rand()*0.999+0.0005;
+    const g    = Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*rand());
+    const angle  = base + spin + g*0.16;
+    const rFinal = r + g*r*0.07;
+    pos[i*3]   = rFinal*Math.cos(angle);
+    pos[i*3+1] = g*r*0.022;
+    pos[i*3+2] = rFinal*Math.sin(angle);
+    seed[i]    = rand();
   }
   geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
-  geo.setAttribute('color',new THREE.BufferAttribute(col,3));
-  const mat = new THREE.PointsMaterial({
-    size:1.6,sizeAttenuation:true,vertexColors:true,
-    transparent:true,opacity:0,depthWrite:false,
-    blending:THREE.AdditiveBlending,map:SP_WHITE
-  });
-  jetGroup.add(new THREE.Points(geo,mat));
-  return mat;
-}
-// Top jet: hot orange-red (protostellar outflow color from L1527 JWST image)
-const jetMatTop = makeJetSide( 1,[1.0,0.45,0.08],[1.0,0.70,0.25],SP_RED,SP_AMBER);
-// Bottom jet: blue (opposite lobe)
-const jetMatBot = makeJetSide(-1,[0.30,0.55,1.0],[0.10,0.80,0.90],SP_BLUE,SP_CYAN);
+  geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
 
-// Disk waist around collapse center — dark equatorial disk occulting the jets
-const waistGeo = new THREE.BufferGeometry();
-const WAIST_N  = 2000;
-const waistPos = new Float32Array(WAIST_N*3);
-for(let i=0;i<WAIST_N;i++){
-  const a=Math.random()*Math.PI*2, r=1.5+Math.random()*14;
-  waistPos[i*3]=r*Math.cos(a);waistPos[i*3+1]=(Math.random()-0.5)*1.2;waistPos[i*3+2]=r*Math.sin(a);
-}
-waistGeo.setAttribute('position',new THREE.BufferAttribute(waistPos,3));
-const waistMat = new THREE.PointsMaterial({
-  size:0.35,color:0x441505,sizeAttenuation:true,
-  transparent:true,opacity:0,depthWrite:false,
-  blending:THREE.AdditiveBlending,map:SP_AMBER
-});
-scene.add(new THREE.Points(waistGeo,waistMat));
-
-// ── PROTOSTELLAR DISK — ALMA rings ────────────────────────────────────────────
-// Concentric amber/orange rings with gaps — HL Tau reference
-const DISK_RINGS = [
-  {r:4.2, t:0.38, col:0xff9828, op:0},
-  {r:6.5, t:0.24, col:0xff7810, op:0},
-  {r:9.2, t:0.20, col:0xff5c08, op:0},
-  {r:12.0,t:0.16, col:0xee4400, op:0},
-  {r:15.2,t:0.13, col:0xcc3800, op:0},
-  {r:18.8,t:0.11, col:0xaa2e00, op:0},
-  {r:22.5,t:0.09, col:0x882400, op:0},
-];
-const diskRingMeshes = DISK_RINGS.map(d=>{
-  const m=new THREE.Mesh(
-    new THREE.TorusGeometry(d.r,d.t,8,280),
-    new THREE.MeshBasicMaterial({color:d.col,transparent:true,opacity:0,
-      blending:THREE.AdditiveBlending,depthWrite:false})
-  );
-  m.rotation.x=Math.PI/2; scene.add(m); return m;
-});
-
-// Disk glow — dense particle sheet in warm amber
-const DGLOW_N = 5000;
-const dglowGeo= new THREE.BufferGeometry();
-const dglowPos= new Float32Array(DGLOW_N*3);
-const dglowCol= new Float32Array(DGLOW_N*3);
-for(let i=0;i<DGLOW_N;i++){
-  const a=Math.random()*Math.PI*2, r=Math.pow(Math.random(),0.45)*24;
-  dglowPos[i*3]=r*Math.cos(a); dglowPos[i*3+1]=(Math.random()-0.5)*0.5; dglowPos[i*3+2]=r*Math.sin(a);
-  const t=1-r/24;
-  dglowCol[i*3]=1;dglowCol[i*3+1]=0.28+t*0.42;dglowCol[i*3+2]=t*0.08;
-}
-dglowGeo.setAttribute('position',new THREE.BufferAttribute(dglowPos,3));
-dglowGeo.setAttribute('color',new THREE.BufferAttribute(dglowCol,3));
-const dglowMat = new THREE.PointsMaterial({
-  size:0.62,sizeAttenuation:true,vertexColors:true,
-  transparent:true,opacity:0,depthWrite:false,
-  blending:THREE.AdditiveBlending,map:SP_GOLD
-});
-scene.add(new THREE.Points(dglowGeo,dglowMat));
-
-// ── SUN ───────────────────────────────────────────────────────────────────────
-function makeSunTex() {
-  const c=document.createElement('canvas');c.width=c.height=512;
-  const x=c.getContext('2d');
-  // Radial gradient base — SDO golden amber
-  const g=x.createRadialGradient(256,256,0,256,256,256);
-  g.addColorStop(0,'#fffef8');
-  g.addColorStop(0.18,'#ffe890');
-  g.addColorStop(0.55,'#ff9c18');
-  g.addColorStop(0.82,'#cc4800');
-  g.addColorStop(1,'#881800');
-  x.fillStyle=g;x.fillRect(0,0,512,512);
-  // Magnetic field lines — concentric arcs like SDO images
-  x.globalAlpha=0.22;
-  for(let i=0;i<120;i++){
-    const cx=128+Math.random()*256, cy=128+Math.random()*256;
-    const len=20+Math.random()*55;
-    const a=Math.random()*Math.PI*2, sweep=Math.PI*(0.3+Math.random()*0.9);
-    x.strokeStyle=`rgba(255,${180+Math.floor(Math.random()*60)},60,0.9)`;
-    x.lineWidth=0.6+Math.random()*1.2;
-    x.beginPath();x.arc(cx,cy,len,a,a+sweep);x.stroke();
-  }
-  // Bright granulation speckles
-  x.globalAlpha=0.15;
-  for(let i=0;i<200;i++){
-    const bx=Math.random()*512, by=Math.random()*512;
-    x.fillStyle='rgba(255,255,200,0.8)';
-    x.beginPath();x.arc(bx,by,1+Math.random()*2.5,0,Math.PI*2);x.fill();
-  }
-  return new THREE.CanvasTexture(c);
-}
-const sunMesh = new THREE.Mesh(
-  new THREE.SphereGeometry(2.5,64,64),
-  new THREE.ShaderMaterial({
-    uniforms:{tDiffuse:{value:makeSunTex()},warpAmt:{value:0},time:{value:0}},
-    vertexShader:`
-      uniform float warpAmt,time;
-      varying vec2 vUv; varying vec3 vNorm;
-      float h31(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.54);}
-      float n3(vec3 p){vec3 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
-        return mix(mix(mix(h31(i),h31(i+vec3(1,0,0)),u.x),mix(h31(i+vec3(0,1,0)),h31(i+vec3(1,1,0)),u.x),u.y),
-                   mix(mix(h31(i+vec3(0,0,1)),h31(i+vec3(1,0,1)),u.x),mix(h31(i+vec3(0,1,1)),h31(i+vec3(1,1,1)),u.x),u.y),u.z);}
-      float fbm4(vec3 p){float v=0.,a=0.5;for(int i=0;i<4;i++){v+=a*n3(p);p*=2.1;a*=0.5;}return v;}
+  fineMat = new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0}, gAlpha:{value:0}, formT:{value:0}, rotSpeed:{value:0.058}, rotAngle:{value:0}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0}, galaxyT:{value:0}, turbMult:{value:1.0}, spiralMult:{value:1.0}, coreMult:{value:1.0}, hotHue:{value:0.07}, satMult:{value:1.0}, cloudScale:{value:1.0}, ballForm:{value:0.0} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
+      attribute float nSeed;
+      uniform float time;
+      uniform float formT;
+      uniform float rotSpeed;
+      uniform float rotAngle;
+      uniform float warmBias;
+      uniform float collapseT;
+      uniform float galaxyT;
+      uniform float turbMult;
+      uniform float spiralMult;
+      uniform float coreMult;
+      uniform float hotHue;
+      uniform float satMult;
+      uniform float cloudScale;
+      uniform float ballForm;
+      varying vec3  vColor;
+      varying float vAlpha;
       void main(){
-        vUv=uv; vNorm=normalize(normalMatrix*normal);
-        vec3 pos=position;
-        if(warpAmt>0.001){
-          vec3 wp=position*3.0+vec3(time*0.4,time*0.3,time*0.5);
-          float d1=(fbm4(wp)*2.0-1.0)*warpAmt*2.4;
-          float d2=(fbm4(wp*1.9+3.7)*2.0-1.0)*warpAmt*1.6;
-          pos=position*(1.0+warpAmt*0.60)+normal*(d1+d2);
-        }
-        gl_Position=projectionMatrix*modelViewMatrix*vec4(pos,1.0);
+        float s=nSeed;
+        float formFactor=0.5+0.5*sin(time*0.028+s*2.1);
+        float formEnvelope=smoothstep(0.0,0.35,formT);
+        float amp=(2.0+formFactor*11.0)*formEnvelope;
+        float t1=time*(0.052+s*0.038)+s*6.2832;
+        float t2=time*(0.079+s*0.026)+s*4.1888;
+        float t3=time*(0.065+s*0.044)+s*2.0944;
+        vec3 drift=vec3(
+          sin(t1)*amp+cos(t2*0.67)*amp*0.36,
+          (cos(t2)*0.12+sin(t3)*0.08)*amp,
+          cos(t3)*amp+sin(t1*0.73)*amp*0.36
+        );
+        float breathe=1.0+0.05*sin(time*0.14+s*4.0);
+        vec3 basePos=vec3(position.x*breathe,position.y,position.z*breathe);
+        float rotA=rotAngle;
+        float cr=cos(rotA),sr=sin(rotA);
+        basePos=vec3(basePos.x*cr-basePos.z*sr,basePos.y,basePos.x*sr+basePos.z*cr);
+        float cloudiness=1.0-smoothstep(0.18,0.92,formT);
+        vec3 cloudScatter=vec3(
+          sin(s*71.9+time*0.042)*88.0+cos(s*43.1+time*0.031)*42.0,
+          sin(s*53.7+time*0.038)*58.0+cos(s*29.3+time*0.055)*32.0,
+          cos(s*83.5+time*0.036)*88.0+sin(s*37.7+time*0.043)*42.0
+        )*cloudiness;
+        vec3 nebulaPos=basePos+drift+cloudScatter;
+        float normR=length(position.xz)/130.0;
+        float reveal=smoothstep(0.0,0.22,formT*1.30-normR);
+        float radHue;
+        if     (normR<0.10) radHue=0.60;
+        else if(normR<0.38) radHue=0.58;
+        else if(normR<0.58) radHue=0.50;
+        else if(normR<0.78) radHue=0.04;
+        else                radHue=0.80;
+        float sh=remapHue(fract(s*1.618+time*0.008));
+        // sh mix ramps in with formation — at formT=0 the color is pure radHue (blue/cyan
+        // radial bands), avoiding the linear hue-mix-through-green artifact you get from
+        // blending a red-band radHue with a blue-ish sh at full 0.36 weight from frame one.
+        float shWeight=0.36*smoothstep(0.0,0.5,formT);
+        float nebulaHue=mix(mix(radHue,sh,shWeight),0.08+s*0.07,warmBias);
+        float nebulaLum=0.28+s*0.20+(1.0-normR)*0.10;
+        float formed=1.0-formFactor;
+        float nebulaAlpha=0.75*(0.38+formed*0.68)*reveal*(1.0-cloudiness*0.42);
+        float coreFactor=1.0+(1.0-normR)*0.9;
+        float nebulaPtSz=2.4*(0.50+s*1.55)*coreFactor*(0.62+formed*0.48)*(1.0+cloudiness*1.1)*640.0;
+        float cycleSpeed=0.095+s*0.042;
+        float loopT=fract(time*cycleSpeed+s);
+        float tc=pow(loopT,0.80);
+        float initR=length(position.xz);
+        float rc=initR*(1.0-pow(tc,1.70))*cloudScale;
+        float winds=(2.8+initR*0.060)*spiralMult;
+        float anglec=atan(position.z,position.x)+tc*winds*6.2832;
+        // ballForm=0 (default) is bit-identical to before. Above 0, particles get
+        // pushed outward vertically as they converge inward radially, so as rc
+        // shrinks toward 0 the vertical spread stays comparable instead of also
+        // collapsing to nearly flat — the cloud rounds into a ball instead of a point.
+        float ballScatter=(fract(s*13.7)-0.5)*2.0;
+        float hc=position.y*(1.0-tc*0.88)*cloudScale + ballForm*rc*ballScatter;
+        float turbAmp=(0.4+tc*3.2)*(0.8+s*0.4)*turbMult;
+        float tv1=time*(1.8+s*1.2)+s*6.2832;
+        float tv2=time*(2.5+s*0.8)+s*4.1888;
+        vec3 turb=vec3(sin(tv1)*turbAmp,cos(tv2)*0.22*turbAmp,cos(tv1)*turbAmp);
+        vec3 collapsePos=vec3(rc*cos(anglec),hc,rc*sin(anglec))+turb*tc*cloudScale;
+        float heat=pow(tc,1.80/max(0.2,coreMult));
+        float collapseHue=mix(remapHue(fract(s*1.618+time*0.012)),hotHue+s*0.06,heat);
+        float collapseLum=mix(0.28+s*0.18,0.72,pow(heat,1.5));
+        float brightFlare=1.0+pow(tc,4.0)*5.0;
+        float pulse=0.55+0.45*sin(time*(3.0+s*2.0)+s*6.28);
+        float cFadeIn=smoothstep(0.0,0.06,loopT);
+        float cFadeOut=smoothstep(1.0,0.90,loopT);
+        float collapseAlpha=cFadeIn*cFadeOut*(0.55+heat*0.55);
+        float collapsePtSz=(1.4+(1.0-heat)*s*1.2)*640.0;
+        float ct=collapseT;
+        vec3 pos=mix(nebulaPos,collapsePos,ct);
+        float collapseHueBiased=mix(collapseHue,hotHue+s*0.06,(1.0-heat)*warmBias);
+        float hue=mix(nebulaHue,collapseHueBiased,ct);
+        float lum=mix(nebulaLum,collapseLum,ct);
+        float sat=mix(0.86,mix(0.84,0.96,heat),ct)*satMult;
+        float brt=mix((0.22+formed*0.78)*0.90,brightFlare*(0.55+pulse*0.55),ct);
+        vColor=hsl2rgb(hue,sat,lum)*brt;
+        vAlpha=mix(nebulaAlpha,collapseAlpha,ct);
+        float armIdx=step(0.5,fract(s*3.71));
+        float armOff=armIdx*3.14159265;
+        float gR=25.0+fract(s*7.31)*230.0;
+        float gTheta=armOff+(gR/75.0)*2.8+(fract(s*5.19)-0.5)*0.55;
+        float gSpread=(fract(s*11.3)-0.5)*50.0;
+        float gX=gR*cos(gTheta)+gSpread*cos(gTheta+1.5708);
+        float gZ=gR*sin(gTheta)+gSpread*sin(gTheta+1.5708);
+        float gY=(fract(s*13.7)-0.5)*8.0;
+        vec3 galaxyPos=vec3(gX,gY,gZ);
+        pos=mix(pos,galaxyPos,galaxyT);
+        float coolStar=step(0.78,fract(s*8.11));
+        float starHue=mix(mix(0.06,0.11,fract(s*4.3)),mix(0.57,0.65,fract(s*6.1)),coolStar);
+        float starSat=0.45+fract(s*3.1)*0.30;
+        float starLum=0.65+fract(s*7.9)*0.30;
+        vColor=mix(vColor,hsl2rgb(starHue,starSat,starLum)*(1.2+fract(s*2.7)*0.8),galaxyT);
+        vAlpha=mix(vAlpha,0.92,galaxyT);
+        vec4 mvPos=modelViewMatrix*vec4(pos,1.0);
+        float ptSz=mix(nebulaPtSz,collapsePtSz,ct)/-mvPos.z;
+        float starPtSz=clamp((0.8+fract(s*5.2)*1.4)*640.0/-mvPos.z,1.0,6.0);
+        gl_PointSize=clamp(mix(ptSz,starPtSz,galaxyT),0.5,13.0);
+        gl_Position=projectionMatrix*mvPos;
       }
     `,
     fragmentShader:`
-      uniform sampler2D tDiffuse; uniform float warpAmt,time;
-      varying vec2 vUv; varying vec3 vNorm;
+      uniform float gAlpha;
+      uniform float brightMult;
+      varying vec3  vColor;
+      varying float vAlpha;
       void main(){
-        vec2 uv=vUv;
-        if(warpAmt>0.001){
-          uv.x+=sin(vUv.y*20.0+time*2.2)*warpAmt*0.24;
-          uv.y+=cos(vUv.x*24.0+time*1.8)*warpAmt*0.20;
-          uv=fract(uv);
-        }
-        vec3 col=texture2D(tDiffuse,uv).rgb;
-        float rim=1.0-abs(dot(vNorm,vec3(0.0,0.0,1.0)));
-        col+=warpAmt*rim*rim*vec3(1.0,0.50,0.0)*3.0;
-        gl_FragColor=vec4(col,1.0);
+        if(gAlpha<0.004) discard;
+        vec2  c=gl_PointCoord-0.5;
+        float d=length(c)*2.0;
+        if(d>1.0) discard;
+        float crisp=smoothstep(0.42,0.0,d);
+        float core=max(0.0,1.0-d*9.0)*0.65;
+        float alpha=(crisp*0.40+core)*(0.50+vAlpha*0.60)*gAlpha;
+        if(alpha<0.003) discard;
+        gl_FragColor=vec4(vColor*brightMult,alpha);
       }
     `,
-  })
-);
-sunMesh.scale.setScalar(0); scene.add(sunMesh);
+  });
+  scene.add(new THREE.Points(geo, fineMat));
+}
 
-// Corona layers — multiple halos for depth
-function corona(rad,col,op) {
-  const m=new THREE.Mesh(new THREE.SphereGeometry(rad,32,32),
-    new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:op,
-    side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYER 2 — VOLUMETRIC CLOUD PUFFS
+// ═══════════════════════════════════════════════════════════════════════════════
+const CLOUD_N = 2800;
+let cloudMat;
+{
+  const geo  = new THREE.BufferGeometry();
+  const pos  = new Float32Array(CLOUD_N*3);
+  const seed = new Float32Array(CLOUD_N);
+  for(let i=0;i<CLOUD_N;i++){
+    const arm  = i % NUM_ARMS;
+    const t    = rand();
+    const r    = 8 + t*125;
+    const spin = r * 0.022;
+    const base = (arm/NUM_ARMS)*Math.PI*2;
+    const scatter = (rand()-0.5)*r*0.55;
+    const angle   = base + spin + scatter/Math.max(r,1);
+    const rFinal  = r + (rand()-0.5)*r*0.35;
+    pos[i*3]   = rFinal*Math.cos(angle);
+    pos[i*3+1] = (rand()-0.5)*r*0.12;
+    pos[i*3+2] = rFinal*Math.sin(angle);
+    seed[i]    = rand();
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
+
+  cloudMat = new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0}, gAlpha:{value:0}, rotSpeed:{value:0.026}, rotAngle:{value:0}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0}, turbMult:{value:1.0}, spiralMult:{value:1.0}, coreMult:{value:1.0}, hotHue:{value:0.07}, satMult:{value:1.0}, cloudScale:{value:1.0}, ballForm:{value:0.0} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
+      attribute float nSeed;
+      uniform float time;
+      uniform float gAlpha;
+      uniform float rotSpeed;
+      uniform float rotAngle;
+      uniform float warmBias;
+      uniform float collapseT;
+      uniform float turbMult;
+      uniform float spiralMult;
+      uniform float coreMult;
+      uniform float hotHue;
+      uniform float satMult;
+      uniform float cloudScale;
+      uniform float ballForm;
+      varying vec3  vColor;
+      varying float vAlpha;
+      varying vec2  vSeedOff;
+      void main(){
+        float s=nSeed;
+        float formFactor=0.5+0.5*sin(time*0.012+s*1.5);
+        float amp=(4.0+formFactor*10.0)*smoothstep(0.0,0.5,gAlpha);
+        float t1=time*(0.018+s*0.010)+s*6.2832;
+        float t2=time*(0.024+s*0.008)+s*4.1888;
+        float t3=time*(0.020+s*0.013)+s*2.0944;
+        vec3 drift=vec3(
+          sin(t1)*amp+cos(t2*0.55)*amp*0.40,
+          (cos(t2)*0.10+sin(t3)*0.07)*amp,
+          cos(t3)*amp+sin(t1*0.68)*amp*0.40
+        );
+        float rotA=rotAngle;
+        float cr=cos(rotA),sr=sin(rotA);
+        vec3 basePos=vec3(position.x*cr-position.z*sr,position.y,position.x*sr+position.z*cr);
+        vec3 nebulaPos=basePos+drift;
+        float loopT=fract(time*0.040+s);
+        float tc=pow(loopT,0.70);
+        float rCC=length(position.xz)*(1.0-pow(tc,2.0))*cloudScale;
+        float angleCC=atan(position.z,position.x)+tc*4.5*spiralMult*6.2832;
+        float ballScatterCC=(fract(s*13.7)-0.5)*2.0;
+        float hCC=position.y*(1.0-tc*0.70)*cloudScale + ballForm*rCC*ballScatterCC;
+        float ampCC=(3.0+tc*8.0)*turbMult;
+        float tv1=time*(0.12+s*0.08)+s*6.2832;
+        float tv2=time*(0.18+s*0.06)+s*4.1888;
+        vec3 driftCC=vec3(sin(tv1)*ampCC+cos(tv2*0.6)*ampCC*0.4,
+                          (cos(tv2)*0.09+sin(tv1)*0.07)*ampCC,
+                          cos(tv1)*ampCC+sin(tv2*0.7)*ampCC*0.4);
+        vec3 collapsePos=vec3(rCC*cos(angleCC),hCC,rCC*sin(angleCC))+driftCC*tc*cloudScale;
+        vec3 pos=mix(nebulaPos,collapsePos,collapseT);
+        float globalHue=fract(time*0.0048);
+        float nebulaHue=mix(remapHue(fract(globalHue+s*0.42)),0.08+s*0.06,warmBias);
+        float heatCC=pow(tc,1.6/max(0.2,coreMult));
+        float collapseHue=mix(remapHue(fract(s*0.618+time*0.004)),hotHue+s*0.04,heatCC);
+        float hue=mix(nebulaHue,collapseHue,collapseT);
+        float sat=mix(0.80,mix(0.78,0.94,heatCC),collapseT)*satMult;
+        float lum=mix(0.22+s*0.14,mix(0.14+s*0.10,0.55,heatCC),collapseT);
+        float fadeCC=0.5+0.5*sin(time*0.055+s*3.14);
+        float pulseCC=0.40+0.60*sin(time*(0.55+s*0.45)+s*8.37);
+        float brt=mix(0.62,(0.25+fadeCC*0.55+pulseCC*0.28)*(1.0+heatCC*1.5),collapseT);
+        vColor=hsl2rgb(hue,sat,lum)*brt;
+        float cAlphaCC=fadeCC*fadeCC*(0.40+pulseCC*0.30)*smoothstep(1.0,0.85,loopT)*smoothstep(0.0,0.08,loopT);
+        vAlpha=mix(0.55,cAlphaCC,collapseT);
+        vSeedOff=vec2(s*17.31+time*0.030, s*11.73+time*0.020);
+        vec4 mvPos=modelViewMatrix*vec4(pos,1.0);
+        float ptSz=(22.0+s*38.0)*0.92*640.0/-mvPos.z;
+        gl_PointSize=clamp(ptSz,4.0,400.0);
+        gl_Position=projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader: HSL_GLSL + HUE_REMAP_GLSL + `
+      uniform float gAlpha;
+      uniform float brightMult;
+      varying vec3  vColor;
+      varying float vAlpha;
+      varying vec2  vSeedOff;
+      float h2(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+      float n2(vec2 p){
+        vec2 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+        return mix(mix(h2(i),h2(i+vec2(1,0)),u.x),
+                   mix(h2(i+vec2(0,1)),h2(i+vec2(1,1)),u.x),u.y);
+      }
+      float fbm(vec2 p){
+        float v=0.0,a=0.5;
+        for(int i=0;i<4;i++){v+=a*n2(p);p=p*2.1+vec2(1.3,7.9);a*=0.5;}
+        return v;
+      }
+      void main(){
+        if(gAlpha<0.004) discard;
+        vec2  c=gl_PointCoord-0.5;
+        float d=length(c);
+        if(d>0.52) discard;
+        float n=fbm(c*4.5+vSeedOff);
+        float edge=d - n*0.32 + 0.04;
+        float shape=smoothstep(0.48,0.06,edge);
+        float detail=fbm(c*9.0+vSeedOff*1.8)*0.45+0.55;
+        float alpha=shape*detail*vAlpha*0.48*gAlpha;
+        if(alpha<0.002) discard;
+        gl_FragColor=vec4(vColor*detail*brightMult, alpha);
+      }
+    `,
+  });
+  scene.add(new THREE.Points(geo, cloudMat));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYER 3 — EJECTION SPARKS
+// ═══════════════════════════════════════════════════════════════════════════════
+const SPARK_N = 9000;
+let sparkMat;
+{
+  const geo   = new THREE.BufferGeometry();
+  const pos   = new Float32Array(SPARK_N*3);
+  const seed  = new Float32Array(SPARK_N);
+  for(let i=0;i<SPARK_N;i++){
+    const arm   = i % NUM_ARMS;
+    const t     = rand();
+    const r     = 5 + t*130;
+    const spin  = r*0.022;
+    const base  = (arm/NUM_ARMS)*Math.PI*2;
+    const angle = base + spin + (rand()-0.5)*0.08;
+    const rF    = r + (rand()-0.5)*r*0.03;
+    pos[i*3]   = rF*Math.cos(angle);
+    pos[i*3+1] = (rand()-0.5)*1.5;
+    pos[i*3+2] = rF*Math.sin(angle);
+    seed[i]    = rand();
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
+
+  sparkMat = new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0}, gAlpha:{value:0}, rotSpeed:{value:0.058}, rotAngle:{value:0} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
+      attribute float nSeed;
+      uniform float time;
+      uniform float rotSpeed;
+      uniform float rotAngle;
+      varying vec3  vColor;
+      varying float vAlpha;
+      void main(){
+        float s=nSeed;
+        float cycleLen=5.0+s*9.0;
+        float phase=fract((time+s*cycleLen)/cycleLen);
+        float activeWin=0.22;
+        float t=clamp(phase/activeWin,0.0,1.0);
+        float isActive=step(phase,activeWin);
+        vec2 radDir=normalize(position.xz+vec2(0.0002,0.0002));
+        vec2 tangDir=normalize(vec2(-position.z, position.x));
+        vec2 ejectDir=normalize(radDir*0.25+tangDir*0.75);
+        float reach=t*(24.0+s*44.0);
+        vec3 ejPos=vec3(
+          position.x+ejectDir.x*reach,
+          position.y+(s-0.5)*reach*0.04,
+          position.z+ejectDir.y*reach
+        );
+        float rotA=rotAngle;
+        float cr=cos(rotA),sr=sin(rotA);
+        ejPos=vec3(ejPos.x*cr-ejPos.z*sr,ejPos.y,ejPos.x*sr+ejPos.z*cr);
+        float normR=length(position.xz)/130.0;
+        float tipHue=0.60;
+        float armHue=mix(0.58,0.04,normR);
+        float hue=mix(tipHue,remapHue(armHue),t);
+        float lum=0.70-t*0.32;
+        vColor=hsl2rgb(hue,0.80,lum)*(1.2-t*0.65)*isActive;
+        vAlpha=isActive*(1.0-t)*(1.0-t)*0.48;
+        vec4 mvPos=modelViewMatrix*vec4(ejPos,1.0);
+        float ptSz=(0.7+s*0.6)*isActive*640.0/-mvPos.z;
+        gl_PointSize=clamp(ptSz,0.6,5.0);
+        gl_Position=projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader:`
+      uniform float gAlpha;
+      varying vec3  vColor;
+      varying float vAlpha;
+      void main(){
+        if(gAlpha<0.004||vAlpha<0.004) discard;
+        vec2  c=gl_PointCoord-0.5;
+        float d=length(c)*2.0;
+        if(d>1.0) discard;
+        float alpha=vAlpha*smoothstep(0.5,0.05,d)*gAlpha;
+        gl_FragColor=vec4(vColor,alpha);
+      }
+    `,
+  });
+  scene.add(new THREE.Points(geo, sparkMat));
+}
+
+const hazeRed  = { material:{ opacity:0 } };
+const hazeBlue = { material:{ opacity:0 } };
+const hazeGold = { material:{ opacity:0 } };
+
+// ── Star field ────────────────────────────────────────────────────────────────
+const starMat = new THREE.PointsMaterial({
+  size:2.0, sizeAttenuation:true, vertexColors:true,
+  transparent:true, opacity:0, depthWrite:false,
+  blending:THREE.AdditiveBlending
+});
+{
+  const N=3500, geo=new THREE.BufferGeometry();
+  const p=new Float32Array(N*3), c=new Float32Array(N*3);
+  const pal=[[0.88,0.94,1],[1,1,0.88],[0.68,0.80,1],[1,0.82,0.62]];
+  for(let i=0;i<N;i++){
+    const a=rand()*Math.PI*2, b=Math.acos(2*rand()-1), r=700+rand()*300;
+    p[i*3]=r*Math.sin(b)*Math.cos(a); p[i*3+1]=r*Math.sin(b)*Math.sin(a); p[i*3+2]=r*Math.cos(b);
+    const sc=pal[Math.floor(rand()*pal.length)];
+    c[i*3]=sc[0]; c[i*3+1]=sc[1]; c[i*3+2]=sc[2];
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+  geo.setAttribute('color',  new THREE.BufferAttribute(c,3));
+  scene.add(new THREE.Points(geo, starMat));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COLLAPSE ELEMENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+const HSL_C   = HSL_GLSL;
+const REMAP_C = HUE_REMAP_GLSL;
+
+// ── Collapse Layer 1: Spiral Drain ────────────────────────────────────────────
+let drainMat;
+{
+  const N=20000, geo=new THREE.BufferGeometry();
+  const pos=new Float32Array(N*3), seed=new Float32Array(N);
+  for(let i=0;i<N;i++){
+    const arm=i%3, t=rand(), r=4+t*125, spin=r*0.022;
+    const base=(arm/3)*Math.PI*2;
+    const u=rand()*0.999+0.0005;
+    const g=Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*rand());
+    const angle=base+spin+g*0.14, rF=r+g*r*0.06;
+    pos[i*3]=rF*Math.cos(angle); pos[i*3+1]=g*r*0.018; pos[i*3+2]=rF*Math.sin(angle);
+    seed[i]=rand();
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
+  drainMat=new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0}, gAlpha:{value:0} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader: HSL_C+REMAP_C+`
+      attribute float nSeed;
+      uniform float time;
+      varying vec3  vColor;
+      varying float vAlpha;
+      void main(){
+        float s=nSeed;
+        float initR=length(position.xz);
+        float initAngle=atan(position.z,position.x);
+        float initY=position.y;
+        float cycleSpeed=0.095+s*0.042;
+        float loopT=fract(time*cycleSpeed+s);
+        float t=pow(loopT,0.80);
+        float r=initR*(1.0-pow(t,1.70));
+        float winds=2.8+initR*0.060;
+        float angle=initAngle+t*winds*6.2832;
+        float h=initY*(1.0-t*0.88);
+        float turbAmp=(0.4+t*3.2)*(0.8+s*0.4);
+        float tv1=time*(1.8+s*1.2)+s*6.2832;
+        float tv2=time*(2.5+s*0.8)+s*4.1888;
+        vec3 turb=vec3(sin(tv1)*turbAmp,(cos(tv2)*0.22)*turbAmp,cos(tv1)*turbAmp);
+        vec3 pos=vec3(r*cos(angle),h,r*sin(angle))+turb*t;
+        float heat=pow(t,1.80);
+        float coldHue=remapHue(fract(s*1.618+time*0.012));
+        float hotHue=0.07+s*0.06;
+        float hue=mix(coldHue,hotHue,heat);
+        float sat=mix(0.84,0.96,heat);
+        float lum=mix(0.28+s*0.18,0.72,pow(heat,1.5));
+        float brightFlare=1.0+pow(t,4.0)*5.0;
+        float pulse=0.55+0.45*sin(time*(3.0+s*2.0)+s*6.28);
+        float fadeIn=smoothstep(0.0,0.06,loopT);
+        float fadeOut=smoothstep(1.0,0.90,loopT);
+        vColor=hsl2rgb(hue,sat,lum)*brightFlare*(0.55+pulse*0.55);
+        vAlpha=fadeIn*fadeOut*(0.55+heat*0.55);
+        vec4 mvPos=modelViewMatrix*vec4(pos,1.0);
+        float ptSz=(1.4+(1.0-heat)*s*1.2)*640.0/-mvPos.z;
+        gl_PointSize=clamp(ptSz,0.8,10.0);
+        gl_Position=projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader:`
+      uniform float gAlpha;
+      varying vec3  vColor;
+      varying float vAlpha;
+      void main(){
+        if(gAlpha<0.004||vAlpha<0.004) discard;
+        vec2  c=gl_PointCoord-0.5;
+        float d=length(c)*2.0;
+        if(d>1.0) discard;
+        float crisp=smoothstep(0.44,0.0,d);
+        float core=max(0.0,1.0-d*9.0)*0.6;
+        float alpha=(crisp*0.38+core)*(0.50+vAlpha*0.60)*gAlpha;
+        if(alpha<0.003) discard;
+        gl_FragColor=vec4(vColor,alpha);
+      }
+    `,
+  });
+  scene.add(new THREE.Points(geo,drainMat));
+}
+
+// ── Collapse Layer 2: Cloud Vortex ────────────────────────────────────────────
+let cvortMat;
+{
+  const N=1600, geo=new THREE.BufferGeometry();
+  const pos=new Float32Array(N*3), seed=new Float32Array(N);
+  for(let i=0;i<N;i++){
+    const arm=i%3, t=rand(), r=6+t*110, spin=r*0.022;
+    const base=(arm/3)*Math.PI*2;
+    const scatter=(rand()-0.5)*r*0.50;
+    const angle=base+spin+scatter/Math.max(r,1), rF=r+(rand()-0.5)*r*0.30;
+    pos[i*3]=rF*Math.cos(angle); pos[i*3+1]=(rand()-0.5)*r*0.10; pos[i*3+2]=rF*Math.sin(angle);
+    seed[i]=rand();
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
+  cvortMat=new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0}, gAlpha:{value:0} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader: HSL_C+REMAP_C+`
+      attribute float nSeed;
+      uniform float time;
+      varying vec3  vColor;
+      varying float vAlpha;
+      varying vec2  vSeedOff;
+      void main(){
+        float s=nSeed;
+        float loopT=fract(time*0.040+s);
+        float t=pow(loopT,0.70);
+        float r=length(position.xz)*(1.0-pow(t,2.0));
+        float angle=atan(position.z,position.x)+t*4.5*6.2832;
+        float h=position.y*(1.0-t*0.70);
+        float amp=3.0+t*8.0;
+        float tv1=time*(0.12+s*0.08)+s*6.2832;
+        float tv2=time*(0.18+s*0.06)+s*4.1888;
+        vec3 drift=vec3(sin(tv1)*amp+cos(tv2*0.6)*amp*0.4,
+                        (cos(tv2)*0.09+sin(tv1)*0.07)*amp,
+                        cos(tv1)*amp+sin(tv2*0.7)*amp*0.4);
+        float rotA=time*0.32;
+        float cr=cos(rotA),sr=sin(rotA);
+        vec3 basePos=vec3(r*cos(angle),h,r*sin(angle));
+        basePos=vec3(basePos.x*cr-basePos.z*sr,basePos.y,basePos.x*sr+basePos.z*cr);
+        vec3 finalPos=basePos+drift*t;
+        float heat=pow(t,1.6);
+        float hue=mix(remapHue(fract(s*0.618+time*0.004)), 0.07+s*0.04, heat);
+        float sat=mix(0.78,0.94,heat);
+        float lum=mix(0.14+s*0.10,0.55,heat);
+        float fade=0.5+0.5*sin(time*0.055+s*3.14);
+        float pulse=0.40+0.60*sin(time*(0.55+s*0.45)+s*8.37);
+        vColor=hsl2rgb(hue,sat,lum)*(0.25+fade*0.55+pulse*0.28)*(1.0+heat*1.5);
+        vAlpha=fade*fade*(0.40+pulse*0.30)*smoothstep(1.0,0.85,loopT)*smoothstep(0.0,0.08,loopT);
+        vSeedOff=vec2(s*17.31+time*0.045, s*11.73+time*0.030);
+        vec4 mvPos=modelViewMatrix*vec4(finalPos,1.0);
+        gl_PointSize=clamp((18.0+s*32.0)*(0.70+fade*0.40)*640.0/-mvPos.z,3.0,350.0);
+        gl_Position=projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader: HSL_C+REMAP_C+`
+      uniform float gAlpha;
+      varying vec3  vColor;
+      varying float vAlpha;
+      varying vec2  vSeedOff;
+      float h2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+      float n2(vec2 p){vec2 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+        return mix(mix(h2(i),h2(i+vec2(1,0)),u.x),mix(h2(i+vec2(0,1)),h2(i+vec2(1,1)),u.x),u.y);}
+      float fbm(vec2 p){float v=0.0,a=0.5;for(int i=0;i<4;i++){v+=a*n2(p);p=p*2.1+vec2(1.3,7.9);a*=0.5;}return v;}
+      void main(){
+        if(gAlpha<0.004||vAlpha<0.004) discard;
+        vec2  c=gl_PointCoord-0.5;
+        float d=length(c);
+        if(d>0.52) discard;
+        float n=fbm(c*4.2+vSeedOff);
+        float shape=smoothstep(0.48,0.06,d-n*0.30+0.04);
+        float detail=fbm(c*8.5+vSeedOff*1.9)*0.42+0.58;
+        float alpha=shape*detail*vAlpha*0.60*gAlpha;
+        if(alpha<0.002) discard;
+        gl_FragColor=vec4(vColor*detail,alpha);
+      }
+    `,
+  });
+  scene.add(new THREE.Points(geo,cvortMat));
+}
+
+// ── Collapse Layer 3: Bipolar Jets ────────────────────────────────────────────
+let jetTopMat, jetBotMat;
+{
+  const makeJet=(side,colA,colB)=>{
+    const N=4000, geo=new THREE.BufferGeometry();
+    const pos=new Float32Array(N*3), seed=new Float32Array(N);
+    for(let i=0;i<N;i++){
+      const t=Math.pow(rand(),0.65), yR=t*58, spread=t*t*0.30, a=rand()*Math.PI*2;
+      pos[i*3]=Math.cos(a)*yR*spread; pos[i*3+1]=side*yR; pos[i*3+2]=Math.sin(a)*yR*spread;
+      seed[i]=rand();
+    }
+    geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+    geo.setAttribute('nSeed',   new THREE.BufferAttribute(seed,1));
+    const mat=new THREE.ShaderMaterial({
+      uniforms:{ time:{value:0}, gAlpha:{value:0} },
+      transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+      vertexShader: HSL_C+`
+        attribute float nSeed;
+        uniform float time;
+        varying vec3  vColor;
+        varying float vAlpha;
+        void main(){
+          float s=nSeed;
+          float phase=fract(time*(0.32+s*0.40)+s*7.3);
+          vec3 pos=position*phase;
+          float tv=time*(2.2+s*1.4)+s*6.28;
+          float turbR=length(position.xz)*phase*0.14;
+          pos.x+=sin(tv)*turbR; pos.z+=cos(tv)*turbR;
+          vec3 cA=vec3(${colA}), cB=vec3(${colB});
+          float pulse=0.50+0.50*sin(time*(3.5+s*2.0)+s*6.28);
+          vColor=mix(cA,cB,phase)*(1.8-phase*1.0)*(0.6+pulse*0.5);
+          vAlpha=(1.0-phase)*(1.0-phase)*0.88*smoothstep(0.0,0.05,phase);
+          vec4 mvPos=modelViewMatrix*vec4(pos,1.0);
+          gl_PointSize=clamp((1.2+s*0.8)*640.0/-mvPos.z,0.8,8.0);
+          gl_Position=projectionMatrix*mvPos;
+        }
+      `,
+      fragmentShader:`
+        uniform float gAlpha;
+        varying vec3  vColor;
+        varying float vAlpha;
+        void main(){
+          if(gAlpha<0.004||vAlpha<0.004) discard;
+          vec2 c=gl_PointCoord-0.5;
+          float d=length(c)*2.0;
+          if(d>1.0) discard;
+          float alpha=vAlpha*smoothstep(0.5,0.02,d)*gAlpha;
+          gl_FragColor=vec4(vColor,alpha);
+        }
+      `,
+    });
+    scene.add(new THREE.Points(geo,mat));
+    return mat;
+  };
+  jetTopMat=makeJet( 1,'1.0,0.95,0.80','1.0,0.28,0.06');
+  jetBotMat=makeJet(-1,'0.85,0.95,1.0','0.10,0.45,1.0');
+}
+
+// ── Collapse Core Glow ────────────────────────────────────────────────────────
+function coreGlow(r,col){
+  const m=new THREE.Mesh(new THREE.SphereGeometry(r,20,20),
+    new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0,
+      blending:THREE.AdditiveBlending,depthWrite:false}));
   scene.add(m); return m;
 }
-const cor1 = corona(2.5*1.35, 0xff8800, 0);
-const cor2 = corona(2.5*1.80, 0xff4400, 0);
-const cor3 = corona(2.5*2.60, 0x882200, 0);
+const coreWhite  = coreGlow(1.2, 0xffffff);
+const coreAmber  = coreGlow(2.8, 0xff8800);
+const coreOrange = coreGlow(5.5, 0xff3300);
+const coreDark   = coreGlow(8.0, 0x220800);
+const coreLight  = new THREE.PointLight(0xffaa40, 0, 400);
+scene.add(coreLight);
+let coreVisibility = 0;
 
-const sunLight = new THREE.PointLight(0xfff4d0, 0, 800);
-scene.add(sunLight);
-
-// Ignition flash
-const flashMesh = new THREE.Mesh(
-  new THREE.SphereGeometry(120,32,32),
-  new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0,
-    side:THREE.BackSide,blending:THREE.AdditiveBlending,depthWrite:false})
-);
-scene.add(flashMesh);
-
-// ── IGNITION VORTEX particles — derived from nebula, spiral to singularity ────
-// Wide disk matching nebula scale → converges → explodes at ignition moment
-const IGNITE_N  = 4200;
-const igniteGeo = new THREE.BufferGeometry();
-const ignitePosCur = new Float32Array(IGNITE_N*3);
-const ignitePos0   = new Float32Array(IGNITE_N*3);
-const igniteVel    = new Float32Array(IGNITE_N*3);
-const igniteSeedA  = new Float32Array(IGNITE_N);
-for(let i=0;i<IGNITE_N;i++){
-  const a=Math.random()*Math.PI*2;
-  const r=10+Math.pow(Math.random(),0.55)*72;
-  const y=(Math.random()-0.5)*r*0.12;
-  ignitePos0[i*3]=r*Math.cos(a); ignitePos0[i*3+1]=y; ignitePos0[i*3+2]=r*Math.sin(a);
-  igniteSeedA[i]=Math.random();
-  // Pre-compute outward burst velocity
-  const ea=Math.random()*Math.PI*2, eb=Math.acos(2*Math.random()-1);
-  const spd=0.28+Math.random()*1.0;
-  igniteVel[i*3]=Math.sin(eb)*Math.cos(ea)*spd;
-  igniteVel[i*3+1]=Math.sin(eb)*Math.sin(ea)*spd;
-  igniteVel[i*3+2]=Math.cos(eb)*spd;
+// Core-glow hue control — rotates all four glow shells + the point light around
+// the color wheel together, preserving their relative hue/brightness spread
+// (white core, then amber/orange/dark) rather than recoloring them independently.
+const CORE_GLOW_MESHES = [coreWhite, coreAmber, coreOrange, coreDark];
+const CORE_BASE_HSL = CORE_GLOW_MESHES.map(m => { const hsl={h:0,s:0,l:0}; m.material.color.getHSL(hsl); return hsl; });
+const coreLightBaseHSL = {h:0,s:0,l:0};
+coreLight.color.getHSL(coreLightBaseHSL);
+function applyCoreHueShift(shift){
+  CORE_GLOW_MESHES.forEach((m,i) => {
+    const b = CORE_BASE_HSL[i];
+    m.material.color.setHSL((b.h+shift)%1, b.s, b.l);
+  });
+  coreLight.color.setHSL((coreLightBaseHSL.h+shift)%1, coreLightBaseHSL.s, coreLightBaseHSL.l);
 }
-ignitePosCur.set(ignitePos0);
-igniteGeo.setAttribute('position',new THREE.BufferAttribute(ignitePosCur,3));
-igniteGeo.setAttribute('iSeed',new THREE.BufferAttribute(igniteSeedA,1));
-const igniteMat = new THREE.ShaderMaterial({
-  uniforms:{baseOp:{value:0},phase:{value:0}},
-  transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
-  vertexShader:`
-    attribute float iSeed;
-    uniform float phase;
-    varying vec3 vCol; varying float vSeed;
+
+// ── Galaxy disc ───────────────────────────────────────────────────────────────
+const GALAXY_DISC_N = 28000;
+const galaxyDiscGeo = new THREE.BufferGeometry();
+{
+  const pos   = new Float32Array(GALAXY_DISC_N * 3);
+  const seeds = new Float32Array(GALAXY_DISC_N);
+  for(let i = 0; i < GALAXY_DISC_N; i++){
+    const s = rand(); seeds[i] = s;
+    const r = rand();
+    let gR, tightness;
+    if(r < 0.12){
+      gR = rand() * 28; tightness = 12;
+    } else if(r < 0.72){
+      gR = 18 + rand() * 220; tightness = 16;
+    } else {
+      gR = 12 + rand() * 240; tightness = 48;
+    }
+    const armOff = Math.floor(rand() * 2) * Math.PI;
+    const gTheta = armOff + (gR / 75.0) * 2.8 + (rand() - 0.5) * 0.38;
+    const gPerp  = gTheta + Math.PI * 0.5;
+    const gSpread = (rand() - 0.5) * tightness;
+    pos[i*3]   = gR * Math.cos(gTheta) + gSpread * Math.cos(gPerp);
+    pos[i*3+1] = (rand() - 0.5) * 7;
+    pos[i*3+2] = gR * Math.sin(gTheta) + gSpread * Math.sin(gPerp);
+  }
+  galaxyDiscGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  galaxyDiscGeo.setAttribute('nSeed',    new THREE.BufferAttribute(seeds, 1));
+}
+const galaxyDiscMat = new THREE.ShaderMaterial({
+  uniforms:{ time:{value:0}, gAlpha:{value:0} },
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  vertexShader: HSL_GLSL + `
+    attribute float nSeed;
+    uniform float time, gAlpha;
+    varying vec3  vColor;
+    varying float vAlpha;
     void main(){
-      vSeed=iSeed;
-      // phase 0=vortex(amber/crimson) → 0.5=flash(white) → 1.0=embers(orange)
-      vec3 cA=vec3(0.95,0.28,0.04); vec3 cB=vec3(1.0,0.75,0.15); vec3 cW=vec3(1.0,0.96,0.80);
-      if(phase<0.5) vCol=mix(cA,cB,phase*2.0);
-      else          vCol=mix(cW,vec3(1.0,0.38,0.0),(phase-0.5)*2.0);
-      vec4 mv=modelViewMatrix*vec4(position,1.0);
-      float ps=(phase<0.5?2.8:5.5)*(0.5+iSeed*1.4)*640.0/-mv.z;
-      gl_PointSize=clamp(ps,1.0,24.0);
-      gl_Position=projectionMatrix*mv;
+      float s = nSeed;
+      float radius = length(position.xz);
+      float rotT = time * max(0.003, 0.014 - radius * 0.000042);
+      float cr = cos(rotT), sr = sin(rotT);
+      vec3 rotPos = vec3(
+        position.x*cr - position.z*sr,
+        position.y,
+        position.x*sr + position.z*cr
+      );
+      float cool = step(0.78, fract(s*8.11));
+      float hue = mix(mix(0.06,0.11,fract(s*4.3)), mix(0.57,0.65,fract(s*6.1)), cool);
+      float lum = 0.62 + fract(s*7.9)*0.36;
+      float sat = 0.42 + fract(s*3.1)*0.35;
+      vColor = hsl2rgb(hue, sat, lum) * (1.1 + fract(s*2.3)*0.9);
+      vAlpha = 0.65 + fract(s*5.7)*0.35;
+      vec4 mvPos = modelViewMatrix * vec4(rotPos, 1.0);
+      gl_PointSize = clamp((0.7+fract(s*4.2)*1.5)*640.0/-mvPos.z, 0.8, 7.0);
+      gl_Position  = projectionMatrix * mvPos;
     }
   `,
   fragmentShader:`
-    uniform float baseOp;
-    varying vec3 vCol; varying float vSeed;
+    uniform float gAlpha;
+    varying vec3  vColor;
+    varying float vAlpha;
     void main(){
-      if(baseOp<0.004) discard;
-      vec2 c=gl_PointCoord-0.5; float d=length(c)*2.0;
-      if(d>1.0) discard;
-      float soft=(1.0-d)*(1.0-d*0.6);
-      gl_FragColor=vec4(vCol,baseOp*soft);
+      if(gAlpha < 0.004) discard;
+      vec2  c = gl_PointCoord - 0.5;
+      float d = length(c) * 2.0;
+      if(d > 1.0) discard;
+      float crisp = smoothstep(0.55, 0.0, d);
+      float core  = max(0.0, 1.0 - d*8.0) * 0.72;
+      float alpha = (crisp*0.42 + core) * vAlpha * gAlpha;
+      if(alpha < 0.003) discard;
+      gl_FragColor = vec4(vColor, alpha);
+    }
+  `
+});
+scene.add(new THREE.Points(galaxyDiscGeo, galaxyDiscMat));
+
+// ── Sun ───────────────────────────────────────────────────────────────────────
+const SUN_R = 2.4;
+const sunMat = new THREE.ShaderMaterial({
+  uniforms:{ time:{value:0}, hueMode:{value:0.0}, emergence:{value:0}, distort:{value:0}, distFreqMult:{value:1.0}, distAmpMult:{value:1.0}, rippleStr:{value:0.0}, dissolve:{value:0.0} },
+  vertexShader:`
+    varying vec3 vPos; varying vec3 vNormal;
+    uniform float time, distort, distFreqMult, distAmpMult, rippleStr;
+    float rippleWave(vec3 pn, vec3 c, float t, float off){
+      float p    = fract(t + off);
+      float cosA = clamp(dot(pn, normalize(c)), -1.0, 1.0);
+      float ang  = acos(cosA);
+      float env  = exp(-ang*1.5) * pow(max(0.0,1.0-p), 0.55);
+      return sin(ang*20.0 - p*26.0) * env;
+    }
+    void main(){
+      float rAmp = distort * 0.09 * distAmpMult;
+      float fq = distFreqMult;
+      float r1 = sin(position.y*7.0*fq+time*5.2*fq)*sin(position.x*5.5*fq+time*4.1*fq);
+      float r2 = cos(position.z*6.5*fq+time*4.7*fq)*cos(position.y*4.8*fq+time*3.8*fq);
+      float r3 = sin(position.x*8.0*fq+time*3.5*fq)*cos(position.z*5.0*fq+time*5.0*fq);
+      float ripple = (r1*0.5+r2*0.35+r3*0.15) * rAmp;
+      vec3 pn = normalize(position);
+      float rt = time * 0.17;
+      float rd = 0.0;
+      rd += rippleWave(pn, vec3( 0.82, 0.40, 0.41), rt, 0.00);
+      rd += rippleWave(pn, vec3(-0.65, 0.72, 0.25), rt, 0.20);
+      rd += rippleWave(pn, vec3( 0.15,-0.88, 0.45), rt, 0.40);
+      rd += rippleWave(pn, vec3(-0.50,-0.30, 0.81), rt, 0.60);
+      rd += rippleWave(pn, vec3( 0.30, 0.85,-0.43), rt, 0.80);
+      vec3 displaced = position + normalize(position) * ripple + pn * rd * rippleStr * 0.38;
+      vPos = displaced;
+      vNormal = normalize(normalMatrix * normal);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
+    }
+  `,
+  fragmentShader:`
+    varying vec3 vPos; varying vec3 vNormal;
+    uniform float time,hueMode,emergence,distort,distFreqMult,distAmpMult,rippleStr,dissolve;
+    float crestGlow(vec3 pn, vec3 c, float t, float off){
+      float p    = fract(t + off);
+      float cosA = clamp(dot(pn, normalize(c)), -1.0, 1.0);
+      float ang  = acos(cosA);
+      float env  = exp(-ang*1.5) * pow(max(0.0,1.0-p), 0.50);
+      return max(0.0, sin(ang*20.0 - p*26.0)) * env;
+    }
+    float hash(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
+    float noise(vec3 p){
+      vec3 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+      return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),u.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),u.x),u.y),
+                 mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),u.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),u.x),u.y),u.z);
+    }
+    float fbm(vec3 p){float v=0.,a=0.5;for(int i=0;i<7;i++){v+=a*noise(p);p*=2.1;a*=0.48;}return v;}
+    vec3 getDeep(float m){
+      if(m<1.0)return mix(vec3(0.22,0.04,0.0),vec3(0.18,0.01,0.0),m);
+      if(m<2.0)return mix(vec3(0.18,0.01,0.0),vec3(0.0,0.06,0.10),m-1.0);
+      if(m<3.0)return mix(vec3(0.0,0.06,0.10),vec3(0.0,0.01,0.16),m-2.0);
+      if(m<4.0)return mix(vec3(0.0,0.01,0.16),vec3(0.06,0.0,0.16),m-3.0);
+      return mix(vec3(0.06,0.0,0.16),vec3(0.22,0.04,0.0),m-4.0);
+    }
+    vec3 getHot(float m){
+      if(m<1.0)return mix(vec3(1.0,0.88,0.08),vec3(1.0,0.15,0.03),m);
+      if(m<2.0)return mix(vec3(1.0,0.15,0.03),vec3(0.06,0.95,0.88),m-1.0);
+      if(m<3.0)return mix(vec3(0.06,0.95,0.88),vec3(0.14,0.52,1.0),m-2.0);
+      if(m<4.0)return mix(vec3(0.14,0.52,1.0),vec3(0.68,0.14,1.0),m-3.0);
+      return mix(vec3(0.68,0.14,1.0),vec3(1.0,0.88,0.08),m-4.0);
+    }
+    vec3 getBright(float m){
+      if(m<1.0)return mix(vec3(1.6,0.90,0.28),vec3(1.8,0.30,0.05),m);
+      if(m<2.0)return mix(vec3(1.8,0.30,0.05),vec3(0.1,1.8,1.6),m-1.0);
+      if(m<3.0)return mix(vec3(0.1,1.8,1.6),vec3(0.2,0.7,2.0),m-2.0);
+      if(m<4.0)return mix(vec3(0.2,0.7,2.0),vec3(1.1,0.2,2.0),m-3.0);
+      return mix(vec3(1.1,0.2,2.0),vec3(1.6,0.90,0.28),m-4.0);
+    }
+    void main(){
+      float dAmp=distort*0.65*distAmpMult;
+      float dfq=distFreqMult;
+      float dx=sin(vPos.y*2.2*dfq+time*2.0*dfq)*sin(vPos.z*2.8*dfq+time*1.7*dfq)*dAmp;
+      float dy=cos(vPos.x*2.0*dfq+time*2.3*dfq)*cos(vPos.z*2.5*dfq+time*1.5*dfq)*dAmp;
+      float dz=sin(vPos.x*3.0*dfq+time*1.8*dfq)*cos(vPos.y*2.4*dfq+time*2.1*dfq)*dAmp;
+      vec3 dp=vPos+vec3(dx,dy,dz);
+      vec3 p=dp*4.5+vec3(time*0.10,time*0.07,time*0.13);
+      vec3 q=vec3(fbm(p),fbm(p+vec3(5.2,1.3,2.8)),fbm(p+vec3(1.7,9.2,3.1)));
+      float n=fbm(p+0.5*q); n=pow(n,1.5); n=clamp(n*1.8+0.2,0.0,1.0);
+      float spot=fbm(vPos*2.8+vec3(time*0.018)); spot=smoothstep(0.62,0.45,spot); n*=0.70+spot*0.30;
+      float limb=abs(dot(normalize(vNormal),vec3(0.0,0.0,1.0))); n*=0.55+0.45*limb;
+      float m=mod(hueMode,5.0);
+      vec3 col=mix(getDeep(m),getHot(m),n);
+      col+=smoothstep(0.68,1.0,n)*1.5*getBright(m);
+      if(rippleStr > 0.01){
+        vec3 rpn = normalize(vPos);
+        float rt = time * 0.17;
+        float rg = 0.0;
+        rg += crestGlow(rpn, vec3( 0.82, 0.40, 0.41), rt, 0.00);
+        rg += crestGlow(rpn, vec3(-0.65, 0.72, 0.25), rt, 0.20);
+        rg += crestGlow(rpn, vec3( 0.15,-0.88, 0.45), rt, 0.40);
+        rg += crestGlow(rpn, vec3(-0.50,-0.30, 0.81), rt, 0.60);
+        rg += crestGlow(rpn, vec3( 0.30, 0.85,-0.43), rt, 0.80);
+        col += rg * getBright(m) * 5.0 * rippleStr;
+      }
+      if(dissolve>0.001){
+        float erosion=fbm(vPos*2.2+vec3(37.2,11.4,5.8));
+        if(erosion<dissolve) discard;
+      }
+      vec3 whiteHot=vec3(1.8,1.5,1.0);
+      gl_FragColor=vec4(mix(whiteHot,col,emergence),1.0);
+    }
+  `,
+  transparent:false,
+});
+const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(SUN_R,64,64), sunMat);
+sunMesh.scale.setScalar(0.001);
+sunMesh.visible = false;
+scene.add(sunMesh);
+
+// ── Sun Dissolve Particles ──────────────────────────────────────────────────────
+// Released from the sun's own surface as Sun.dissolve ramps 0→1 — each particle
+// starts at a fixed point on the unit sphere (matching sunMat's erosion pattern in
+// spirit, not literally coupled to it) and drifts outward, fading as it spreads so
+// the sun reads as breaking apart into the surrounding cloud rather than just
+// shrinking away. Idle (alpha 0, discarded) whenever dissolve is 0.
+const SUN_DISSOLVE_N = 4000;
+let sunDustMat;
+{
+  const geo = new THREE.BufferGeometry();
+  const dir = new Float32Array(SUN_DISSOLVE_N*3);
+  const seed = new Float32Array(SUN_DISSOLVE_N);
+  for(let i=0;i<SUN_DISSOLVE_N;i++){
+    // Uniform sphere-surface sample (Fibonacci sphere — even coverage, no clustering at poles)
+    const t = (i+0.5)/SUN_DISSOLVE_N;
+    const phi = Math.acos(1-2*t);
+    const golden = Math.PI*(1+Math.sqrt(5));
+    const theta = golden*i;
+    const x = Math.sin(phi)*Math.cos(theta), y = Math.sin(phi)*Math.sin(theta), z = Math.cos(phi);
+    dir[i*3]=x; dir[i*3+1]=y; dir[i*3+2]=z;
+    seed[i]=rand();
+  }
+  geo.setAttribute('dir', new THREE.BufferAttribute(dir,3));
+  geo.setAttribute('seed',new THREE.BufferAttribute(seed,1));
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(SUN_DISSOLVE_N*3),3)); // unused, required by THREE.Points
+
+  sunDustMat = new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0}, dissolve:{value:0}, hueMode:{value:0}, baseRadius:{value:SUN_R} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader:`
+      attribute vec3 dir;
+      attribute float seed;
+      uniform float time, dissolve, baseRadius;
+      varying float vAlpha;
+      varying float vSeed;
+      void main(){
+        float speed  = 0.5 + seed*1.5;
+        float travel = dissolve * speed;
+        vec3 jitter = vec3(
+          sin(time*1.3+seed*61.0),
+          sin(time*1.7+seed*37.0+1.5),
+          sin(time*1.1+seed*83.0+3.0)
+        ) * 0.12 * dissolve;
+        vec3 pos = dir*baseRadius*(1.0+travel*3.2) + jitter*baseRadius;
+        float fadeIn  = smoothstep(0.0, 0.10, dissolve);
+        float fadeOut = pow(1.0-dissolve, 0.7);
+        vAlpha = fadeIn * fadeOut;
+        vSeed  = seed;
+        vec4 mvPos = modelViewMatrix*vec4(pos,1.0);
+        gl_PointSize = (2.0+seed*3.5) * (320.0/-mvPos.z);
+        gl_Position = projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader:`
+      uniform float hueMode;
+      varying float vAlpha;
+      varying float vSeed;
+      vec3 getHot(float m){
+        if(m<1.0)return mix(vec3(1.0,0.88,0.08),vec3(1.0,0.15,0.03),m);
+        if(m<2.0)return mix(vec3(1.0,0.15,0.03),vec3(0.06,0.95,0.88),m-1.0);
+        if(m<3.0)return mix(vec3(0.06,0.95,0.88),vec3(0.14,0.52,1.0),m-2.0);
+        if(m<4.0)return mix(vec3(0.14,0.52,1.0),vec3(0.68,0.14,1.0),m-3.0);
+        return mix(vec3(0.68,0.14,1.0),vec3(1.0,0.88,0.08),m-4.0);
+      }
+      void main(){
+        if(vAlpha<0.004) discard;
+        vec2 c=gl_PointCoord-0.5; float d=length(c)*2.0;
+        if(d>1.0) discard;
+        float m=mod(hueMode,5.0);
+        vec3 col=getHot(m)*(1.1+vSeed*0.4);
+        float glow=smoothstep(0.5,0.0,d);
+        gl_FragColor=vec4(col, vAlpha*glow);
+      }
+    `,
+  });
+  scene.add(new THREE.Points(geo, sunDustMat));
+}
+
+// ── Corona ────────────────────────────────────────────────────────────────────
+const coronaGroup = new THREE.Group();
+coronaGroup.visible = false;
+scene.add(coronaGroup);
+const coronaMats = [];
+const CORONA_HUES = [
+  [0xfffde8,0xffcc44,0xff7700,0xff3300,0xff8822],
+  [0xffeeaa,0xffaa22,0xff5500,0xdd1100,0xff7700],
+  [0xaaffee,0x44ddcc,0x009988,0x004455,0x22bbaa],
+  [0xaabbff,0x5577ff,0x2244dd,0x111166,0x4466ee],
+  [0xffddff,0xcc55ff,0x8811cc,0x440066,0xaa44dd],
+];
+// Pre-converted once — the per-frame corona color cycle used to call `new THREE.Color()`
+// twice per layer (10 allocations/frame) for the entire galaxy phase, real GC pressure.
+const CORONA_HUES_RGB = CORONA_HUES.map(row => row.map(hex => new THREE.Color(hex)));
+{
+  function makeCoronaMat(color,flareStr,glowStr,falloff,fFalloff,sz){
+    const mat=new THREE.ShaderMaterial({
+      uniforms:{ time:{value:0}, glowColor:{value:new THREE.Color(color)},
+        flareStrength:{value:flareStr}, baseGlowStrength:{value:glowStr},
+        radialFalloff:{value:falloff}, flareFalloff:{value:fFalloff}, globalAlpha:{value:0} },
+      transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,
+      vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+      fragmentShader:`
+        varying vec2 vUv;
+        uniform float time,flareStrength,baseGlowStrength,radialFalloff,flareFalloff,globalAlpha;
+        uniform vec3 glowColor;
+        float hash(float n){return fract(sin(n)*43758.5453);}
+        float noise(float x){float i=floor(x),f=fract(x),u=f*f*(3.0-2.0*f);return mix(hash(i),hash(i+1.0),u);}
+        void main(){
+          vec2 uv=vUv-0.5; float dist=length(uv); if(dist>0.5)discard;
+          float angle=atan(uv.y,uv.x); float aN=(angle+3.14159)/6.28318;
+          float fN=noise(aN*38.0+time*0.22)*noise(aN*19.0+time*0.14);
+          float fA=noise(aN*52.0-time*0.18)*noise(aN*11.0+time*0.10);
+          float flare=pow(max(0.0,fN*0.6+fA*0.4),flareFalloff);
+          float radFade=pow(max(0.0,1.0-dist*1.8),radialFalloff);
+          float flareFade=max(0.0,1.0-dist*1.5);
+          float baseG=smoothstep(0.42,0.0,dist)*(0.85+0.15*sin(time*0.4));
+          float intensity=(baseGlowStrength*baseG + flareStrength*flare*flareFade)*radFade*globalAlpha;
+          if(intensity<0.005)discard;
+          gl_FragColor=vec4(glowColor*intensity,intensity*0.92);
+        }
+      `,
+    });
+    coronaGroup.add(new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),mat));
+    coronaMats.push(mat); return mat;
+  }
+  makeCoronaMat(0xfffde8, 5.5, 3.0, 2.0, 1.4, 18);
+  makeCoronaMat(0xffcc44, 7.0, 1.2, 1.6, 1.8, 34);
+  makeCoronaMat(0xff7700, 5.0, 0.6, 1.3, 2.2, 56);
+  makeCoronaMat(0xff3300, 3.0, 0.3, 1.1, 2.6, 85);
+  makeCoronaMat(0xff8822, 8.5, 0.2, 1.5, 1.2, 28);
+}
+// Base values captured once, so per-frame multipliers always scale from a fixed
+// starting point instead of compounding onto whatever the value already drifted
+// to — `baseGlowStrength.value *= tVals.coronaGlow` every frame would otherwise
+// double/halve indefinitely for any coronaGlow != 1, blowing out within seconds.
+const CORONA_BASE_GLOW        = coronaMats.map(m => m.uniforms.baseGlowStrength.value);
+const CORONA_BASE_FLARE       = coronaMats.map(m => m.uniforms.flareStrength.value);
+const CORONA_BASE_RADIAL      = coronaMats.map(m => m.uniforms.radialFalloff.value);
+const CORONA_BASE_FLAREFALLOFF= coronaMats.map(m => m.uniforms.flareFalloff.value);
+const CORONA_BASE_COLORS      = coronaMats.map(m => m.uniforms.glowColor.value.clone());
+const coronaHueShiftScratch = {h:0,s:0,l:0};
+function applyCoronaHueShift(shift){
+  if (!shift) return; // shift=0 is a no-op, so untouched behavior is bit-identical to before
+  coronaMats.forEach(m => {
+    const hsl = coronaHueShiftScratch;
+    m.uniforms.glowColor.value.getHSL(hsl);
+    m.uniforms.glowColor.value.setHSL((hsl.h+shift)%1, hsl.s, hsl.l);
+  });
+}
+
+// ── Solar emission loops ──────────────────────────────────────────────────────
+const FLARE_COLORS = [
+  new THREE.Color(1.0,0.55,0.10), new THREE.Color(1.0,0.92,0.28),
+  new THREE.Color(0.28,0.82,1.0), new THREE.Color(1.0,0.28,0.62),
+  new THREE.Color(0.68,0.28,1.0), new THREE.Color(0.18,1.0,0.78),
+  new THREE.Color(1.0,1.0,1.0),
+];
+const N_LOOPS=10, LOOP_PTS=90;
+const loopGeo=new THREE.BufferGeometry();
+const loopPos=new Float32Array(N_LOOPS*LOOP_PTS*3);
+const loopCol=new Float32Array(N_LOOPS*LOOP_PTS*3);
+const loopAlp=new Float32Array(N_LOOPS*LOOP_PTS);
+loopGeo.setAttribute('position',new THREE.BufferAttribute(loopPos,3));
+loopGeo.setAttribute('color',   new THREE.BufferAttribute(loopCol,3));
+loopGeo.setAttribute('alpha',   new THREE.BufferAttribute(loopAlp,1));
+const loopMat=new THREE.ShaderMaterial({
+  transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+  vertexShader:`attribute float alpha;attribute vec3 color;varying vec3 vC;varying float vA;
+    void main(){vC=color;vA=alpha;vec4 mv=modelViewMatrix*vec4(position,1.0);
+      gl_PointSize=max(2.0,6.0*90.0/-mv.z);gl_Position=projectionMatrix*mv;}`,
+  fragmentShader:`varying vec3 vC;varying float vA;
+    void main(){vec2 c=gl_PointCoord-0.5;if(length(c)>0.5||vA<0.01)discard;
+      float a=vA*(1.0-length(c)*2.0);gl_FragColor=vec4(vC*a,a);}`,
+});
+const loopPoints = new THREE.Points(loopGeo,loopMat);
+scene.add(loopPoints);
+const loopStates=Array.from({length:N_LOOPS},(_,i)=>({
+  a1:(i/N_LOOPS)*Math.PI*2, a2:(i/N_LOOPS)*Math.PI*2+0.5+rand()*0.7,
+  h:3.0+rand()*5.5, spd:0.14+rand()*0.12, phase:i/N_LOOPS,
+  col:FLARE_COLORS[i%FLARE_COLORS.length].clone(),
+}));
+function bezP(t,p0,p1,p2){const m=1-t;return{x:m*m*p0.x+2*m*t*p1.x+t*t*p2.x,y:m*m*p0.y+2*m*t*p1.y+t*t*p2.y,z:m*m*p0.z+2*m*t*p1.z+t*t*p2.z};}
+function updateLoops(t, worldR){
+  const R=worldR||SUN_R;
+  const hScale=R/SUN_R;
+  loopStates.forEach((lp,li)=>{
+    const ph=(t*lp.spd+lp.phase)%1.0;
+    if(ph<0.015){
+      lp.reseedN = lp.reseedN||0;
+      const seedBase = li*13.1+lp.reseedN*7.77;
+      if(detRand(seedBase)<0.08){
+        lp.reseedN++;
+        const sb2=li*13.1+lp.reseedN*7.77;
+        lp.a1=detRand(sb2+1)*Math.PI*2;
+        lp.a2=lp.a1+0.4+detRand(sb2+2)*1.0;
+        lp.h=3.0+detRand(sb2+3)*6.0;
+        lp.spd=0.12+detRand(sb2+4)*0.14;
+        lp.col=FLARE_COLORS[Math.floor(detRand(sb2+5)*FLARE_COLORS.length)].clone();
+      }
+    }
+    const h=lp.h*hScale;
+    const p0={x:R*Math.cos(lp.a1),y:0,z:R*Math.sin(lp.a1)};
+    const p2={x:R*Math.cos(lp.a2),y:0,z:R*Math.sin(lp.a2)};
+    const mx=(p0.x+p2.x)*0.5,mz=(p0.z+p2.z)*0.5,ml=Math.sqrt(mx*mx+mz*mz)||1;
+    const p1={x:mx/ml*(R+h),y:h*0.42,z:mz/ml*(R+h)};
+    const base=li*LOOP_PTS;
+    for(let j=0;j<LOOP_PTS;j++){
+      const u=j/(LOOP_PTS-1),bp=bezP(u,p0,p1,p2);
+      loopPos[(base+j)*3]=bp.x;loopPos[(base+j)*3+1]=bp.y;loopPos[(base+j)*3+2]=bp.z;
+      loopCol[(base+j)*3]=lp.col.r;loopCol[(base+j)*3+1]=lp.col.g;loopCol[(base+j)*3+2]=lp.col.b;
+      const dist=Math.abs(u-ph),wrap=Math.min(dist,1.0-dist);
+      loopAlp[base+j]=Math.max(0,1.0-wrap*12.0)*1.1;
+    }
+  });
+  loopGeo.attributes.position.needsUpdate = true;
+  loopGeo.attributes.color.needsUpdate    = true;
+  loopGeo.attributes.alpha.needsUpdate    = true;
+}
+
+// ── Ignition flash ────────────────────────────────────────────────────────────
+const flashMat = new THREE.ShaderMaterial({
+  uniforms:{ time:{value:0}, opacity:{value:0}, asymmetry:{value:0}, flashHue:{value:0.08}, flashTint:{value:0} },
+  transparent:true, side:THREE.BackSide, blending:THREE.AdditiveBlending, depthWrite:false,
+  vertexShader:`
+    uniform float time, asymmetry;
+    void main(){
+      vec3 pn = normalize(position);
+      float lump = sin(pn.x*2.3+time*0.6)*sin(pn.y*1.7+time*0.4)*sin(pn.z*2.1+time*0.5);
+      vec3 displaced = position * (1.0 + lump*asymmetry*0.35);
+      gl_Position = projectionMatrix*modelViewMatrix*vec4(displaced,1.0);
+    }
+  `,
+  fragmentShader: HSL_GLSL + `
+    uniform float opacity, flashHue, flashTint;
+    void main(){
+      vec3 baseCol = vec3(1.0,0.996,0.973);
+      vec3 tintCol = hsl2rgb(flashHue, 0.85, 0.72) * 1.3;
+      gl_FragColor = vec4(mix(baseCol, tintCol, flashTint), opacity);
     }
   `,
 });
-const ignitePts=new THREE.Points(igniteGeo,igniteMat);
-scene.add(ignitePts);
+const flashMesh = new THREE.Mesh(new THREE.SphereGeometry(55,32,32), flashMat);
+flashMesh.visible = false;
+scene.add(flashMesh);
 
-// Shockwave rings — expand from sun radius outward at ignition
-function shockwave(){
-  const m=new THREE.Mesh(new THREE.TorusGeometry(2.5,0.10,8,120),
-    new THREE.MeshBasicMaterial({color:0xfff0cc,transparent:true,opacity:0,
-      blending:THREE.AdditiveBlending,depthWrite:false}));
-  scene.add(m); return m;
+let ignitionTriggered = false;
+const GALAXY_DUR = 12;
+const IGNITE_DUR = 4;
+let colorCycleT = 0;
+const COLOR_PERIOD = 45;
+
+// ── Background color ──────────────────────────────────────────────────────────
+const bg = { r:0, g:0, b:0.016 };
+const bgTarget = { r:0, g:0, b:0.016 };
+const bgColorScratch = new THREE.Color(); // reused every frame — allocating a new Color here every frame was real, continuous GC pressure
+function lerpBg(spd){
+  bg.r+=(bgTarget.r-bg.r)*spd; bg.g+=(bgTarget.g-bg.g)*spd; bg.b+=(bgTarget.b-bg.b)*spd;
+  renderer.setClearColor(bgColorScratch.setRGB(bg.r,bg.g,bg.b),1);
 }
-const shock1=shockwave(); const shock2=shockwave();
-
-// ── PLANETS ───────────────────────────────────────────────────────────────────
-const pData = [
-  {name:'MERCURY',d:8,  r:0.28,col:0xb0a898,em:0x221810,ei:0.07},
-  {name:'VENUS',  d:11, r:0.46,col:0xe8c070,em:0xffaa20,ei:0.06},
-  {name:'EARTH',  d:14.5,r:0.48,col:0x4888c8,em:0x003366,ei:0.07},
-  {name:'MARS',   d:18.5,r:0.33,col:0xc04420,em:0x661100,ei:0.08},
-  {name:'JUPITER',d:29, r:1.18,col:0xc89068,em:0x6b3a1a,ei:0.05},
-  {name:'SATURN', d:38, r:0.96,col:0xd4c088,em:0x554422,ei:0.04},
-  {name:'URANUS', d:47, r:0.66,col:0x7ec8cc,em:0x004488,ei:0.05},
-  {name:'NEPTUNE',d:55, r:0.63,col:0x2858c8,em:0x001055,ei:0.06},
-  {name:'PLUTO',  d:62, r:0.22,col:0x9a7060,em:0x330a08,ei:0.07},
-];
-const SATURN_IDX = 5;
-
-function makePlanetTex(hex) {
-  const c=document.createElement('canvas');c.width=c.height=128;
-  const x=c.getContext('2d');
-  const h='#'+hex.toString(16).padStart(6,'0');
-  const g=x.createRadialGradient(42,40,0,64,64,64);
-  g.addColorStop(0,'#ffffff');g.addColorStop(0.12,h);
-  g.addColorStop(0.72,h);g.addColorStop(1,'#000000');
-  x.fillStyle=g;x.fillRect(0,0,128,128);
-  return new THREE.CanvasTexture(c);
-}
-
-const ambLight=new THREE.AmbientLight(0x040310,0.25); scene.add(ambLight);
-const rimA=new THREE.DirectionalLight(0x112244,0.28); rimA.position.set(-80,40,-80); scene.add(rimA);
-
-const planets = pData.map(pd=>{
-  const orb=new THREE.Mesh(new THREE.TorusGeometry(pd.d,0.04,8,300),
-    new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0,
-      blending:THREE.AdditiveBlending,depthWrite:false}));
-  orb.rotation.x=Math.PI/2; scene.add(orb);
-  const halo=new THREE.Mesh(new THREE.TorusGeometry(pd.d,0.22,8,300),
-    new THREE.MeshBasicMaterial({color:0x3355aa,transparent:true,opacity:0,
-      blending:THREE.AdditiveBlending,depthWrite:false}));
-  halo.rotation.x=Math.PI/2; scene.add(halo);
-  const mesh=new THREE.Mesh(new THREE.SphereGeometry(pd.r,48,48),
-    new THREE.MeshStandardMaterial({
-      map:makePlanetTex(pd.col),
-      emissive:new THREE.Color(pd.em),emissiveIntensity:pd.ei,
-      roughness:0.84,metalness:0.06
-    }));
-  mesh.scale.setScalar(0); scene.add(mesh);
-  return {mesh,orb,halo,angle:Math.random()*Math.PI*2};
-});
-
-// Saturn rings
-const satRingGroup=new THREE.Group();
-[[1.46,0.055],[1.66,0.042],[1.84,0.034]].forEach(([r,t])=>{
-  const m=new THREE.Mesh(new THREE.TorusGeometry(pData[SATURN_IDX].r*r,pData[SATURN_IDX].r*t,4,200),
-    new THREE.MeshBasicMaterial({color:0xd4c075,transparent:true,opacity:0,
-      blending:THREE.AdditiveBlending,depthWrite:false}));
-  m.rotation.x=Math.PI*0.44; satRingGroup.add(m);
-});
-scene.add(satRingGroup);
-
-function orbitPlanets(speed=1) {
-  planets.forEach((p,i)=>{
-    p.angle=(p.angle||0)+speed*0.0009/(0.3+i*0.08);
-    p.mesh.position.set(pData[i].d*Math.cos(p.angle),0,pData[i].d*Math.sin(p.angle));
-  });
-  satRingGroup.position.copy(planets[SATURN_IDX].mesh.position);
-  satRingGroup.rotation.y=planets[SATURN_IDX].mesh.rotation.y;
-}
-
-// ── FROST LINE ────────────────────────────────────────────────────────────────
-const frostRing=new THREE.Mesh(new THREE.TorusGeometry(22.5,0.14,8,300),
-  new THREE.MeshBasicMaterial({color:0x88ddff,transparent:true,opacity:0,
-    blending:THREE.AdditiveBlending,depthWrite:false}));
-frostRing.rotation.x=Math.PI/2; scene.add(frostRing);
-
-// Ice particle field — icy blue beyond frost line (frost line reference image)
-const ICE_N=2400;
-const iceGeo=new THREE.BufferGeometry();
-const icePos=new Float32Array(ICE_N*3),iceCol=new Float32Array(ICE_N*3);
-for(let i=0;i<ICE_N;i++){
-  const a=Math.random()*Math.PI*2, r=24+Math.random()*22;
-  icePos[i*3]=r*Math.cos(a);icePos[i*3+1]=(Math.random()-0.5)*3.5;icePos[i*3+2]=r*Math.sin(a);
-  // Blue-white-silver ice palette
-  const t=Math.random();
-  iceCol[i*3]=0.6+t*0.4;iceCol[i*3+1]=0.8+t*0.2;iceCol[i*3+2]=1;
-}
-iceGeo.setAttribute('position',new THREE.BufferAttribute(icePos,3));
-iceGeo.setAttribute('color',new THREE.BufferAttribute(iceCol,3));
-const iceMat=new THREE.PointsMaterial({
-  size:0.9,sizeAttenuation:true,vertexColors:true,
-  transparent:true,opacity:0,depthWrite:false,
-  blending:THREE.AdditiveBlending,map:SP_CYAN
-});
-scene.add(new THREE.Points(iceGeo,iceMat));
-
-// Frost haze — cool blue glow beyond frost line
-const frostHaze=new THREE.Mesh(new THREE.SphereGeometry(52,24,24),
-  new THREE.MeshBasicMaterial({color:0x0040a0,transparent:true,opacity:0,
-    side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
-scene.add(frostHaze);
-
-// ── BOMBARDMENT ───────────────────────────────────────────────────────────────
-const BOMB_N=600;
-const bombGeo=new THREE.BufferGeometry();
-const bombPos=new Float32Array(BOMB_N*3);
-const bombVel=new Float32Array(BOMB_N*3);
-for(let i=0;i<BOMB_N;i++){
-  const a=Math.random()*Math.PI*2, r=32+Math.random()*30;
-  bombPos[i*3]=r*Math.cos(a);bombPos[i*3+1]=(Math.random()-0.5)*18;bombPos[i*3+2]=r*Math.sin(a);
-  // velocity aimed roughly inward
-  const inAngle=a+Math.PI+Math.random()*0.8-0.4;
-  const spd=0.04+Math.random()*0.08;
-  bombVel[i*3]=Math.cos(inAngle)*spd;bombVel[i*3+1]=(Math.random()-0.5)*0.02;bombVel[i*3+2]=Math.sin(inAngle)*spd;
-}
-bombGeo.setAttribute('position',new THREE.BufferAttribute(bombPos,3));
-const bombMat=new THREE.PointsMaterial({
-  size:0.35,color:0xcc8840,sizeAttenuation:true,
-  transparent:true,opacity:0,depthWrite:false,
-  blending:THREE.AdditiveBlending,map:SP_AMBER
-});
-scene.add(new THREE.Points(bombGeo,bombMat));
-
-const impFlashes=[];
-for(let i=0;i<12;i++){
-  const f=new THREE.Mesh(new THREE.SphereGeometry(0.7,10,10),
-    new THREE.MeshBasicMaterial({color:0xff5500,transparent:true,opacity:0,
-      blending:THREE.AdditiveBlending,depthWrite:false}));
-  scene.add(f);impFlashes.push(f);
-}
-
-// ── OORT CLOUD ────────────────────────────────────────────────────────────────
-const OORT_N=4000;
-const oortGeo=new THREE.BufferGeometry();
-const oortPos=new Float32Array(OORT_N*3);
-for(let i=0;i<OORT_N;i++){
-  const a=Math.random()*Math.PI*2, b=Math.acos(2*Math.random()-1);
-  const r=85+Math.random()*80;
-  oortPos[i*3]=r*Math.sin(b)*Math.cos(a)*0.9;
-  oortPos[i*3+1]=r*Math.cos(b)*0.5;
-  oortPos[i*3+2]=r*Math.sin(b)*Math.sin(a)*0.9;
-}
-oortGeo.setAttribute('position',new THREE.BufferAttribute(oortPos,3));
-const oortMat=new THREE.PointsMaterial({
-  size:1.2,color:0xaaccff,sizeAttenuation:true,
-  transparent:true,opacity:0,depthWrite:false,
-  blending:THREE.AdditiveBlending,map:SP_BLUE
-});
-scene.add(new THREE.Points(oortGeo,oortMat));
-
-// Deep space haze for Phase 8 — cool blue-violet immensity
-const deepHaze=new THREE.Mesh(new THREE.SphereGeometry(160,24,24),
-  new THREE.MeshBasicMaterial({color:0x080e28,transparent:true,opacity:0,
-    side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
-scene.add(deepHaze);
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// PHASE DEFINITIONS
-// duration = cinematic play time before interactive pause
-// autoAdvance = skip interactive pause (void → nebula)
+// TIMELINE — driven by Theatre.js sequence position (T)
 // ═══════════════════════════════════════════════════════════════════════════════
+const T_VOID_END   = 12;
+const T_FINE_END   = 44;
+const T_CLOUD_END  = 50;
+const T_SPARK_END  = 56;
+const T_FULL       = 56;
+const T_COLL_START = 56;
+const T_COLL_END   = 74;
 
-const PHASES = [
-// ── 0: THE VOID ──────────────────────────────────────────────────────────────
-{
-  name:'THE VOID', side:'left', duration:10000, autoAdvance:true,
-  bg: 0x01000f,
-  narration:[
-    'Before light, before form, before the first distinction — this.',
-    'Not empty. Seething with potential.',
-    'The void is not nothing. It is everything that has not yet chosen.',
-  ],
-  enter() {
-    this._t=0;
-    setBgTarget(0x01000f);
-    sphTarget.r=145;sphTarget.theta=0.22;sphTarget.phi=0.46;
-    // Stars bloom up immediately so the screen is clearly alive
-    starMat.opacity=0.45;
-    voidMat.opacity=0;
-    voidHaze.material.opacity=0;
-  },
-  fn(pct,dt) {
-    this._t=(this._t||0)+dt;
-    const breath=Math.sin(this._t*0.55)*0.5+0.5;
-    // Stars: bright at start, breathe slowly
-    starMat.opacity=0.45+breath*0.12;
-    // Quantum foam: visible purple haze
-    voidMat.opacity=0.12+breath*0.10;
-    voidHaze.material.opacity=0.18+breath*0.12;
-    sphTarget.theta=0.22+pct*0.28;
-    sphTarget.phi=0.46+Math.sin(pct*Math.PI)*0.05;
-  },
-  exit(){ voidMat.opacity=0; voidHaze.material.opacity=0; }
-},
+// Optional ?startT=11 lets another scene (e.g. nebula-intro-prototype.html's
+// handoff) open this one already partway into the timeline instead of at 0.
+// Absent or invalid -> falls back to the normal T=0 start, so a plain visit
+// to this file is completely unaffected.
+const _startTParam = parseFloat(new URLSearchParams(location.search).get('startT'));
+let T = (isFinite(_startTParam) ? clamp(_startTParam, 0, 90) : 0); // driven by sheet.sequence.position
+let autoWarmBias = 0; // recomputed fresh each frame in timeline() — never self-referential, so the
+                       // warmBias sliders can never get stuck ratcheted at a stale high value
+let rotAngleFine = 0, rotAngleCloud = 0, rotAngleSpark = 0; // properly integrated rotation angles
+let sunSpinAngle = 0; // integrated the same way — speed*dt each frame, not time*speed
 
-// ── 1: THE NEBULA ────────────────────────────────────────────────────────────
-{
-  name:'THE NEBULA', side:'left', duration:20000,
-  bg: 0x0a0005,
-  narration:[
-    'The cloud gathers.',
-    'Hydrogen and helium — the first elements, forged in the universe\'s first three minutes — finding each other across the dark.',
-    'Dust grains no larger than smoke particles. And within them: carbon. Oxygen. The iron that will become your blood.',
-    'This is the womb before ignition. Everything you are is here, uncommitted, waiting.',
-  ],
-  enter() {
-    this._t=0;
-    setBgTarget(0x0a0005);
-    sphTarget.r=295;sphTarget.phi=0.52;sphTarget.theta=0.22;
-    // Restore nebula to initial positions
-    nebPosCurrent.set(nebPos0);
-    nebGeo.attributes.position.needsUpdate=true;
-    nebMat.opacity=0; nebMat.size=1.5;
-    nebHazeRed.material.opacity=0;
-    nebHazeBlue.material.opacity=0;
-    nebHazeGold.material.opacity=0;
-  },
-  fn(pct,dt) {
-    this._t=(this._t||0)+dt;
-    const tS=Math.min(pct*1.4,1);
-    nebMat.opacity=easeOut(tS)*0.78;
-    nebMat.size=1.5+easeOut(tS)*1.0;
-    starMat.opacity=0.08+easeOut(tS)*0.20;
+function timeline(){
+  // T is set externally from Theatre playhead before this call
+  autoWarmBias = 0;
 
-    // Background hazes: warm red core + blue outer + gold infrared warmth
-    nebHazeRed.material.opacity =easeOut(tS)*0.14;
-    nebHazeBlue.material.opacity=easeOut(tS)*0.10;
-    nebHazeGold.material.opacity=easeOut(tS)*0.07;
+  const voidBreath = 0.5 + 0.5*Math.sin(T*0.55);
 
-    // Turbulent drift — filaments breathe
-    const pos=nebGeo.attributes.position.array;
-    for(let i=0;i<NEB_N;i++){
-      const d=0.007+Math.sin(i*0.021+this._t*0.4)*0.004;
-      pos[i*3]  +=(Math.random()-0.5)*d;
-      pos[i*3+1]+=(Math.random()-0.5)*d*0.18;
-      pos[i*3+2]+=(Math.random()-0.5)*d;
-    }
-    nebGeo.attributes.position.needsUpdate=true;
-
-    sphTarget.theta=0.22+pct*0.38;
-    sphTarget.phi=0.52-pct*0.04;
-  },
-  exit(){}
-},
-
-// ── 2: THE COLLAPSE ──────────────────────────────────────────────────────────
-{
-  name:'THE COLLAPSE', side:'right', duration:17000,
-  bg: 0x06000e,
-  narration:[
-    'The cloud hears a call it cannot refuse.',
-    'Gravity — the weakest force, and the most patient — begins its work.',
-    'This is not a catastrophe. This is a calling.',
-    'The choice to incarnate is not gentle. It is a falling. A commitment.',
-  ],
-  enter() {
-    this._t=0;
-    setBgTarget(0x06000e);
-    sphTarget.r=185;sphTarget.phi=0.44;sphTarget.theta=0.60;
-    jetMatTop.opacity=0; jetMatBot.opacity=0; waistMat.opacity=0;
-    // Reset ignite vortex to initial nebula-scale disk
-    const ipos=igniteGeo.attributes.position.array;
-    for(let i=0;i<IGNITE_N*3;i++) ipos[i]=ignitePos0[i];
-    igniteGeo.attributes.position.needsUpdate=true;
-    igniteMat.uniforms.baseOp.value=0;
-  },
-  fn(pct,dt) {
-    this._t=(this._t||0)+dt;
-    const pos=nebGeo.attributes.position.array;
-
-    if(pct<0.52) {
-      // Gravitational collapse inward
-      const sub=pct/0.52;
-      const speed=easeIn(sub)*0.30;
-      for(let i=0;i<NEB_N;i++){
-        const ix=pos[i*3],iy=pos[i*3+1],iz=pos[i*3+2];
-        const dist=Math.sqrt(ix*ix+iy*iy+iz*iz)||1;
-        pos[i*3]  -=(ix/dist)*speed;
-        pos[i*3+1]-=(iy/dist)*speed*0.30;
-        pos[i*3+2]-=(iz/dist)*speed;
-        // Vortex spin — angular momentum increases as radius shrinks
-        const nx=pos[i*3],nz=pos[i*3+2];
-        const xzd=Math.sqrt(nx*nx+nz*nz)||0.1;
-        const sa=easeIn(sub)*sub*0.016*Math.min(42/(xzd+2),6.0);
-        const cs=Math.cos(sa),sn=Math.sin(sa);
-        pos[i*3]=cs*nx-sn*nz; pos[i*3+2]=sn*nx+cs*nz;
-      }
-      nebGeo.attributes.position.needsUpdate=true;
-      nebMat.opacity=0.78-sub*0.62;
-      nebHazeRed.material.opacity=0.14*(1-sub);
-      nebHazeBlue.material.opacity=0.10*(1-sub);
-
-      sphTarget.r=295-easeIn(sub)*225;
-      sphTarget.phi=0.44-sub*0.14;
-      sphTarget.theta=0.60+sub*0.48;
-      starMat.opacity=0.28+sub*0.12;
-    } else {
-      // Bipolar jets erupt — the L1527 hourglass moment
-      const sub=(pct-0.52)/0.48;
-      nebMat.opacity=Math.max(0,0.16-sub*0.16);
-      jetMatTop.opacity=easeOut(sub)*0.75;
-      jetMatBot.opacity=easeOut(sub)*0.68;
-      waistMat.opacity=easeOut(sub)*0.45;
-      sphTarget.r=70+sub*15;
-      sphTarget.phi=0.30+sub*0.10;
-      starMat.opacity=0.40+sub*0.12;
-      // Ignite vortex particles emerge and spiral inward — nebula becoming core
-      const ipos=igniteGeo.attributes.position.array;
-      const vSpd=easeOut(sub)*0.42;
-      const vSpin=sub*sub*0.024;
-      for(let i=0;i<IGNITE_N;i++){
-        const ix=ipos[i*3],iy=ipos[i*3+1],iz=ipos[i*3+2];
-        const d=Math.sqrt(ix*ix+iy*iy+iz*iz)||0.1;
-        ipos[i*3]-=(ix/d)*vSpd; ipos[i*3+1]-=(iy/d)*vSpd*0.35; ipos[i*3+2]-=(iz/d)*vSpd;
-        const xzd=Math.sqrt(ipos[i*3]*ipos[i*3]+ipos[i*3+2]*ipos[i*3+2])||0.1;
-        const sa=vSpin*Math.min(32/(xzd+1.5),8.0);
-        const cs=Math.cos(sa),sn=Math.sin(sa);
-        const nx2=cs*ipos[i*3]-sn*ipos[i*3+2]; ipos[i*3+2]=sn*ipos[i*3]+cs*ipos[i*3+2]; ipos[i*3]=nx2;
-      }
-      igniteGeo.attributes.position.needsUpdate=true;
-      igniteMat.uniforms.baseOp.value=easeOut(sub)*0.68;
-      igniteMat.uniforms.phase.value=0.0;
-    }
-  },
-  exit(){
-    jetMatTop.opacity=0;jetMatBot.opacity=0;waistMat.opacity=0;
-    nebMat.opacity=0;
+  if(T < T_VOID_END) {
+    const sub = T / T_VOID_END;
+    starMat.opacity = easeOut(sub) * 0.16;
+    voidMat.opacity = easeOut(sub) * (0.12 + voidBreath * 0.07);
+    bgTarget.r = 0.004; bgTarget.g = 0; bgTarget.b = 0.022;
+    sphTarget.r = 380 - easeOut(sub) * 60;
+    fineMat.uniforms.rotSpeed.value  = easeOut(sub) * 0.012;
+    cloudMat.uniforms.rotSpeed.value = easeOut(sub) * 0.005;
+    sparkMat.uniforms.rotSpeed.value = easeOut(sub) * 0.012;
   }
-},
 
-// ── 3: THE SUN IGNITES ───────────────────────────────────────────────────────
-{
-  name:'THE SUN IGNITES', side:'left', duration:19000,
-  bg: 0x0e0500,
-  narration:[
-    'The center catches fire.',
-    'Hydrogen fuses to helium. Mass becomes light. The universe, for the first time in this corner of itself, finds its voice.',
-    'This is not a metaphor. You are looking at the engine that will drive everything.',
-    'For ten billion years, this fire will burn. You arrived in the middle of its life. So did everything you have ever loved.',
-  ],
-  enter() {
-    this._t=0; this._igniteExploded=false;
-    setBgTarget(0x0e0500);
-    sphTarget.r=42;sphTarget.phi=0.36;sphTarget.theta=1.05;
-    nebMat.opacity=0;jetMatTop.opacity=0;jetMatBot.opacity=0;waistMat.opacity=0;
-    dglowMat.opacity=0;
-    diskRingMeshes.forEach(r=>{r.material.opacity=0;r.rotation.z=0;});
-    sunMesh.scale.setScalar(0);
-    sunMesh.material.uniforms.warpAmt.value=0;
-    sunLight.intensity=0;
-    cor1.material.opacity=0;cor2.material.opacity=0;cor3.material.opacity=0;
-    flashMesh.material.opacity=0;
-    shock1.scale.setScalar(1);shock1.material.opacity=0;
-    shock2.scale.setScalar(1);shock2.material.opacity=0;
-  },
-  fn(pct,dt) {
-    this._t=(this._t||0)+dt;
-    if(pct<0.20) {
-      // Pre-ignition: ALMA disk builds up — warm amber glow
-      const sub=pct/0.20;
-      dglowMat.opacity=easeOut(sub)*0.60;
-      diskRingMeshes.forEach((r,i)=>{
-        const rp=clamp((sub-i*0.08)/0.5,0,1);
-        r.material.opacity=easeOut(rp)*(0.62-i*0.07);
-        r.rotation.z+=0.0012*(1-i*0.10);
-      });
-      sunMesh.scale.setScalar(easeOut(sub)*0.28);
-      sunLight.intensity=easeOut(sub)*1.2;
-      cor1.scale.setScalar(easeOut(sub)*0.28);
-      cor1.material.opacity=easeOut(sub)*0.22;
-      sphTarget.r=42+sub*4;
-      // Vortex condenses: particles spiral into singularity before ignition
-      sunMesh.material.uniforms.warpAmt.value=0;
-      const ipos0=igniteGeo.attributes.position.array;
-      let needUpd0=false;
-      for(let i=0;i<IGNITE_N;i++){
-        const ix=ipos0[i*3],iy=ipos0[i*3+1],iz=ipos0[i*3+2];
-        const d=Math.sqrt(ix*ix+iy*iy+iz*iz)||0.1;
-        if(d>0.25){
-          ipos0[i*3]-=(ix/d)*0.16; ipos0[i*3+1]-=(iy/d)*0.08; ipos0[i*3+2]-=(iz/d)*0.16;
-          const xzd=Math.sqrt(ipos0[i*3]*ipos0[i*3]+ipos0[i*3+2]*ipos0[i*3+2])||0.1;
-          const sa2=0.035*Math.min(22/(xzd+1),9.0);
-          const cs2=Math.cos(sa2),sn2=Math.sin(sa2);
-          const nx3=cs2*ipos0[i*3]-sn2*ipos0[i*3+2]; ipos0[i*3+2]=sn2*ipos0[i*3]+cs2*ipos0[i*3+2]; ipos0[i*3]=nx3;
-          needUpd0=true;
-        }
-      }
-      if(needUpd0) igniteGeo.attributes.position.needsUpdate=true;
-      igniteMat.uniforms.baseOp.value=0.42+easeOut(sub)*0.52;
-      igniteMat.uniforms.phase.value=0.15+sub*0.35;
-    } else if(pct<0.40) {
-      // Ignition — brilliant white flash
-      const sub=(pct-0.20)/0.20;
-      flashMesh.material.opacity=easeOut(sub)*0.92;
-      sunMesh.scale.setScalar(0.28+easeOut(sub)*2.3);
-      sunLight.intensity=1.2+easeOut(sub)*44;
-      cor1.scale.setScalar(0.28+easeOut(sub)*0.8);
-      cor1.material.opacity=easeOut(sub)*0.42;
-      cor2.scale.setScalar(easeOut(sub)*0.7);
-      cor2.material.opacity=easeOut(sub)*0.22;
-      dglowMat.opacity=0.60-sub*0.60;
-      diskRingMeshes.forEach(r=>{r.material.opacity*=(1-sub*0.92);});
-      sphTarget.r=46+sub*14;
-      sphTarget.theta=1.05+sub*0.32;
-      // Particle explosion — vortex detonates outward
-      const ipos1=igniteGeo.attributes.position.array;
-      if(!this._igniteExploded){
-        for(let i=0;i<IGNITE_N;i++){
-          ipos1[i*3]=(Math.random()-0.5)*1.8; ipos1[i*3+1]=(Math.random()-0.5)*1.8; ipos1[i*3+2]=(Math.random()-0.5)*1.8;
-        }
-        igniteGeo.attributes.position.needsUpdate=true;
-        this._igniteExploded=true;
-      }
-      for(let i=0;i<IGNITE_N;i++){
-        ipos1[i*3]+=igniteVel[i*3]*dt*30; ipos1[i*3+1]+=igniteVel[i*3+1]*dt*30; ipos1[i*3+2]+=igniteVel[i*3+2]*dt*30;
-      }
-      igniteGeo.attributes.position.needsUpdate=true;
-      igniteMat.uniforms.baseOp.value=(1.0-easeOut(sub))*0.95;
-      igniteMat.uniforms.phase.value=0.5+sub*0.5;
-      // Sun surface tears apart — vertex warp peaks mid-expansion
-      sunMesh.material.uniforms.warpAmt.value=Math.sin(sub*Math.PI)*0.90;
-      // Shockwave rings expand outward
-      shock1.scale.setScalar(1+easeOut(sub)*22); shock1.material.opacity=(1-sub)*0.62;
-      if(sub>0.22){const s2=easeOut((sub-0.22)/0.78);shock2.scale.setScalar(1+s2*15);shock2.material.opacity=(1-s2)*0.44;}
-    } else {
-      // Settle — sun revealed, corona breathing
-      const sub=(pct-0.40)/0.60;
-      flashMesh.material.opacity=(1-easeOut(sub))*0.92;
-      sunMesh.scale.setScalar(2.58-sub*1.58);
-      sunLight.intensity=45-sub*36;
-      const breathe=Math.sin(this._t*1.1)*0.5+0.5;
-      cor1.scale.setScalar(1+breathe*0.06);cor1.material.opacity=0.38+breathe*0.10;
-      cor2.scale.setScalar(1+breathe*0.09);cor2.material.opacity=0.18+breathe*0.08;
-      cor3.scale.setScalar(1+breathe*0.04);cor3.material.opacity=0.06+breathe*0.04;
-      sphTarget.r=60-sub*4;
-      sphTarget.theta=1.37+sub*0.22;
-      starMat.opacity=0.52+sub*0.14;
-      igniteMat.uniforms.baseOp.value=0;
-      shock1.material.opacity=0; shock2.material.opacity=0;
-      sunMesh.material.uniforms.warpAmt.value=Math.max(0,0.14-easeOut(sub)*0.14);
-    }
-  },
-  exit(){ flashMesh.material.opacity=0; dglowMat.opacity=0; igniteMat.uniforms.baseOp.value=0; shock1.material.opacity=0; shock2.material.opacity=0; sunMesh.material.uniforms.warpAmt.value=0; }
-},
-
-// ── 4: THE PLANETS COALESCE ──────────────────────────────────────────────────
-{
-  name:'THE PLANETS COALESCE', side:'right', duration:28000,
-  bg: 0x050310,
-  narration:[
-    'From the accretion disk, centers of gravity assert themselves.',
-    'Each world a different answer to the same dust. Each one a voice finding its orbit.',
-    'The solar system is not a random scattering. It is a symphony — bodies in resonance, a harmony that will persist for 4.5 billion years.',
-    'Mercury. Venus. Earth. Mars. Jupiter. Saturn. Uranus. Neptune. Pluto.',
-  ],
-  enter() {
-    setBgTarget(0x050310);
-    sphTarget.r=74;sphTarget.phi=0.40;sphTarget.theta=0.22;
-    planets.forEach(p=>{p.mesh.scale.setScalar(0);p.orb.material.opacity=0;p.halo.material.opacity=0;});
-    satRingGroup.children.forEach(r=>{r.material.opacity=0;});
-    sunLight.intensity=Math.max(sunLight.intensity,9);
-    sunMesh.scale.setScalar(1);
-    sunMesh.material.uniforms.warpAmt.value=0;
-    cor1.scale.setScalar(1);cor1.material.opacity=0.38;
-    cor2.scale.setScalar(1);cor2.material.opacity=0.18;
-    cor3.scale.setScalar(1);cor3.material.opacity=0.06;
-  },
-  fn(pct,dt) {
-    const perP=1/planets.length;
-    planets.forEach((p,i)=>{
-      const start=i*perP*0.86;
-      const local=easeOut(clamp((pct-start)/(perP*1.12),0,1));
-      p.mesh.scale.setScalar(local);
-      p.orb.material.opacity=local*(i<4?0.30:0.20);
-      p.halo.material.opacity=local*0.065;
-      if(i===SATURN_IDX) satRingGroup.children.forEach(r=>{r.material.opacity=local*0.58;});
-    });
-    sunLight.intensity=9+Math.sin(pct*Math.PI*2.5)*0.6;
-    orbitPlanets();
-    sphTarget.theta=0.22+pct*1.05;
-    sphTarget.r=70+Math.sin(pct*Math.PI*2)*12;
-    sphTarget.phi=0.38+Math.sin(pct*Math.PI)*0.10;
-    starMat.opacity=0.66+pct*0.10;
-  },
-  exit(){}
-},
-
-// ── 5: THE FROST LINE ────────────────────────────────────────────────────────
-{
-  name:'THE FROST LINE', side:'left', duration:15000,
-  bg: 0x020512,
-  narration:[
-    'Inside this line: Mercury, Venus, Earth, Mars. The personal planets. The energies you can touch.',
-    'Outside the line: Jupiter, Saturn, Uranus, Neptune, Pluto. Forces that shape generations — that use your life for purposes larger than your life.',
-    'You are made of both. The personal and the transpersonal are not opposites. They are octaves of the same music.',
-  ],
-  enter() {
-    setBgTarget(0x020512);
-    sphTarget.r=70;sphTarget.phi=0.28;sphTarget.theta=0.22;
-  },
-  fn(pct,dt) {
-    if(pct<0.5){
-      const sub=pct/0.5;
-      frostRing.scale.setScalar(0.06+sub*0.94);
-      frostRing.material.opacity=easeOut(sub)*0.72;
-      iceMat.opacity=easeOut(sub)*0.42;
-      frostHaze.material.opacity=easeOut(sub)*0.12;
-    } else {
-      const sub=(pct-0.5)/0.5;
-      frostRing.material.opacity=0.72-sub*0.30;
-      iceMat.opacity=0.42-sub*0.08;
-      frostHaze.material.opacity=0.12+sub*0.05;
-      frostRing.scale.setScalar(1+sub*0.08);
-    }
-    // Outer planets develop a subtle cool glow beyond the line
-    for(let i=4;i<planets.length;i++){
-      if(planets[i]) planets[i].mesh.material.emissiveIntensity=pData[i].ei+easeOut(pct)*0.08;
-    }
-    orbitPlanets();
-    sphTarget.theta=0.22+pct*0.50;
-  },
-  exit(){
-    for(let i=4;i<planets.length;i++){
-      if(planets[i]) planets[i].mesh.material.emissiveIntensity=pData[i].ei;
-    }
+  if(T >= T_VOID_END) {
+    const bloomSub = clamp((T - T_VOID_END) / (T_FULL - T_VOID_END), 0, 1);
+    starMat.opacity = 0.16 + easeOut(bloomSub) * 0.32;
+    voidMat.opacity = Math.max(0, 0.12 - easeOut(bloomSub) * 0.12);
+    bgTarget.r = easeOut(bloomSub) * 0.011;
+    bgTarget.g = 0;
+    bgTarget.b = 0.022 - bloomSub * 0.006;
+    const cloudSub = clamp((T - T_VOID_END) / (T_CLOUD_END - T_VOID_END), 0, 1);
+    cloudMat.uniforms.gAlpha.value = easeOut(cloudSub) * 0.92;
+    hazeRed.material.opacity  = easeOut(cloudSub) * 0.10;
+    hazeBlue.material.opacity = easeOut(cloudSub) * 0.08;
+    hazeGold.material.opacity = easeOut(cloudSub) * 0.06;
+    const fineSub = clamp((T - (T_VOID_END+2)) / (T_FINE_END - (T_VOID_END+2)), 0, 1);
+    fineMat.uniforms.formT.value  = fineSub;
+    fineMat.uniforms.gAlpha.value = slowForm(fineSub);
+    const sparkSub = clamp((T - (T_VOID_END+16)) / (T_SPARK_END - (T_VOID_END+16)), 0, 1);
+    sparkMat.uniforms.gAlpha.value = slowForm(sparkSub);
+    const rotSub = clamp((T - T_VOID_END) / (T_FINE_END - T_VOID_END), 0, 1);
+    fineMat.uniforms.rotSpeed.value  = 0.012 + easeOut(rotSub) * 0.046;
+    cloudMat.uniforms.rotSpeed.value = 0.005 + easeOut(rotSub) * 0.021;
+    sparkMat.uniforms.rotSpeed.value = 0.012 + easeOut(rotSub) * 0.046;
   }
-},
 
-// ── 6: THE LATE HEAVY BOMBARDMENT ────────────────────────────────────────────
-{
-  name:'THE LATE HEAVY BOMBARDMENT', side:'right', duration:20000,
-  bg: 0x0c0200,
-  narration:[
-    'The young solar system was not at peace.',
-    'For two hundred million years, the inner worlds were bombarded — debris falling inward as the giant planets shifted in their orbits.',
-    'The comets that struck also delivered. Water. Carbon compounds. The raw materials for everything that would come to call itself alive.',
-    'You will not arrive unmarked. No one does. The question is not whether you will be struck — but what you will become in the aftermath.',
-  ],
-  enter() {
-    this._t=0;
-    setBgTarget(0x0c0200);
-    sphTarget.r=54;sphTarget.phi=0.44;sphTarget.theta=0.22;
-    frostRing.material.opacity=0;iceMat.opacity=0;frostHaze.material.opacity=0;
-  },
-  fn(pct,dt) {
-    this._t=(this._t||0)+dt;
-    bombMat.opacity=easeOut(clamp(pct*2.5,0,1))*0.58;
-
-    // Debris moves inward
-    const dpos=bombGeo.attributes.position.array;
-    for(let i=0;i<BOMB_N;i++){
-      dpos[i*3]  +=bombVel[i*3];
-      dpos[i*3+1]+=bombVel[i*3+1];
-      dpos[i*3+2]+=bombVel[i*3+2];
-      const dist=Math.sqrt(dpos[i*3]*dpos[i*3]+dpos[i*3+2]*dpos[i*3+2]);
-      if(dist<4||dist>75){
-        const a=Math.random()*Math.PI*2,r=35+Math.random()*28;
-        dpos[i*3]=r*Math.cos(a);dpos[i*3+1]=(Math.random()-0.5)*16;dpos[i*3+2]=r*Math.sin(a);
-      }
-    }
-    bombGeo.attributes.position.needsUpdate=true;
-
-    // Impact flashes — violent, irregular
-    impFlashes.forEach((f,fi)=>{
-      const cycle=(this._t*2.8+fi*0.9)%1;
-      if(cycle<0.12){
-        const pi=fi%4;
-        if(planets[pi]){
-          f.position.copy(planets[pi].mesh.position);
-          f.position.x+=(Math.random()-0.5)*pData[pi].r*4.5;
-          f.position.y+=(Math.random()-0.5)*pData[pi].r*4.5;
-          f.position.z+=(Math.random()-0.5)*pData[pi].r*4.5;
-          f.material.opacity=(1-cycle/0.12)*0.90;
-          f.scale.setScalar(1+(1-cycle/0.12)*4);
-        }
-      } else { f.material.opacity=0; }
-    });
-
-    // Inner planets flicker with bombardment glow
-    for(let i=0;i<4;i++){
-      if(planets[i]){
-        const flicker=0.5+0.5*Math.sin(this._t*(3.2+i)+i*1.3);
-        planets[i].mesh.material.emissiveIntensity=pData[i].ei+flicker*0.26*(1-pct*0.7);
-      }
-    }
-    orbitPlanets();
-    sphTarget.theta=0.22+Math.sin(this._t*0.32)*0.08;
-    sphTarget.phi=0.44+Math.sin(this._t*0.26)*0.06;
-  },
-  exit(){
-    impFlashes.forEach(f=>{f.material.opacity=0;});
-    bombMat.opacity=0;
-    for(let i=0;i<4;i++){
-      if(planets[i]) planets[i].mesh.material.emissiveIntensity=pData[i].ei;
-    }
+  if(T >= T_COLL_START) {
+    const cSub   = clamp((T - T_COLL_START) / (T_COLL_END - T_COLL_START), 0, 1);
+    const cCurve = cSub * cSub * cSub;
+    fineMat.uniforms.collapseT.value  = cCurve;
+    cloudMat.uniforms.collapseT.value = cCurve;
+    // spinRampShape is its own exponent, independent of cCurve above — cCurve
+    // drives how fast particles visually converge inward, spinRamp only shapes
+    // how the rotation speed ramps in. Default 3 matches cCurve's own cubic
+    // shape exactly (no change from before); 1 = a fully even/linear ramp,
+    // higher = stays slow longer then rushes at the end.
+    const spinRamp = Math.pow(cSub, tVals.cloudSpinCurve);
+    // Only the ramp-ABOVE-baseline is scaled by cloudSpin — the baseline itself
+    // (0.058 / 0.026 / 0.058) must stay untouched so it exactly matches the speed
+    // the nebula phase was already at when collapse begins, or spinSpeed>1 causes
+    // a discontinuous jump right at T=56 instead of a smooth ramp from there.
+    fineMat.uniforms.rotSpeed.value  = 0.058 + spinRamp * (0.32 - 0.058) * tVals.cloudSpin;
+    cloudMat.uniforms.rotSpeed.value = 0.026 + spinRamp * (0.32 - 0.026) * tVals.cloudSpin;
+    sparkMat.uniforms.rotSpeed.value = 0.058 + spinRamp * (0.32 - 0.058) * tVals.cloudSpin;
+    autoWarmBias = easeOut(cSub) * 0.55;
+    sparkMat.uniforms.gAlpha.value = Math.max(0, 1.0 - cSub * 3.0);
+    coreVisibility = cCurve * cCurve;
+    sphTarget.r = 320 - cCurve * 185;
+    bgTarget.r = 0.011 + cCurve * 0.014;
+    bgTarget.g = cCurve * 0.004;
+    bgTarget.b = Math.max(0, 0.016 - cCurve * 0.013);
+    hazeRed.material.opacity  = 0.10 + cCurve * 0.08;
+    hazeBlue.material.opacity = Math.max(0, 0.08 - cCurve * 0.08);
+    hazeGold.material.opacity = 0.06 + cCurve * 0.07;
   }
-},
-
-// ── 7: THE OUTER REACHES ─────────────────────────────────────────────────────
-{
-  name:'THE OUTER REACHES', side:'center', duration:26000,
-  bg: 0x01020e,
-  narration:[
-    'Beyond Pluto: the Kuiper Belt. Icy worlds in slow orbits, remnants of the original cloud.',
-    'Beyond the Kuiper Belt: the Oort Cloud. A sphere of comets at the edge of the Sun\'s reach. Some have been falling inward since before your species existed.',
-    'You are not separate from what you have witnessed.',
-    'You are made of it.',
-    'The cosmos prepared for 13.8 billion years. At one moment, in one place, you began.',
-  ],
-  enter() {
-    setBgTarget(0x01020e);
-    impFlashes.forEach(f=>{f.material.opacity=0;});
-    bombMat.opacity=0;
-  },
-  fn(pct,dt) {
-    sphTarget.r=74+easeInOut(pct)*92;
-    sphTarget.phi=0.44-easeInOut(pct)*0.10;
-    sphTarget.theta=0.22+pct*0.28;
-    oortMat.opacity=easeOut(pct)*0.36;
-    deepHaze.material.opacity=easeOut(pct)*0.18;
-    starMat.opacity=0.76+easeOut(pct)*0.20;
-    orbitPlanets(0.6);
-  },
-  exit(){}
-},
-];
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SEQUENCER
-// ═══════════════════════════════════════════════════════════════════════════════
-
-let currentPhase  = -1;
-let phaseStart    = null;
-let phasePlaying  = false;
-let sequenceStarted = false;
-
-// Build dots
-const dotsEl = document.getElementById('phase-dots');
-PHASES.forEach((_,i)=>{
-  const d=document.createElement('div');
-  d.className='dot';d.id=`dot-${i}`;dotsEl.appendChild(d);
-});
-
-function setDots(idx) {
-  PHASES.forEach((_,i)=>{
-    const d=document.getElementById(`dot-${i}`);
-    if(d) d.classList.toggle('active',i===idx);
-  });
 }
 
-function showNarration(phase) {
-  const el=document.getElementById('narration');
-  el.className='';el.id='narration';
-  el.classList.add(phase.side);
-  el.style.opacity='0';el.innerHTML='';el.classList.remove('on');
+// ── Render loop ───────────────────────────────────────────────────────────────
+let last = performance.now();
+let prevT = -1;
 
-  phase.narration.forEach((txt,i)=>{
-    const span=document.createElement('span');
-    span.className='nar-line'+(i===phase.narration.length-1&&(txt.includes('began')||txt.includes('of it'))?' bright':'');
-    span.textContent=txt;
-    el.appendChild(span);
-  });
-
-  setTimeout(()=>{
-    el.classList.add('on');
-    const gap=Math.min(5200,Math.max(3000,(phase.duration*0.72)/Math.max(phase.narration.length,1)));
-    el.querySelectorAll('.nar-line').forEach((s,i)=>{
-      setTimeout(()=>s.classList.add('on'), 1600+i*gap);
-    });
-  }, 700);
-}
-
-function phaseLabel(name) {
-  const el=document.getElementById('phase-label');
-  el.classList.remove('on');
-  setTimeout(()=>{ el.textContent=name; el.classList.add('on'); },1100);
-}
-
-function showContinue()  { document.getElementById('continue-btn').classList.add('on'); }
-function hideContinue()  { document.getElementById('continue-btn').classList.remove('on'); }
-function showHint()      { document.getElementById('explore-hint').classList.add('on'); }
-function hideHint()      { document.getElementById('explore-hint').classList.remove('on'); }
-
-function enterPhase(idx) {
-  if(idx>=PHASES.length){ endSequence(); return; }
-
-  if(currentPhase>=0 && PHASES[currentPhase].exit) PHASES[currentPhase].exit();
-
-  currentPhase=idx;
-  const phase=PHASES[idx];
-  phaseStart=performance.now();
-  phasePlaying=true;
-  orbitEnabled=false;
-
-  hideContinue(); hideHint();
-  setDots(idx);
-  phaseLabel(phase.name);
-  showNarration(phase);
-  if(phase.bg!==undefined) setBgTarget(phase.bg);
-  if(phase.enter) phase.enter();
-}
-
-function onPhaseComplete() {
-  phasePlaying=false;
-  const phase=PHASES[currentPhase];
-  if(phase.autoAdvance){ setTimeout(()=>enterPhase(currentPhase+1),1400); return; }
-  orbitEnabled=true;
-  showContinue(); showHint();
-}
-
-function nextPhase() {
-  orbitEnabled=false; hideContinue(); hideHint();
-  const narEl=document.getElementById('narration');
-  narEl.classList.remove('on');
-  setTimeout(()=>enterPhase(currentPhase+1),1600);
-}
-
-function endSequence() {
-  orbitEnabled=true;
-  hideContinue(); hideHint();
-  document.getElementById('phase-label').classList.remove('on');
-  document.getElementById('narration').classList.remove('on');
-  setTimeout(()=>document.getElementById('end-card').classList.add('on'),2200);
-}
-
-function startSequence() {
-  if(sequenceStarted)return;
-  sequenceStarted=true;
-
-  // Set space immediately — stars visible as begin screen fades
-  renderer.setClearColor(0x01000f, 1);
-  bgCurrent.r=0.004; bgCurrent.g=0; bgCurrent.b=0.059;
-  bgTarget.r =0.004; bgTarget.g=0; bgTarget.b=0.059;
-
-  starMat.opacity    = 0.60;
-  voidMat.opacity    = 0.16;
-  voidHaze.material.opacity = 0.22;
-
-  const b=document.getElementById('begin');
-  b.classList.add('out');
-  setTimeout(()=>b.style.display='none',1600);
-  document.getElementById('phase-dots').classList.add('on');
-  setTimeout(()=>enterPhase(0), 800);
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// RENDER LOOP
-// ═══════════════════════════════════════════════════════════════════════════════
-
-let lastTime=performance.now();
-
-function tick() {
+function tick(){
   requestAnimationFrame(tick);
-  const now=performance.now();
-  const dt=(now-lastTime)/1000;
-  lastTime=now;
+  const now = performance.now();
+  const dt  = Math.min((now-last)/1000, 0.05); last=now;
 
-  if(sequenceStarted && phasePlaying && currentPhase>=0) {
-    const phase=PHASES[currentPhase];
-    const elapsed=now-phaseStart;
-    const pct=clamp(elapsed/phase.duration,0,1);
-    if(phase.fn) phase.fn(pct,dt);
-    if(pct>=1){ phase.fn&&phase.fn(1,dt); phaseStart=null; onPhaseComplete(); }
+  // Auto-clock drives T; push scaled position to Theatre so its cursor tracks the scene
+  if (!paused) T += dt * tVals.speed;
+  if (loopGroupName) {
+    const loopGroup = CONTROL_GROUPS.find(g => g.name === loopGroupName);
+    if (loopGroup) {
+      const [ls, le] = loopGroup.window();
+      if (T < ls || T > le) T = ls;
+    }
+  } else if (customLoopRange) {
+    const [ls, le] = customLoopRange;
+    if (T < ls || T > le) T = ls;
+  }
+  // Theatre timeline is 10s wide, scene is 90s — scale so Theatre cursor syncs
+  sheet.sequence.position = Math.min(9.99, T / 9);
+
+  // Keyframed properties win over Theatre/sliders for this frame — applied early
+  // so every later read of tVals (timeline(), ignition sequence, overrides) sees it.
+  applySequencers();
+
+  // Reset one-shot state when scrubbing/jumping back
+  if (T < prevT - 0.1) {
+    ignitionTriggered = false;
+    sunMesh.visible   = false;
+    sunMat.uniforms.dissolve.value = 0;
+    sunDustMat.uniforms.dissolve.value = 0;
+    flashMesh.visible = false;
+    flashMesh.material.uniforms.opacity.value = 0;
+    coronaGroup.visible = false;
+    coreVisibility = 0;
+    coreWhite.material.opacity = 0; coreAmber.material.opacity  = 0;
+    coreOrange.material.opacity= 0; coreDark.material.opacity   = 0;
+    coreLight.intensity = 0;
+    galaxyDiscMat.uniforms.gAlpha.value = 0;
+    fineMat.uniforms.galaxyT.value = 0;
+    fineMat.uniforms.collapseT.value  = 0;
+    cloudMat.uniforms.collapseT.value = 0;
+    loopAlp.fill(0);
+    loopPos.fill(0);
+    loopGeo.attributes.alpha.needsUpdate    = true;
+    loopGeo.attributes.position.needsUpdate = true;
+  }
+  prevT = T;
+
+  // Shader time is derived directly from T (not accumulated independently) so
+  // the visual is a pure function of scene position — jumping T via a loop,
+  // scrub, or reset always reproduces the exact same look, with no memory of
+  // how many times a section has looped or whether speed was ever changed.
+  fineMat.uniforms.time.value  = T;
+  cloudMat.uniforms.time.value = T;
+  sparkMat.uniforms.time.value = T;
+
+  // Derived time values
+  const IGNITE_DUR_CUR   = tVals.igniteDuration;
+  const collapseTime     = Math.max(0, T - T_COLL_START);
+  let   ignitionT        = Math.min(Math.max(0, T - T_COLL_END), IGNITE_DUR_CUR);
+  if (tVals.igniteLock >= 0) ignitionT = tVals.igniteLock * IGNITE_DUR_CUR;
+  const ignitionDone     = ignitionT >= IGNITE_DUR_CUR;
+  const postIgnitionT    = Math.max(0, T - (T_COLL_END + IGNITE_DUR_CUR));
+
+  let bigFlash = 0;
+  if(coreVisibility > 0 && !ignitionTriggered) {
+    const pulse  = Math.pow(Math.max(0, Math.sin(collapseTime*0.9)), 2.5);
+    bigFlash     = Math.pow(Math.max(0, Math.sin(collapseTime*0.28)), 8.0) * 1.4;
+    const core   = (pulse + bigFlash) * coreVisibility;
+    coreWhite.material.opacity  = core * 1.10;
+    coreAmber.material.opacity  = core * 0.88;
+    coreOrange.material.opacity = core * 0.58;
+    coreDark.material.opacity   = coreVisibility * 0.65 + core * 0.30;
+    coreLight.intensity         = core * 24;
   }
 
-  // Idle: keep planets orbiting during explore pause
-  if(!phasePlaying && currentPhase>=4) orbitPlanets(0.5);
+  timeline();
 
-  lerpCamera(orbitEnabled?0.10:0.040);
-  lerpBg(0.018);
-  nebMat.uniforms.baseOp.value=nebMat.opacity;
-  nebMat.uniforms.ptSize.value=nebMat.size;
-  nebMat.uniforms.time.value+=dt;
-  sunMesh.material.uniforms.time.value+=dt;
-  renderer.render(scene,camera);
+  // Rotation angle is properly accumulated (speed × dt each frame) instead of
+  // "current speed × absolute elapsed time" — the old formula overstated rotation
+  // any time rotSpeed was still ramping up, which is exactly the formation window.
+  if (!paused) {
+    rotAngleFine  += fineMat.uniforms.rotSpeed.value  * dt;
+    rotAngleCloud += cloudMat.uniforms.rotSpeed.value * dt;
+    rotAngleSpark += sparkMat.uniforms.rotSpeed.value * dt;
+    sunSpinAngle  += tVals.sunSpinSpeed * dt;
+  }
+  fineMat.uniforms.rotAngle.value  = rotAngleFine;
+  cloudMat.uniforms.rotAngle.value = rotAngleCloud;
+  sparkMat.uniforms.rotAngle.value = rotAngleSpark;
+  sunMesh.rotation.y = sunSpinAngle;
+
+  // ── Ignition trigger ──────────────────────────────────────────────────────
+  if(!ignitionTriggered && fineMat.uniforms.collapseT.value >= 1.0) {
+    ignitionTriggered = true;
+    sunMesh.visible   = true;
+    flashMesh.visible = true;
+    sunMesh.scale.setScalar(22.0 * tVals.ballRadius * tVals.sunSizeMult);
+    sunMat.uniforms.emergence.value = 0;
+    sunMat.uniforms.distort.value   = 0;
+    coreWhite.material.opacity = 0; coreAmber.material.opacity  = 0;
+    coreOrange.material.opacity= 0; coreDark.material.opacity   = 0;
+  }
+
+  // ── Ignition sequence ──────────────────────────────────────────────────────
+  if(ignitionTriggered) {
+    const eO = t => 1 - Math.pow(1-t, 3);
+    // Same fix as above — derive from T (time since ignition began) instead of
+    // accumulating independently, so replaying/looping ignition is reproducible.
+    const ignitionClock = Math.max(0, T - T_COLL_END);
+    sunMat.uniforms.time.value  = ignitionClock;
+    coronaMats.forEach(m => m.uniforms.time.value = ignitionClock);
+    flashMat.uniforms.time.value = ignitionClock;
+    flashMat.uniforms.asymmetry.value = tVals.ballAsym;
+    flashMat.uniforms.flashHue.value = tVals.flashHue;
+    flashMat.uniforms.flashTint.value = tVals.flashTint;
+    flashMesh.scale.setScalar(tVals.ballRadius);
+
+    if(!ignitionDone) {
+      const pct = ignitionT / IGNITE_DUR_CUR;
+
+      sunMesh.scale.setScalar((1.0 + 21.0 * Math.exp(-pct * 5.2)) * tVals.ballRadius * tVals.sunSizeMult);
+      const distBell = Math.max(0, Math.sin(Math.PI * Math.min(1.0, pct / 0.78)));
+      sunMat.uniforms.distort.value = Math.pow(distBell, 0.75);
+      const eStart = tVals.emergenceStart;
+      const ePct = Math.max(0, (pct - eStart) / Math.max(0.01, 1.0 - eStart));
+      sunMat.uniforms.emergence.value = ePct * ePct * (3.0 - 2.0 * ePct);
+      const fArc = pct < 0.14 ? pct / 0.14 : Math.max(0, 1.0 - (pct - 0.14) / tVals.ballBlend);
+      flashMat.uniforms.opacity.value = fArc * fArc * 0.44;
+      const coreBright  = 50.0 * Math.exp(-pct * 3.8);
+      const preBurst    = 20.0 * Math.max(0, (pct - 0.62) / 0.20) * Math.exp(-Math.pow((pct - 0.84) / 0.09, 2));
+      coreLight.intensity = (8 + coreBright + preBurst) * tVals.coreGlow;
+      fineMat.uniforms.gAlpha.value  = Math.max(0, 1.0 - pct * 7);
+      cloudMat.uniforms.gAlpha.value = Math.max(0, 1.0 - pct * 7);
+      sphTarget.r = 95 + 42 * Math.exp(-pct * 4.0);
+      const bgWarm = Math.max(0, Math.sin(pct * Math.PI * 0.65) * 0.065) * tVals.bgTintAmount;
+      bgTarget.r = 0.003 + bgWarm;
+      bgTarget.g = 0.001 + bgWarm * 0.28;
+      bgTarget.b = 0.001;
+      const coronaStart = tVals.ballCoronaStart;
+      const cSub = Math.max(0, (pct - coronaStart) / (1.0 - coronaStart));
+      coronaMats.forEach((m,i) => {
+        m.uniforms.globalAlpha.value = eO(cSub);
+        m.uniforms.baseGlowStrength.value = CORONA_BASE_GLOW[i] * tVals.coronaGlow;
+        m.uniforms.flareStrength.value    = CORONA_BASE_FLARE[i] * tVals.coronaFlareStrength;
+        m.uniforms.radialFalloff.value    = CORONA_BASE_RADIAL[i] * tVals.coronaSpread;
+        m.uniforms.flareFalloff.value     = CORONA_BASE_FLAREFALLOFF[i] * tVals.coronaSpread;
+        m.uniforms.glowColor.value.copy(CORONA_BASE_COLORS[i]);
+      });
+      applyCoronaHueShift(tVals.coronaHueShift);
+      if(pct > coronaStart){
+        coronaGroup.visible = true;
+        updateLoops(sunMat.uniforms.time.value, SUN_R * sunMesh.scale.x);
+      }
+      if(pct >= 1.0) { flashMesh.visible = false; }
+
+    } else {
+      // Post-ignition: color cycles, loops run, galaxy forms
+      flashMesh.visible = false;
+      flashMat.uniforms.opacity.value = 0;
+      colorCycleT = postIgnitionT;
+      sunMat.uniforms.hueMode.value = (colorCycleT / COLOR_PERIOD) * 5.0;
+      const mode = sunMat.uniforms.hueMode.value % 5;
+      const mi = Math.floor(mode), mf = mode - mi;
+      const dissolveFade = 1.0 - tVals.sunDissolve;
+      coronaMats.forEach((mat, ci) => {
+        const c1 = CORONA_HUES_RGB[mi % 5][ci];
+        const c2 = CORONA_HUES_RGB[(mi+1) % 5][ci];
+        mat.uniforms.glowColor.value.lerpColors(c1, c2, mf);
+        mat.uniforms.globalAlpha.value = 1.0;
+        mat.uniforms.baseGlowStrength.value = CORONA_BASE_GLOW[ci] * tVals.coronaGlow * dissolveFade;
+        mat.uniforms.flareStrength.value    = CORONA_BASE_FLARE[ci] * tVals.coronaFlareStrength * dissolveFade;
+        mat.uniforms.radialFalloff.value    = CORONA_BASE_RADIAL[ci] * tVals.coronaSpread;
+        mat.uniforms.flareFalloff.value     = CORONA_BASE_FLAREFALLOFF[ci] * tVals.coronaSpread;
+      });
+      applyCoronaHueShift(tVals.coronaHueShift);
+      coreLight.intensity = (8 + 4 * Math.sin(colorCycleT * 0.3)) * dissolveFade;
+      if(!drag) sphTarget.theta += 0.00042;
+      updateLoops(sunMat.uniforms.time.value, SUN_R * sunMesh.scale.x);
+
+      const galaxyTimeElapsed = postIgnitionT;
+      const gt = Math.min(1.0, galaxyTimeElapsed / GALAXY_DUR);
+      const gtCurve = gt * gt;
+      fineMat.uniforms.galaxyT.value = gtCurve;
+      galaxyDiscMat.uniforms.gAlpha.value = Math.min(1.0, gtCurve * 1.5);
+      galaxyDiscMat.uniforms.time.value = postIgnitionT;
+      cloudMat.uniforms.gAlpha.value = Math.max(0, 1.0 - gtCurve * 2.5);
+      const sunNaturalScale = (1.0 + gtCurve * 3.5) * tVals.sunSizeMult;
+      sunMesh.scale.setScalar(sunNaturalScale * dissolveFade);
+      sunMat.uniforms.dissolve.value = tVals.sunDissolve;
+      sunDustMat.uniforms.time.value      = sunMat.uniforms.time.value;
+      sunDustMat.uniforms.dissolve.value  = tVals.sunDissolve;
+      sunDustMat.uniforms.hueMode.value   = sunMat.uniforms.hueMode.value;
+      sunDustMat.uniforms.baseRadius.value= SUN_R * sunNaturalScale;
+      if(gt < 0.96) {
+        sphTarget.r = 95 + gtCurve * 210;
+        sphTarget.phi += (1.10 - sphTarget.phi) * 0.006;
+      }
+    }
+
+    if(coronaGroup.visible) coronaGroup.quaternion.copy(camera.quaternion);
+  }
+
+  lerpBg(0.022);
+
+  const rotNorm = clamp((fineMat.uniforms.rotSpeed.value - 0.058) / (0.32 - 0.058), 0, 1);
+  const autoRotate = ignitionDone ? 0 : (0.00038 + rotNorm * (0.00055 - 0.00038));
+  if(!drag) sphTarget.theta += autoRotate;
+  sph.r     += (sphTarget.r-sph.r)*0.040;
+  sph.theta += (sphTarget.theta-sph.theta)*0.08;
+  sph.phi   += (sphTarget.phi-sph.phi)*0.08;
+  applyCamera();
+
+  // Formation locks — override timeline-driven values when set above -1
+  if (tVals.formLock >= 0) {
+    fineMat.uniforms.formT.value    = tVals.formLock;
+    fineMat.uniforms.gAlpha.value   = tVals.formLock;
+    cloudMat.uniforms.gAlpha.value  = tVals.formLock;
+  }
+  if (tVals.collapseLock >= 0) {
+    fineMat.uniforms.collapseT.value  = tVals.collapseLock;
+    cloudMat.uniforms.collapseT.value = tVals.collapseLock;
+  }
+
+  // Theatre overrides — applied last so they always win
+  // Once ignition completes, GalaxyCloud takes over driving these same four
+  // uniforms instead of CollapseCloud/Nebula — otherwise they'd just freeze at
+  // whichever value their last keyframe left them at (those groups' windows
+  // both end at/before 74s) for the rest of the scene, including the galaxy phase.
+  fineMat.uniforms.brightMult.value  = ignitionDone ? tVals.galaxyCloudBright : tVals.nebulaBright;
+  cloudMat.uniforms.brightMult.value = ignitionDone ? tVals.galaxyCloudBright : tVals.nebulaBright;
+  drainMat.uniforms.gAlpha.value    *= tVals.collapseBright;
+  cvortMat.uniforms.gAlpha.value    *= tVals.collapseBright;
+  fineMat.uniforms.warmBias.value    = ignitionDone ? tVals.galaxyCloudWarm : Math.max(autoWarmBias, tVals.nebulaWarm);
+  cloudMat.uniforms.warmBias.value   = ignitionDone ? tVals.galaxyCloudWarm : Math.max(autoWarmBias, tVals.collapseWarm);
+  fineMat.uniforms.turbMult.value    = tVals.cloudTurb;
+  cloudMat.uniforms.turbMult.value   = tVals.cloudTurb;
+  fineMat.uniforms.spiralMult.value  = tVals.cloudSpiral;
+  cloudMat.uniforms.spiralMult.value = tVals.cloudSpiral;
+  fineMat.uniforms.coreMult.value    = tVals.cloudCore;
+  cloudMat.uniforms.coreMult.value   = tVals.cloudCore;
+  fineMat.uniforms.hotHue.value      = ignitionDone ? tVals.galaxyCloudHue : tVals.cloudHotHue;
+  cloudMat.uniforms.hotHue.value     = ignitionDone ? tVals.galaxyCloudHue : tVals.cloudHotHue;
+  fineMat.uniforms.satMult.value     = ignitionDone ? tVals.galaxyCloudSat : tVals.cloudSat;
+  cloudMat.uniforms.satMult.value    = ignitionDone ? tVals.galaxyCloudSat : tVals.cloudSat;
+  fineMat.uniforms.cloudScale.value  = tVals.cloudScale;
+  cloudMat.uniforms.cloudScale.value = tVals.cloudScale;
+  fineMat.uniforms.ballForm.value  = tVals.cloudBallForm;
+  cloudMat.uniforms.ballForm.value = tVals.cloudBallForm;
+  applyCoreHueShift(tVals.coreHue);
+  CORE_GLOW_MESHES.forEach(m => m.scale.setScalar(tVals.coreGlowSize));
+  if (ignitionTriggered) {
+    sunMat.uniforms.hueMode.value    = tVals.sunHue > 0 ? tVals.sunHue : sunMat.uniforms.hueMode.value;
+    // (corona glow/flare/spread/hue are already set from fixed bases in the
+    // ignition-sequence block above — no separate override needed here)
+    sunMat.uniforms.distort.value   *= tVals.distortAmt;
+    sunMat.uniforms.distFreqMult.value = tVals.ballFreq;
+    sunMat.uniforms.distAmpMult.value  = tVals.ballAmp;
+    sunMat.uniforms.rippleStr.value    = tVals.sunRipple;
+    flashMat.uniforms.opacity.value  *= tVals.flashIntensity;
+  }
+
+  const liveFlags = {
+    fine:          fineMat.uniforms.gAlpha.value  > 0.01,
+    cloud:         cloudMat.uniforms.gAlpha.value > 0.01,
+    collapseShape: (fineMat.uniforms.collapseT.value  > 0.01 && fineMat.uniforms.gAlpha.value  > 0.01) ||
+                   (cloudMat.uniforms.collapseT.value > 0.01 && cloudMat.uniforms.gAlpha.value > 0.01),
+    ignite:        ignitionTriggered && !ignitionDone,
+    sun:           ignitionTriggered,
+    galaxy:        fineMat.uniforms.galaxyT.value > 0.01,
+  };
+  updateStatusPanel(liveFlags);
+  updateControlsPanel(liveFlags);
+  updateClock(T, paused, tVals.igniteDuration);
+  renderer.render(scene, camera);
 }
-
 tick();
+
 </script>
 </body>
 </html>
