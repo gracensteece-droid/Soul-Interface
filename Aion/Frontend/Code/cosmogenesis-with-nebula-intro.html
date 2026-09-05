@@ -3,111 +3,41 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Soul Interface — The Origin</title>
-<style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;background:#000;overflow:hidden}canvas{position:fixed;inset:0}</style>
+<title>Soul Interface — The Origin (with Nebula Intro)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{position:fixed;inset:0}
+body.ui-hidden .overlay-panel{visibility:hidden!important;pointer-events:none!important}
+#uiToggleBtn{
+  position:fixed;top:16px;right:16px;z-index:9999;
+  background:rgba(0,0,0,0.6);color:#e6d89f;font-family:monospace;font-size:11px;
+  padding:6px 10px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);
+  cursor:pointer;user-select:none;
+}
+</style>
 <script type="importmap">
 {
   "imports": {
-    "three": "https://esm.sh/three@0.128.0",
-    "@theatre/core": "https://esm.sh/@theatre/core@0.6.2",
-    "@theatre/studio": "https://esm.sh/@theatre/studio@0.6.2"
+    "three": "https://esm.sh/three@0.128.0"
   }
 }
 </script>
 </head>
 <body>
 <canvas id="c"></canvas>
+<button id="uiToggleBtn">Hide UI</button>
+<div id="fpsCounter" class="overlay-panel" style="position:fixed;bottom:16px;right:16px;z-index:50;background:rgba(0,0,0,0.6);color:#9fe6b0;font-family:monospace;font-size:12px;padding:5px 9px;border-radius:4px;pointer-events:none;">-- fps</div>
+<div id="cloudPickerPanel" class="overlay-panel" style="display:none;position:fixed;top:16px;left:16px;z-index:40;background:rgba(10,10,14,0.85);border:1px solid rgba(200,175,135,0.3);border-radius:6px;padding:10px 12px;font-family:monospace;font-size:11px;color:rgba(230,220,200,0.92);width:220px;">
+  <div id="cloudPickerTitle" style="margin-bottom:6px;opacity:0.8"></div>
+  <label style="display:block;margin-top:6px;">X <span id="cloudPickX"></span><input type="range" id="cloudPickSliderX" min="-350" max="350" step="1" style="width:100%;display:block"></label>
+  <label style="display:block;margin-top:6px;">Y <span id="cloudPickY"></span><input type="range" id="cloudPickSliderY" min="-350" max="350" step="1" style="width:100%;display:block"></label>
+  <label style="display:block;margin-top:6px;">Z <span id="cloudPickZ"></span><input type="range" id="cloudPickSliderZ" min="-350" max="350" step="1" style="width:100%;display:block"></label>
+  <label style="display:block;margin-top:6px;">Hue <span id="cloudPickHue"></span><input type="range" id="cloudPickSliderHue" min="0" max="1" step="0.005" style="width:100%;display:block"></label>
+  <button id="cloudPickClose" style="margin-top:8px;width:100%;font-family:monospace;font-size:10px;background:rgba(200,175,135,0.15);border:1px solid rgba(200,175,135,0.3);color:inherit;border-radius:4px;padding:4px;cursor:pointer;">Close</button>
+</div>
 <script type="module">
 import * as THREE from 'three';
-import * as TheatreCore from '@theatre/core';
-import * as TheatreStudio from '@theatre/studio';
-const { getProject, types } = TheatreCore.default;
-const studio = TheatreStudio.default;
-studio.initialize();
-
-// ── Theatre.js ────────────────────────────────────────────────────────────────
-const project = getProject('Origin Scene v3');
-const sheet   = project.sheet('Timeline');
-
-// Playback — speed multiplier (set to 0 to pause from Theatre side)
-const playbackObj = sheet.object('Playback', {
-  speed: types.number(1.0, { range: [0, 4] }),
-});
-
-// Nebula — particle appearance during void/nebula phase
-const nebulaObj = sheet.object('Nebula', {
-  brightMult: types.number(1.0,  { range: [0, 3] }),
-  warmBias:   types.number(0.0,  { range: [0, 1] }),
-  formLock:   types.number(-1,   { range: [-1, 1] }), // -1 = auto, 0-1 = locked formation stage
-});
-
-// Collapse — how the spiral drain looks
-const collapseObj = sheet.object('Collapse', {
-  brightMult:   types.number(1.0, { range: [0, 3] }),
-  warmBias:     types.number(0.0, { range: [0, 1] }),
-  collapseLock: types.number(-1,  { range: [-1, 1] }), // -1 = auto, 0-1 = locked collapse stage
-});
-
-// Ignition — timing and intensity of the birth flash
-const ignitionObj = sheet.object('Ignition', {
-  duration:        types.number(4,    { range: [1, 30] }),
-  flashIntensity:  types.number(1.0,  { range: [0, 3] }),
-  distortAmt:      types.number(1.0,  { range: [0, 3] }),
-  emergenceStart:  types.number(0.68, { range: [0, 0.99] }), // when sun texture appears (0=early, 0.99=late)
-  coreGlow:        types.number(1.0,  { range: [0, 4] }),    // intensity of the ambient warm light halo
-});
-
-// Sun — post-ignition surface appearance
-const sunObj = sheet.object('Sun', {
-  hueMode:   types.number(0.0, { range: [0, 5] }),
-  coronaGlow: types.number(1.0, { range: [0, 3] }),
-  coronaHueShift:     types.number(0.0, { range: [0, 1] }),   // rotates the corona's color cycle
-  coronaFlareStrength:types.number(1.0, { range: [0, 3] }),   // how bright/spiky the flare rays are
-  coronaSpread:       types.number(1.0, { range: [0.2, 3] }), // how quickly the glow/flares fall off with distance
-  spinSpeed:          types.number(0.0, { range: [-15, 15] }), // rotates the sun mesh on its own axis — negative = reverse direction
-  sizeMult:           types.number(1.0, { range: [0.01, 6] }), // multiplies the sun's scale on top of its own growth/shrink animation
-  ripple:             types.number(0.0, { range: [0, 3] }),    // traveling surface-wave crests, ported from sun-prototype.html
-  dissolve:           types.number(0.0, { range: [0, 1] }),    // 0 = solid sun, 1 = fully broken apart into drifting particles
-});
-
-// Galaxy Cloud — takes over driving the shared cloud particle materials' color/warmth/
-// brightness once ignition completes, since CollapseCloud's own keyframes stop at 74s
-// and would otherwise just freeze in place for the rest of the scene.
-const galaxyCloudObj = sheet.object('GalaxyCloud', {
-  hue:        types.number(0.07, { range: [0, 1] }),
-  satMult:    types.number(1.0,  { range: [0, 2] }),
-  warmBias:   types.number(0.0,  { range: [0, 1] }),
-  brightMult: types.number(1.0,  { range: [0, 3] }),
-});
-
-// Collapse Cloud — shape/color of the collapsing nebula as it nears ignition (T≈56-74, esp. the 72-74 tail)
-const cloudShapeObj = sheet.object('CollapseCloud', {
-  turbulence:  types.number(1.0,  { range: [0, 3] }),    // multiplies the inward-fall turbulence amplitude
-  spiralTight: types.number(1.0,  { range: [0.3, 3] }),  // multiplies how tightly wound the drain spiral looks
-  coreSize:    types.number(1.0,  { range: [0.2, 3] }),  // >1 = core cluster concentrates/brightens sooner
-  hotHue:      types.number(0.07, { range: [0, 1] }),    // hue of the hottest (innermost) particles
-  satMult:     types.number(1.0,  { range: [0, 2] }),    // saturation multiplier
-  spinSpeed:   types.number(1.0,  { range: [0.2, 25] }),  // multiplies the whole collapse rotation rate
-  spinRampShape: types.number(3.0, { range: [1, 6] }),    // shape of the ramp-in curve (3 = default cubic, 1 = linear)
-  cloudSize:   types.number(1.0,  { range: [0.0005, 3] }),  // scales the collapse spiral's overall radius
-  coreLightHue:types.number(0.0,  { range: [0, 1] }),    // hue rotation applied to the core-glow light/shells
-  ballForm:    types.number(0.0,  { range: [0, 3] }),     // 0 = flat collapse to a point, higher = rounds into a ball
-  coreGlowSize:types.number(1.0,  { range: [0.01, 3] }),  // scales the 4 fixed core-glow spheres (independent of cloudSize)
-});
-
-// Explosion Ball — shape/blend of the ignition flash + sun emergence (T≈74-80)
-const ballObj = sheet.object('ExplosionBall', {
-  radius:      types.number(1.0,  { range: [0.3, 3] }),   // flash sphere + sun peak-scale multiplier
-  distortFreq: types.number(1.0,  { range: [0.2, 4] }),   // ripple frequency multiplier on the sun surface
-  distortAmp:  types.number(1.0,  { range: [0, 3] }),     // ripple amplitude multiplier (stacks with Ignition.distortAmt)
-  asymmetry:   types.number(0.0,  { range: [0, 1] }),     // lumpy/non-spherical distortion on the flash itself
-  blendWidth:  types.number(0.36, { range: [0.05, 0.8] }),// how gradually the flash fades — widen to soften the handoff
-  coronaStart: types.number(0.80, { range: [0.3, 0.95] }),// ignition-pct where corona begins fading in
-  igniteLock:  types.number(-1,   { range: [-1, 1] }),    // -1 = auto, 0-1 = freeze ignition progress at a fixed pct
-  flashHue:    types.number(0.08, { range: [0, 1] }),     // hue tint applied to the flash sphere
-  flashTint:   types.number(0.0,  { range: [0, 1] }),     // 0 = default near-white flash, 1 = fully tinted to flashHue
-  bgTintAmount:types.number(1.0,  { range: [0, 3] }),     // multiplies the background's warm shift during ignition
-});
 
 let tVals = {
   speed: 1, nebulaBright: 1, nebulaWarm: 0, formLock: -1,
@@ -121,19 +51,18 @@ let tVals = {
   galaxyCloudHue: 0.07, galaxyCloudSat: 1, galaxyCloudWarm: 0, galaxyCloudBright: 1,
   ballRadius: 1, ballFreq: 1, ballAmp: 1, ballAsym: 0, ballBlend: 0.36, ballCoronaStart: 0.80, igniteLock: -1,
 };
-playbackObj.onValuesChange(v  => { tVals.speed           = v.speed; });
-nebulaObj.onValuesChange(v    => { tVals.nebulaBright = v.brightMult; tVals.nebulaWarm = v.warmBias; tVals.formLock = v.formLock; });
-collapseObj.onValuesChange(v  => { tVals.collapseBright = v.brightMult; tVals.collapseWarm = v.warmBias; tVals.collapseLock = v.collapseLock; });
-ignitionObj.onValuesChange(v  => { tVals.igniteDuration = v.duration; tVals.flashIntensity = v.flashIntensity; tVals.distortAmt = v.distortAmt; tVals.emergenceStart = v.emergenceStart; tVals.coreGlow = v.coreGlow; });
-sunObj.onValuesChange(v       => { tVals.sunHue = v.hueMode; tVals.coronaGlow = v.coronaGlow; tVals.coronaHueShift = v.coronaHueShift; tVals.coronaFlareStrength = v.coronaFlareStrength; tVals.coronaSpread = v.coronaSpread; tVals.sunSpinSpeed = v.spinSpeed; tVals.sunSizeMult = v.sizeMult; tVals.sunRipple = v.ripple; tVals.sunDissolve = v.dissolve; });
-galaxyCloudObj.onValuesChange(v => { tVals.galaxyCloudHue = v.hue; tVals.galaxyCloudSat = v.satMult; tVals.galaxyCloudWarm = v.warmBias; tVals.galaxyCloudBright = v.brightMult; });
-cloudShapeObj.onValuesChange(v => { tVals.cloudTurb = v.turbulence; tVals.cloudSpiral = v.spiralTight; tVals.cloudCore = v.coreSize; tVals.cloudHotHue = v.hotHue; tVals.cloudSat = v.satMult; tVals.cloudSpin = v.spinSpeed; tVals.cloudSpinCurve = v.spinRampShape; tVals.cloudScale = v.cloudSize; tVals.coreHue = v.coreLightHue; tVals.cloudBallForm = v.ballForm; tVals.coreGlowSize = v.coreGlowSize; });
-ballObj.onValuesChange(v      => { tVals.ballRadius = v.radius; tVals.ballFreq = v.distortFreq; tVals.ballAmp = v.distortAmp; tVals.ballAsym = v.asymmetry; tVals.ballBlend = v.blendWidth; tVals.ballCoronaStart = v.coronaStart; tVals.igniteLock = v.igniteLock; tVals.flashHue = v.flashHue; tVals.flashTint = v.flashTint; tVals.bgTintAmount = v.bgTintAmount; });
+// Theatre.js (and the 8 sheet.object() definitions that used to write into
+// tVals above) removed entirely — tVals is now driven only by its own
+// defaults plus the custom keyframe/slider system below, nothing external.
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const canvas   = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// Capped at 1.25, not 2 — cost of every per-pixel shader in this scene (the
+// cloud layer's fbm noise, all 19 intro-nebula raymarch boxes) scales with
+// total pixel count, which scales with pixelRatio SQUARED. On a 2x-DPI
+// display this alone is a ~2.5x reduction in pixels shaded per frame.
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000004, 1);
 
@@ -146,10 +75,12 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-const clamp    = (v,a,b) => Math.max(a,Math.min(b,v));
-const easeOut  = t => 1-Math.pow(1-t,3);
-const easeIn   = t => t*t*t;
-const slowForm = t => Math.pow(t, 2.4);
+const clamp      = (v,a,b) => Math.max(a,Math.min(b,v));
+const easeOut    = t => 1-Math.pow(1-t,3);
+const easeIn     = t => t*t*t;
+const slowForm   = t => Math.pow(t, 2.4);
+const smoothstep = t => t*t*(3-2*t); // used by the added big-nebula intro below
+const lerp       = (a,b,t) => a+(b-a)*t;
 // Deterministic pseudo-random — same seed always gives the same value, so the
 // emission-loop reseeding below plays out identically every run instead of
 // drifting with wall-clock Math.random().
@@ -169,13 +100,13 @@ const SCENE_SEED = 20260704;
 const rand = mulberry32(SCENE_SEED);
 
 // ── Spherical camera ──────────────────────────────────────────────────────────
-const sph       = { r:380, theta:0.30, phi:0.46 };
-const sphTarget = { r:380, theta:0.30, phi:0.46 };
+// Default pulled back from 380 to 580 for this merged file — matches the
+// farther framing Ricky asked for while tuning the standalone nebula preview.
+const sph       = { r:580, theta:0.30, phi:0.46 };
+const sphTarget = { r:580, theta:0.30, phi:0.46 };
 
-// Optional ?startR=580 lets another scene's handoff (e.g. the nebula ->
-// cosmogenesis test) open this one at a farther/closer starting distance
-// than the 380 default — same pattern as ?startT above. Clamped to the same
-// (50,700) range the wheel-zoom handler uses. Absent or invalid -> untouched.
+// Optional ?startR= still works for testing other distances. Clamped to the
+// same (50,700) range the wheel-zoom handler uses.
 const _startRParam = parseFloat(new URLSearchParams(location.search).get('startR'));
 if (isFinite(_startRParam)){
   const r = clamp(_startRParam, 50, 700);
@@ -193,6 +124,7 @@ function applyCamera(){
 
 // ── Clock HUD ─────────────────────────────────────────────────────────────────
 const clockEl = document.createElement('div');
+clockEl.className = 'overlay-panel';
 clockEl.style.cssText = [
   'position:fixed', 'bottom:80px', 'left:50%', 'transform:translateX(-50%)',
   'font:15px/1 monospace', 'color:rgba(255,255,255,0.90)',
@@ -230,11 +162,12 @@ document.body.appendChild(clockEl);
 }
 
 // ── Live-controls status panel ────────────────────────────────────────────────
-// Answers "which Theatre.js panel actually does something right now" — computed
+// Answers "which control group actually does something right now" — computed
 // from real uniform/state values every frame, not guessed from a fixed time range,
 // so it stays true even if a stage's timing or a control's wiring changes later.
 // ── On-canvas transport (play/pause/reset) — no separate window needed ────────
 const transportEl = document.createElement('div');
+transportEl.className = 'overlay-panel';
 transportEl.style.cssText = [
   'position:fixed', 'bottom:80px', 'left:50%', 'transform:translateX(calc(-50% - 160px))',
   'display:flex', 'gap:6px', 'z-index:9999',
@@ -256,7 +189,7 @@ transportEl.appendChild(localPlayBtn); transportEl.appendChild(localResetBtn);
 document.body.appendChild(transportEl);
 
 // ── Live-controls status panel ────────────────────────────────────────────────
-// Answers "which Theatre.js panel actually does something right now" — computed
+// Answers "which control group actually does something right now" — computed
 // from real uniform/state values every frame, not guessed from a fixed time range,
 // so it stays true even if a stage's timing or a control's wiring changes later.
 // Each row's 🔁 loops playback within that group's own window — same loopGroupName
@@ -273,6 +206,7 @@ const STATUS_ROWS = [
 ];
 
 const statusEl = document.createElement('div');
+statusEl.className = 'overlay-panel';
 statusEl.style.cssText = [
   'position:fixed', 'bottom:130px', 'left:50%', 'transform:translateX(-50%)',
   'font:12px/1.7 monospace', 'color:rgba(255,255,255,0.88)',
@@ -349,8 +283,8 @@ function updateStatusPanel(f){
 }
 
 // ── Pop-out controls window ────────────────────────────────────────────────────
-// Plain sliders bound straight to tVals (the same object Theatre.js writes into),
-// grouped by scene stage, each labeled with the exact second-range it affects.
+// Plain sliders bound straight to tVals, grouped by scene stage, each labeled
+// with the exact second-range it affects.
 // Opens in a real separate browser window so it can live on a second monitor.
 const CONTROL_GROUPS = [
   { name:'Playback', window: () => [0,90], range: () => `0–90s (always)`, props:[
@@ -1147,6 +1081,117 @@ window.addEventListener('wheel', e=>{
   sphTarget.r = clamp(sphTarget.r+e.deltaY*0.20, 50, 700);
 },{passive:true});
 
+// ── Click a big-nebula piece to select it, then drag X/Y/Z sliders to move
+// it — for rearranging the 19-piece composite by eye instead of by editing
+// coordinates in code. Distinguishes a real click from a camera-orbit drag
+// by total mouse movement (>5px = drag, ignored for selection) since both
+// start with the same mousedown on this canvas. Picking tests each piece's
+// full bounding box (its raymarch box), not its actual visible density — so
+// a click can land inside a box even where that piece renders mostly
+// transparent there; that's the same simplification most 3D pickers make.
+const introRaycaster = new THREE.Raycaster();
+const introMouseNDC = new THREE.Vector2();
+let selectedIntroMat = null;
+let cloudPickMouseDown = {x:0, y:0};
+
+canvas.addEventListener('mousedown', e => { cloudPickMouseDown = {x:e.clientX, y:e.clientY}; });
+window.addEventListener('mouseup', e => {
+  const moved = Math.hypot(e.clientX-cloudPickMouseDown.x, e.clientY-cloudPickMouseDown.y);
+  if (moved > 5 || introNebulaDisposed) return;
+  const rect = canvas.getBoundingClientRect();
+  introMouseNDC.x = ((e.clientX-rect.left)/rect.width)*2 - 1;
+  introMouseNDC.y = -((e.clientY-rect.top)/rect.height)*2 + 1;
+  introRaycaster.setFromCamera(introMouseNDC, camera);
+  const hits = introRaycaster.intersectObjects(introNebulaVolumes.map(m => m.userData.mesh));
+  if (hits.length === 0) { hideCloudPicker(); return; }
+  // Groups no longer have one mesh per piece — the hit tells us which GROUP,
+  // then the nearest blob center to the actual hit point tells us which of
+  // that group's 2-4 individual clouds was really clicked.
+  const mat = hits[0].object.material;
+  const hitPoint = hits[0].point;
+  let bestIdx = 0, bestDist = Infinity;
+  mat.userData.blobCenters.forEach((c, i) => {
+    const d = c.distanceTo(hitPoint);
+    if (d < bestDist){ bestDist = d; bestIdx = i; }
+  });
+  selectIntroPiece(mat, bestIdx);
+});
+
+const cloudPickerPanel = document.getElementById('cloudPickerPanel');
+const cloudPickerTitle = document.getElementById('cloudPickerTitle');
+const cloudPickSliderX = document.getElementById('cloudPickSliderX');
+const cloudPickSliderY = document.getElementById('cloudPickSliderY');
+const cloudPickSliderZ = document.getElementById('cloudPickSliderZ');
+const cloudPickSliderHue = document.getElementById('cloudPickSliderHue');
+const cloudPickValX = document.getElementById('cloudPickX');
+const cloudPickValY = document.getElementById('cloudPickY');
+const cloudPickValZ = document.getElementById('cloudPickZ');
+const cloudPickValHue = document.getElementById('cloudPickHue');
+let selectedBlobIndex = -1;
+
+function selectIntroPiece(mat, blobIndex){
+  selectedIntroMat = mat;
+  selectedBlobIndex = blobIndex;
+  const groupIdx = introNebulaVolumes.indexOf(mat);
+  const center = mat.userData.blobCenters[blobIndex];
+  const name = mat.userData.blobNames[blobIndex];
+  cloudPickerTitle.textContent = `${name} (${mat.userData.name})`;
+  cloudPickSliderX.value = center.x;
+  cloudPickSliderY.value = center.y;
+  cloudPickSliderZ.value = center.z;
+  cloudPickSliderHue.value = mat.userData.blobBaseRimHue[blobIndex];
+  cloudPickValX.textContent = center.x.toFixed(0);
+  cloudPickValY.textContent = center.y.toFixed(0);
+  cloudPickValZ.textContent = center.z.toFixed(0);
+  cloudPickValHue.textContent = mat.userData.blobBaseRimHue[blobIndex].toFixed(3);
+  cloudPickerPanel.style.display = 'block';
+}
+function hideCloudPicker(){
+  selectedIntroMat = null;
+  selectedBlobIndex = -1;
+  cloudPickerPanel.style.display = 'none';
+}
+function applyIntroPieceSliders(){
+  if (!selectedIntroMat || selectedBlobIndex < 0) return;
+  const x = parseFloat(cloudPickSliderX.value), y = parseFloat(cloudPickSliderY.value), z = parseFloat(cloudPickSliderZ.value);
+  selectedIntroMat.userData.blobCenters[selectedBlobIndex].set(x, y, z);
+  selectedIntroMat.uniforms.uCenter.value[selectedBlobIndex].set(x, y, z);
+  cloudPickValX.textContent = x.toFixed(0);
+  cloudPickValY.textContent = y.toFixed(0);
+  cloudPickValZ.textContent = z.toFixed(0);
+}
+function applyIntroPieceHue(){
+  if (!selectedIntroMat || selectedBlobIndex < 0) return;
+  // Rotates rim AND deep together by the same delta from the blob's
+  // original hue, preserving whatever rim/deep contrast it was designed
+  // with — same technique as nebula-volumetric-prototype.html's hue slider,
+  // now indexed per-blob within the group's uniform arrays.
+  const ud = selectedIntroMat.userData;
+  const v = parseFloat(cloudPickSliderHue.value);
+  const delta = v - ud.blobBaseRimHue[selectedBlobIndex];
+  const newRimHue  = ((v % 1) + 1) % 1;
+  const newDeepHue = (((ud.blobBaseDeepHue[selectedBlobIndex] + delta) % 1) + 1) % 1;
+  selectedIntroMat.uniforms.uRimColor.value[selectedBlobIndex].setHSL(newRimHue, ud.blobRimSat[selectedBlobIndex], ud.blobRimLum[selectedBlobIndex]);
+  selectedIntroMat.uniforms.uDeepColor.value[selectedBlobIndex].setHSL(newDeepHue, ud.blobDeepSat[selectedBlobIndex], ud.blobDeepLum[selectedBlobIndex]);
+  cloudPickValHue.textContent = v.toFixed(3);
+}
+cloudPickSliderX.addEventListener('input', applyIntroPieceSliders);
+cloudPickSliderY.addEventListener('input', applyIntroPieceSliders);
+cloudPickSliderZ.addEventListener('input', applyIntroPieceSliders);
+cloudPickSliderHue.addEventListener('input', applyIntroPieceHue);
+document.getElementById('cloudPickClose').addEventListener('click', hideCloudPicker);
+
+// ── Global "Hide UI" toggle — one button that hides every overlay panel at
+// once (clock, transport, status, fps counter, cloud picker), instead of
+// hunting for each panel's own close control. Mainly for viewing the scene
+// clean on a small screen, where these panels (built for a desktop-width
+// viewport) can overlap and cover most of the visible area.
+const uiToggleBtn = document.getElementById('uiToggleBtn');
+uiToggleBtn.addEventListener('click', () => {
+  const hidden = document.body.classList.toggle('ui-hidden');
+  uiToggleBtn.textContent = hidden ? 'Show UI' : 'Hide UI';
+});
+
 // ── Shared GLSL ───────────────────────────────────────────────────────────────
 const HSL_GLSL = `
   vec3 hsl2rgb(float h,float s,float l){
@@ -1194,7 +1239,7 @@ scene.add(new THREE.Points(voidGeo, voidMat));
 // ═══════════════════════════════════════════════════════════════════════════════
 const NUM_ARMS = 3;
 const FINE_N   = 14000;
-let fineMat;
+let fineMat, fineMesh;
 {
   const geo  = new THREE.BufferGeometry();
   const pos  = new Float32Array(FINE_N*3);
@@ -1359,14 +1404,15 @@ let fineMat;
       }
     `,
   });
-  scene.add(new THREE.Points(geo, fineMat));
+  fineMesh = new THREE.Points(geo, fineMat);
+  scene.add(fineMesh);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // LAYER 2 — VOLUMETRIC CLOUD PUFFS
 // ═══════════════════════════════════════════════════════════════════════════════
 const CLOUD_N = 2800;
-let cloudMat;
+let cloudMat, cloudMesh;
 {
   const geo  = new THREE.BufferGeometry();
   const pos  = new Float32Array(CLOUD_N*3);
@@ -1491,14 +1537,15 @@ let cloudMat;
       }
     `,
   });
-  scene.add(new THREE.Points(geo, cloudMat));
+  cloudMesh = new THREE.Points(geo, cloudMat);
+  scene.add(cloudMesh);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // LAYER 3 — EJECTION SPARKS
 // ═══════════════════════════════════════════════════════════════════════════════
 const SPARK_N = 9000;
-let sparkMat;
+let sparkMat, sparkMesh;
 {
   const geo   = new THREE.BufferGeometry();
   const pos   = new Float32Array(SPARK_N*3);
@@ -1575,12 +1622,437 @@ let sparkMat;
       }
     `,
   });
-  scene.add(new THREE.Points(geo, sparkMat));
+  sparkMesh = new THREE.Points(geo, sparkMat);
+  scene.add(sparkMesh);
 }
 
 const hazeRed  = { material:{ opacity:0 } };
 const hazeBlue = { material:{ opacity:0 } };
 const hazeGold = { material:{ opacity:0 } };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INTRO NEBULA — a foreground raymarch nebula (ported from
+// nebula-cosmogenesis-handoff-test.html) that sits in front for the first
+// ~7 real seconds, forming in fast then fading away, revealing the fine/
+// cloud/spark layers above — the REAL ones, already added to this same
+// scene, not a duplicate — which are naturally mid-formation by then since
+// T starts at 30 above instead of 0. No page navigation anywhere: one scene,
+// one camera, the whole time.
+//
+// Performance note: this adds a 19-piece raymarch nebula on top of an
+// already-substantial scene (25,800 particles across 3 shaders, plus
+// whatever else cosmogenesis renders). Only runs for the first ~7 seconds
+// (uGlobalAlpha reaches 0 and each piece gets `discard`ed every pixel after
+// that), but if the opening feels heavy, this is the first thing to look at.
+// ═══════════════════════════════════════════════════════════════════════════════
+// The 19 pieces' positions average out well off-center (skewed toward
+// +X/-Z) — the camera always looks at literal (0,0,0), so that skew reads
+// as "not centered" even with nothing else wrong. Rather than re-tune all 19
+// hand-placed positions, every piece gets nudged by this same offset —
+// about 55% of the way to fully centering their average position, since
+// "a little more centered" asked for a nudge, not dead-centering.
+const INTRO_CENTER_OFFSET = new THREE.Vector3(-45, -12, 46);
+
+const introHsl = (h,s,l) => { const c = new THREE.Color(); c.setHSL(h,s,l); return c; };
+function introWarmPalette(seed, opts){
+  opts = opts || {};
+  const jitter = Math.sin(seed*12.9898) * 0.5 + 0.5;
+  const rimHue = (opts.rimHue !== undefined ? opts.rimHue : 0.09) + (jitter-0.5)*0.025;
+  const rimLum = (opts.rimLum !== undefined ? opts.rimLum : 0.62) + (jitter-0.5)*0.08;
+  const deepHue = ((opts.deepHue !== undefined ? opts.deepHue : 0.98) + (jitter-0.5)*0.02 + 1) % 1;
+  const deepLum = (opts.deepLum !== undefined ? opts.deepLum : 0.22) + (jitter-0.5)*0.05;
+  return {
+    rim:  introHsl(rimHue, opts.rimSat !== undefined ? opts.rimSat : 0.90, rimLum),
+    deep: introHsl(deepHue, opts.deepSat !== undefined ? opts.deepSat : 0.78, deepLum),
+  };
+}
+function makeIntroBlob(center, size, seed, name, densityThreshold, erosionStrength, paletteOpts){
+  const pal = introWarmPalette(seed, paletteOpts);
+  return { center, size, seed, name, densityThreshold, erosionStrength, rimColor: pal.rim, deepColor: pal.deep };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// GROUPED VERSION — same 19 pieces, same per-blob density/color math as
+// before, but merged into 6 shared shaders by spatial proximity instead of
+// 19 separate draw calls (the exact technique already proven in
+// nebula-intro-prototype.html earlier this conversation). Overlapping
+// separate raymarch draws each pay full box-traversal + step cost on every
+// shared pixel; merging blobs that overlap into ONE shader loop eliminates
+// that duplication. This was the real fix for the T=55-59-and-throughout
+// slowdown — confirmed via the ?nointro=1 A/B test — not any of the earlier
+// particle-count/discard-timing tweaks.
+// ═══════════════════════════════════════════════════════════════════════════════
+function createIntroNebulaGroup(blobs, name, steps){
+  const N = blobs.length;
+  // Centering offset applied to each blob up front, before the group's own
+  // bounding box is computed, so bbox and per-blob positions stay consistent.
+  const offsetBlobs = blobs.map(b => Object.assign({}, b, { center: b.center.clone().add(INTRO_CENTER_OFFSET) }));
+
+  const min = new THREE.Vector3(Infinity, Infinity, Infinity);
+  const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+  for (const b of offsetBlobs){
+    const ext = b.size.clone().multiplyScalar(1.18);
+    min.min(b.center.clone().sub(ext));
+    max.max(b.center.clone().add(ext));
+  }
+  const groupCenter   = min.clone().add(max).multiplyScalar(0.5);
+  const groupHalfSize = max.clone().sub(min).multiplyScalar(0.5 * 1.08);
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uCameraPos:     { value: new THREE.Vector3() },
+      uGroupCenter:   { value: groupCenter.clone() },
+      uGroupHalfSize: { value: groupHalfSize.clone() },
+      uTime:          { value: 0 },
+      uStepBudget:    { value: steps },
+      uCenter:            { value: offsetBlobs.map(b => b.center.clone()) },
+      uHalfSize:          { value: offsetBlobs.map(b => b.size.clone()) },
+      uSeed:              { value: offsetBlobs.map(b => b.seed) },
+      uRimColor:          { value: offsetBlobs.map(b => b.rimColor) },
+      uDeepColor:         { value: offsetBlobs.map(b => b.deepColor) },
+      uDensityThreshold:  { value: offsetBlobs.map(b => b.densityThreshold) },
+      uErosionStrength:   { value: offsetBlobs.map(b => b.erosionStrength) },
+      uGlobalAlpha:       { value: 1.0 },
+    },
+    vertexShader: `
+      varying vec3 vWorldPos;
+      void main(){
+        vWorldPos = (modelMatrix * vec4(position,1.0)).xyz;
+        gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position,1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3  uCameraPos;
+      uniform vec3  uGroupCenter;
+      uniform vec3  uGroupHalfSize;
+      uniform float uTime;
+      uniform float uGlobalAlpha;
+      uniform int   uStepBudget;
+      uniform vec3  uCenter[${N}];
+      uniform vec3  uHalfSize[${N}];
+      uniform float uSeed[${N}];
+      uniform vec3  uRimColor[${N}];
+      uniform vec3  uDeepColor[${N}];
+      uniform float uDensityThreshold[${N}];
+      uniform float uErosionStrength[${N}];
+      varying vec3  vWorldPos;
+
+      float hash31(vec3 p){
+        p = fract(p*0.3183099+0.1);
+        p *= 17.0;
+        return fract(p.x*p.y*p.z*(p.x+p.y+p.z));
+      }
+      float noise3(vec3 x){
+        vec3 i=floor(x), f=fract(x);
+        f = f*f*(3.0-2.0*f);
+        return mix(
+          mix(mix(hash31(i+vec3(0,0,0)),hash31(i+vec3(1,0,0)),f.x),
+              mix(hash31(i+vec3(0,1,0)),hash31(i+vec3(1,1,0)),f.x),f.y),
+          mix(mix(hash31(i+vec3(0,0,1)),hash31(i+vec3(1,0,1)),f.x),
+              mix(hash31(i+vec3(0,1,1)),hash31(i+vec3(1,1,1)),f.x),f.y),
+        f.z);
+      }
+      float fbm3(vec3 p, int octaves){
+        float v=0.0, a=0.5;
+        for(int i=0;i<3;i++){
+          if(i>=octaves) break;
+          v += a*noise3(p);
+          p *= 2.02;
+          a *= 0.5;
+        }
+        return v;
+      }
+      float blobDensity(vec3 p, int b){
+        float r = length(p);
+        float falloff = smoothstep(1.18, 0.09, r);
+        if (falloff <= 0.0) return 0.0;
+        vec3 drift = vec3(0.05, 0.012, -0.03) * uTime;
+        vec3 q = p * 0.95 + drift + uSeed[b];
+        float macro = fbm3(q*1.5, 3);
+        float wisps = fbm3(q*4.2 + 5.0, 3);
+        float grain = fbm3(q*14.0 + 9.0, 3);
+        float shape = macro*0.50 + wisps*0.28 + grain*0.22 + 0.12;
+        float erosionRaw = fbm3(q*2.1 + 20.0, 2);
+        float veins = pow(1.0 - abs(erosionRaw*2.0 - 1.0), 2.2);
+        shape -= veins * uErosionStrength[b] * 0.9;
+        return clamp((shape - uDensityThreshold[b]) * 3.6, 0.0, 1.0) * falloff;
+      }
+      vec2 boxIntersect(vec3 ro, vec3 rd){
+        vec3 inv = 1.0/rd;
+        vec3 t0 = (-1.0 - ro)*inv;
+        vec3 t1 = ( 1.0 - ro)*inv;
+        vec3 tmin = min(t0,t1), tmax = max(t0,t1);
+        float tN = max(max(tmin.x,tmin.y),tmin.z);
+        float tF = min(min(tmax.x,tmax.y),tmax.z);
+        return vec2(tN,tF);
+      }
+      const int N_BLOBS  = ${N};
+      const int MAX_STEPS = ${steps};
+      void main(){
+        // Checked FIRST, before any raymarch — same fix as before, now
+        // shared across the whole group's blobs in one go.
+        if (uGlobalAlpha < 0.01) discard;
+
+        vec3 ro = (uCameraPos - uGroupCenter) / uGroupHalfSize;
+        vec3 rd = normalize((vWorldPos - uCameraPos) / uGroupHalfSize);
+        vec2 tb = boxIntersect(ro, rd);
+        if (tb.x > tb.y || tb.y < 0.0) { discard; }
+        float tStart = max(tb.x, 0.0);
+        float tEnd   = tb.y;
+        int budget = min(uStepBudget, MAX_STEPS);
+        float stepSize = (tEnd - tStart) / float(budget);
+        vec3 pos = ro + rd*tStart;
+        vec3  accumColor = vec3(0.0);
+        float accumAlpha = 0.0;
+        float depthAccum = 0.0;
+        for (int i=0; i<MAX_STEPS; i++){
+          if (i >= budget) break;
+          if (accumAlpha > 0.97) break;
+          vec3 worldP = uGroupCenter + pos*uGroupHalfSize;
+          float envelope = 1.0;
+          float wsum = 0.0;
+          vec3 rimAccum = vec3(0.0), deepAccum = vec3(0.0);
+          for (int b=0; b<N_BLOBS; b++){
+            vec3 blobLocal = (worldP - uCenter[b]) / uHalfSize[b];
+            float db = blobDensity(blobLocal, b);
+            if (db > 0.0001){
+              envelope *= (1.0 - db);
+              rimAccum  += uRimColor[b]  * db;
+              deepAccum += uDeepColor[b] * db;
+              wsum += db;
+            }
+          }
+          float d = 1.0 - envelope;
+          if (d > 0.003){
+            depthAccum += d*stepSize;
+            float depthFrac = clamp(depthAccum*2.4, 0.0, 1.0);
+            vec3 rim  = wsum > 0.0001 ? rimAccum/wsum  : vec3(0.0);
+            vec3 deep = wsum > 0.0001 ? deepAccum/wsum : vec3(0.0);
+            vec3 col  = mix(rim, deep, depthFrac) * 1.8;
+            float alpha = d * stepSize * 3.3;
+            accumColor += col * alpha * (1.0-accumAlpha);
+            accumAlpha += alpha * (1.0-accumAlpha);
+          }
+          pos += rd*stepSize;
+        }
+        if (accumAlpha < 0.01) discard;
+        gl_FragColor = vec4(accumColor, accumAlpha * uGlobalAlpha);
+      }
+    `,
+    side: THREE.BackSide,
+    transparent: true,
+    depthWrite: false,
+  });
+
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), mat);
+  mesh.position.copy(groupCenter);
+  mesh.scale.copy(groupHalfSize);
+  scene.add(mesh);
+
+  mat.userData.mesh       = mesh;
+  mat.userData.baseSteps  = steps;
+  mat.userData.center     = groupCenter.clone();
+  mat.userData.charRadius = (groupHalfSize.x + groupHalfSize.y + groupHalfSize.z) / 3;
+  mat.userData.name       = name;
+  mat.userData.blobNames         = offsetBlobs.map(b => b.name);
+  mat.userData.blobBaseThreshold = offsetBlobs.map(b => b.densityThreshold);
+  mat.userData.blobBaseErosion   = offsetBlobs.map(b => b.erosionStrength);
+  mat.userData.blobFormDelayRatio= offsetBlobs.map(b => clamp(b.center.length()/400, 0, 1));
+  // Live/editable per-blob centers — click-to-select finds the nearest of
+  // these to the raycast hit point, then the position sliders edit this
+  // array (and the matching uCenter uniform entry) directly.
+  mat.userData.blobCenters = offsetBlobs.map(b => b.center.clone());
+  const rimHSLs = [], deepHSLs = [];
+  offsetBlobs.forEach(b => {
+    const rh={h:0,s:0,l:0}; b.rimColor.getHSL(rh); rimHSLs.push(rh);
+    const dh={h:0,s:0,l:0}; b.deepColor.getHSL(dh); deepHSLs.push(dh);
+  });
+  mat.userData.blobBaseRimHue  = rimHSLs.map(h => h.h);
+  mat.userData.blobRimSat      = rimHSLs.map(h => h.s);
+  mat.userData.blobRimLum      = rimHSLs.map(h => h.l);
+  mat.userData.blobBaseDeepHue = deepHSLs.map(h => h.h);
+  mat.userData.blobDeepSat     = deepHSLs.map(h => h.s);
+  mat.userData.blobDeepLum     = deepHSLs.map(h => h.l);
+  return mat;
+}
+
+const introNebulaVolumes = [
+  createIntroNebulaGroup([
+    makeIntroBlob(new THREE.Vector3(0, 0, 0),      new THREE.Vector3(85, 85, 85), 0.0,  'Core',     0.27, 0.48),
+    makeIntroBlob(new THREE.Vector3(22, -18, 32),  new THREE.Vector3(55, 58, 55), 15.6, 'Hot Knot', 0.27, 0.40, {rimLum:0.72, rimSat:0.95}),
+    makeIntroBlob(new THREE.Vector3(-22, 22, -28), new THREE.Vector3(48, 45, 50), 300.1,'Gap Filler',0.31, 0.42),
+  ], 'Group A (Core)', 16),
+
+  createIntroNebulaGroup([
+    makeIntroBlob(new THREE.Vector3(-58, -22, 58), new THREE.Vector3(72, 78, 62), 87.7,  'Wall',         0.29, 0.50, {deepHue:0.99}),
+    makeIntroBlob(new THREE.Vector3(-65, 32, -55), new THREE.Vector3(70, 46, 56), 61.2,  'Bridging Arm', 0.30, 0.46, {rimHue:0.03, deepHue:0.85}),
+    makeIntroBlob(new THREE.Vector3(8, 42, -35),   new THREE.Vector3(40, 40, 42), 951.2, 'Seam Fill 1',  0.35, 0.36, {rimHue:0.30, rimSat:0.60, deepHue:0.75}),
+    makeIntroBlob(new THREE.Vector3(-30, 20, -42), new THREE.Vector3(38, 38, 38), 988.1, 'Seam Fill 3',  0.35, 0.36, {rimHue:0.02, deepHue:0.90}),
+  ], 'Group B (Wall)', 12),
+
+  createIntroNebulaGroup([
+    // Filament's center already reflects the manual reposition from earlier
+    // in this conversation (110,10,-77) — kept as-is, not reverted.
+    makeIntroBlob(new THREE.Vector3(110, 10, -77), new THREE.Vector3(130, 42, 48), 41.3,  'Filament',    0.31, 0.42),
+    makeIntroBlob(new THREE.Vector3(18, 55, -75),  new THREE.Vector3(46, 50, 58),  133.9, 'Top Pocket',  0.28, 0.44, {rimHue:0.54, rimLum:0.62, rimSat:0.75, deepHue:0.70, deepLum:0.20}),
+    makeIntroBlob(new THREE.Vector3(50, 62, -80),  new THREE.Vector3(38, 40, 40),  972.6, 'Seam Fill 2', 0.35, 0.36, {rimHue:0.60, rimSat:0.55, deepHue:0.74}),
+  ], 'Group C (Filament)', 12),
+
+  createIntroNebulaGroup([
+    makeIntroBlob(new THREE.Vector3(85, 58, -95),   new THREE.Vector3(72, 68, 68), 620.3, 'Bridge A', 0.30, 0.42, {rimHue:0.68, rimSat:0.68, rimLum:0.56, deepHue:0.78, deepLum:0.20}),
+    makeIntroBlob(new THREE.Vector3(140, 40, -115), new THREE.Vector3(65, 62, 64), 641.1, 'Bridge B', 0.29, 0.44, {rimHue:0.78, rimSat:0.70, rimLum:0.54, deepHue:0.80, deepLum:0.19}),
+    makeIntroBlob(new THREE.Vector3(195, 62, -135), new THREE.Vector3(68, 60, 62), 664.7, 'Bridge C', 0.29, 0.44, {rimHue:0.86, rimSat:0.75, rimLum:0.52, deepHue:0.79, deepLum:0.19}),
+    makeIntroBlob(new THREE.Vector3(120, 25, -150), new THREE.Vector3(60, 56, 58), 688.4, 'Bridge D', 0.30, 0.42, {rimHue:0.82, rimSat:0.72, rimLum:0.50, deepHue:0.79, deepLum:0.18}),
+  ], 'Group D (Bridge)', 9),
+
+  createIntroNebulaGroup([
+    makeIntroBlob(new THREE.Vector3(235, -8, -55),  new THREE.Vector3(95, 32, 34),  202.4, 'Far Streamer', 0.33, 0.40, {rimHue:0.96, deepHue:0.80}),
+    makeIntroBlob(new THREE.Vector3(330, 22, -115), new THREE.Vector3(105, 52, 60), 411.8, 'Rose Reach 1', 0.32, 0.42, {rimHue:0.90, rimSat:0.80, deepHue:0.76, deepLum:0.20}),
+    makeIntroBlob(new THREE.Vector3(300, 65, -190), new THREE.Vector3(92, 62, 72),  455.2, 'Rose Reach 2', 0.34, 0.40, {rimHue:0.88, rimSat:0.75, rimLum:0.55, deepHue:0.74, deepLum:0.18}),
+  ], 'Group E (Rose Reach)', 6),
+
+  createIntroNebulaGroup([
+    makeIntroBlob(new THREE.Vector3(-50, 15, -230),  new THREE.Vector3(150, 105, 95), 512.6, 'Backdrop A', 0.37, 0.38, {rimHue:0.58, rimSat:0.55, rimLum:0.48, deepHue:0.72, deepLum:0.16}),
+    makeIntroBlob(new THREE.Vector3(160, -65, -260), new THREE.Vector3(125, 95, 85),  561.9, 'Backdrop B', 0.38, 0.38, {rimHue:0.60, rimSat:0.50, rimLum:0.44, deepHue:0.70, deepLum:0.15}),
+  ], 'Group F (Backdrop)', 4),
+];
+
+// Slowed from 0.3/1.2 — that formed the big nebula almost instantly. Now
+// takes until t=4.5s to fully form (stagger 1.0 + duration 3.5).
+const INTRO_BIG_FORM_STAGGER = 1.0;
+const INTRO_BIG_FORM_DURATION = 3.5;
+const INTRO_INVISIBLE_THRESHOLD = 1.05;
+// Start pushed to 5.5 (was 3) so the crossfade/fade-out doesn't begin until
+// AFTER the (now slower) big-nebula formation above has actually finished —
+// otherwise it'd still be condensing in while simultaneously fading out,
+// fighting itself. End pushed out by the same ~2.5s to preserve the same
+// ~25s crossfade duration rather than shortening it. At T0=12, elapsed=30
+// lands T at 42: fineSub ~93%, cloudSub ~79%, sparkSub ~50%.
+const INTRO_CROSSFADE_START = 5.5;
+const INTRO_CROSSFADE_END = 30;
+const introSceneStartTime = performance.now();
+let introNebulaDisposed = false;
+
+// ?nointro=1 skips the intro nebula entirely (removed from the scene right
+// away) — a clean A/B test for whether a slowdown is caused by this system
+// or is present in the base scene regardless of anything added this session.
+if (new URLSearchParams(location.search).has('nointro')){
+  for (const mat of introNebulaVolumes){
+    scene.remove(mat.userData.mesh);
+    mat.userData.mesh.geometry.dispose();
+    mat.dispose();
+  }
+  introNebulaDisposed = true;
+}
+
+// ── Real-nebula "grow into place" — the same choreography the standalone
+// test used (small/distant -> centered/full-scale, camera closing in), but
+// now applied to cosmogenesis's OWN fine/cloud/spark meshes instead of a
+// scaled duplicate, since there's no page boundary to hand off across
+// anymore. Group is temporary scaffolding: it settles at position (0,0,0)/
+// scale 1 by INTRO_CROSSFADE_END and just sits there identically afterward,
+// same as if these meshes had never been grouped at all.
+const introCamDir = new THREE.Vector3(
+  Math.sin(sph.phi)*Math.sin(sph.theta),
+  Math.cos(sph.phi),
+  Math.sin(sph.phi)*Math.cos(sph.theta)
+);
+const realNebulaGroup = new THREE.Group();
+realNebulaGroup.add(fineMesh, cloudMesh, sparkMesh);
+scene.add(realNebulaGroup);
+const REAL_START_POS   = introCamDir.clone().multiplyScalar(-1100);
+const REAL_START_SCALE = 0.35;
+const REAL_END_POS     = new THREE.Vector3(0, 0, 0);
+const REAL_END_SCALE   = 1.0;
+
+// Camera starts farther out (620) and eases to this file's resting default
+// (580) over the same crossfade window — the "camera closing in" motion.
+const INTRO_CAM_START_R = 620;
+const INTRO_CAM_END_R   = 580;
+sph.r = INTRO_CAM_START_R; sphTarget.r = INTRO_CAM_START_R;
+
+// ── FPS counter — real numbers instead of guessing whether something is slow.
+// Averages frame time over a rolling window and only updates the on-screen
+// text ~4x/second so the number itself is readable instead of flickering.
+const fpsCounterEl = document.getElementById('fpsCounter');
+let fpsFrameTimes = [];
+let fpsLastDisplayUpdate = 0;
+function updateFpsCounter(now){
+  fpsFrameTimes.push(now);
+  while (fpsFrameTimes.length > 0 && now - fpsFrameTimes[0] > 500) fpsFrameTimes.shift();
+  if (now - fpsLastDisplayUpdate > 250 && fpsFrameTimes.length > 1){
+    const avgFrameMs = (fpsFrameTimes[fpsFrameTimes.length-1] - fpsFrameTimes[0]) / (fpsFrameTimes.length - 1);
+    const fps = 1000 / avgFrameMs;
+    fpsCounterEl.textContent = `${fps.toFixed(0)} fps (${avgFrameMs.toFixed(1)}ms)`;
+    fpsCounterEl.style.color = fps >= 50 ? '#9fe6b0' : fps >= 30 ? '#e6d89f' : '#e69f9f';
+    fpsLastDisplayUpdate = now;
+  }
+}
+
+function updateIntroNebula(camera){
+  const elapsed = (performance.now() - introSceneStartTime) / 1000;
+  const crossfadeT = smoothstep(clamp((elapsed - INTRO_CROSSFADE_START) / (INTRO_CROSSFADE_END - INTRO_CROSSFADE_START), 0, 1));
+
+  realNebulaGroup.position.lerpVectors(REAL_START_POS, REAL_END_POS, crossfadeT);
+  realNebulaGroup.scale.setScalar(lerp(REAL_START_SCALE, REAL_END_SCALE, crossfadeT));
+  sphTarget.r = lerp(INTRO_CAM_START_R, INTRO_CAM_END_R, crossfadeT);
+
+  // Brightness, handled completely separately from shape/formation: this
+  // file's own timeline() (called earlier in tick(), before this function)
+  // already set fineMat/cloudMat/sparkMat's gAlpha from T — a value that's
+  // substantial from the start now that T starts at 36, so the SHAPE reads
+  // as already formed. Multiplying that by a steep ease-in — ^5, pushed up
+  // from ^3 (still read as too defined too early) — keeps it properly faint
+  // for most of the window, only really brightening in the last ~20-30%,
+  // independent of how settled the shape already is.
+  const brightnessFadeIn = Math.pow(crossfadeT, 5);
+  fineMat.uniforms.gAlpha.value  *= brightnessFadeIn;
+  cloudMat.uniforms.gAlpha.value *= brightnessFadeIn;
+  sparkMat.uniforms.gAlpha.value *= brightnessFadeIn;
+
+  if (introNebulaDisposed) return;
+
+  for (const mat of introNebulaVolumes){
+    mat.uniforms.uTime.value = elapsed;
+    mat.uniforms.uCameraPos.value.copy(camera.position);
+    // Its own slow-to-start decline (cubed) instead of a plain linear
+    // 1-crossfadeT — stays fully visible for most of the window and only
+    // really fades in the last ~30-40%, so it isn't already half-gone while
+    // the real nebula (above) is still too faint to have taken over yet.
+    mat.uniforms.uGlobalAlpha.value = 1 - Math.pow(crossfadeT, 3);
+
+    // Per-blob formation, written into this shared group material's uniform
+    // arrays every frame — each blob within the group still fades in on its
+    // own delay/threshold, same as when each had its own separate material.
+    const n = mat.userData.blobBaseThreshold.length;
+    const thresholds = new Array(n), erosions = new Array(n);
+    for (let i=0; i<n; i++){
+      const delay = mat.userData.blobFormDelayRatio[i] * INTRO_BIG_FORM_STAGGER;
+      const formT = smoothstep(clamp((elapsed - delay) / INTRO_BIG_FORM_DURATION, 0, 1));
+      thresholds[i] = lerp(INTRO_INVISIBLE_THRESHOLD, mat.userData.blobBaseThreshold[i], formT);
+      erosions[i]   = lerp(0, mat.userData.blobBaseErosion[i], formT);
+    }
+    mat.uniforms.uDensityThreshold.value = thresholds;
+    mat.uniforms.uErosionStrength.value  = erosions;
+
+    const dist  = camera.position.distanceTo(mat.userData.center);
+    const ratio = dist / mat.userData.charRadius;
+    const lod   = clamp(ratio / 2.2, 0.22, 1.0);
+    mat.uniforms.uStepBudget.value = Math.max(6, Math.round(mat.userData.baseSteps * lod));
+  }
+
+  // Once fully faded, stop touching it every frame and free the GPU memory —
+  // it's fully transparent (discarded every pixel) by then anyway.
+  if (crossfadeT >= 1 && elapsed > INTRO_CROSSFADE_END + 0.5){
+    for (const mat of introNebulaVolumes){
+      scene.remove(mat.userData.mesh);
+      mat.userData.mesh.geometry.dispose();
+      mat.dispose();
+    }
+    introNebulaDisposed = true;
+    hideCloudPicker(); // in case a piece was still selected when it vanished
+  }
+}
 
 // ── Star field ────────────────────────────────────────────────────────────────
 const starMat = new THREE.PointsMaterial({
@@ -1610,9 +2082,13 @@ const HSL_C   = HSL_GLSL;
 const REMAP_C = HUE_REMAP_GLSL;
 
 // ── Collapse Layer 1: Spiral Drain ────────────────────────────────────────────
+// Cut from 20000 — this layer sits invisible (gAlpha 0, cheaply discarded)
+// the entire scene until collapse begins at T=56, then switches on all at
+// once alongside cvortMat below — the real, measured cause of the T=56-59
+// slowdown. Cutting the count directly reduces that spike.
 let drainMat;
 {
-  const N=20000, geo=new THREE.BufferGeometry();
+  const N=9000, geo=new THREE.BufferGeometry();
   const pos=new Float32Array(N*3), seed=new Float32Array(N);
   for(let i=0;i<N;i++){
     const arm=i%3, t=rand(), r=4+t*125, spin=r*0.022;
@@ -1689,9 +2165,10 @@ let drainMat;
 }
 
 // ── Collapse Layer 2: Cloud Vortex ────────────────────────────────────────────
+// Cut from 1600, same reasoning as drainMat above.
 let cvortMat;
 {
-  const N=1600, geo=new THREE.BufferGeometry();
+  const N=800, geo=new THREE.BufferGeometry();
   const pos=new Float32Array(N*3), seed=new Float32Array(N);
   for(let i=0;i<N;i++){
     const arm=i%3, t=rand(), r=6+t*110, spin=r*0.022;
@@ -2309,7 +2786,7 @@ function lerpBg(spd){
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// TIMELINE — driven by Theatre.js sequence position (T)
+// TIMELINE — driven by the auto-clock (T), advanced each frame in tick()
 // ═══════════════════════════════════════════════════════════════════════════════
 const T_VOID_END   = 12;
 const T_FINE_END   = 44;
@@ -2319,19 +2796,25 @@ const T_FULL       = 56;
 const T_COLL_START = 56;
 const T_COLL_END   = 74;
 
-// Optional ?startT=11 lets another scene (e.g. nebula-intro-prototype.html's
-// handoff) open this one already partway into the timeline instead of at 0.
-// Absent or invalid -> falls back to the normal T=0 start, so a plain visit
-// to this file is completely unaffected.
+// This merged file starts T at 36 by default. T drives cosmogenesis's own
+// formT (structural reveal — how much of the nebula's actual shape has
+// swept outward from the core) AND its natural gAlpha (brightness), tied
+// together. Starting T low (12) made the SHAPE look unformed too, which read
+// as wrong in the other direction. Now T is high enough that the shape is
+// already well-settled (fineSub/cloudSub/sparkSub ~75%/64%/30% at T=36), and
+// brightness is handled completely separately below (updateIntroNebula
+// multiplies gAlpha by its own fade-in curve every frame, after timeline()
+// sets it) — starting genuinely invisible and fading in faintly, independent
+// of how formed the shape already is. ?startT= still overrides for testing.
 const _startTParam = parseFloat(new URLSearchParams(location.search).get('startT'));
-let T = (isFinite(_startTParam) ? clamp(_startTParam, 0, 90) : 0); // driven by sheet.sequence.position
+let T = (isFinite(_startTParam) ? clamp(_startTParam, 0, 90) : 36); // advanced by the auto-clock in tick()
 let autoWarmBias = 0; // recomputed fresh each frame in timeline() — never self-referential, so the
                        // warmBias sliders can never get stuck ratcheted at a stale high value
 let rotAngleFine = 0, rotAngleCloud = 0, rotAngleSpark = 0; // properly integrated rotation angles
 let sunSpinAngle = 0; // integrated the same way — speed*dt each frame, not time*speed
 
 function timeline(){
-  // T is set externally from Theatre playhead before this call
+  // T is advanced by the auto-clock in tick(), before this call
   autoWarmBias = 0;
 
   const voidBreath = 0.5 + 0.5*Math.sin(T*0.55);
@@ -2410,7 +2893,7 @@ function tick(){
   const now = performance.now();
   const dt  = Math.min((now-last)/1000, 0.05); last=now;
 
-  // Auto-clock drives T; push scaled position to Theatre so its cursor tracks the scene
+  // Auto-clock drives T
   if (!paused) T += dt * tVals.speed;
   if (loopGroupName) {
     const loopGroup = CONTROL_GROUPS.find(g => g.name === loopGroupName);
@@ -2422,11 +2905,10 @@ function tick(){
     const [ls, le] = customLoopRange;
     if (T < ls || T > le) T = ls;
   }
-  // Theatre timeline is 10s wide, scene is 90s — scale so Theatre cursor syncs
-  sheet.sequence.position = Math.min(9.99, T / 9);
 
-  // Keyframed properties win over Theatre/sliders for this frame — applied early
-  // so every later read of tVals (timeline(), ignition sequence, overrides) sees it.
+  // Keyframed properties win over slider values for this frame — applied
+  // early so every later read of tVals (timeline(), ignition sequence,
+  // overrides) sees it.
   applySequencers();
 
   // Reset one-shot state when scrubbing/jumping back
@@ -2629,7 +3111,7 @@ function tick(){
     cloudMat.uniforms.collapseT.value = tVals.collapseLock;
   }
 
-  // Theatre overrides — applied last so they always win
+  // tVals overrides — applied last so they always win
   // Once ignition completes, GalaxyCloud takes over driving these same four
   // uniforms instead of CollapseCloud/Nebula — otherwise they'd just freeze at
   // whichever value their last keyframe left them at (those groups' windows
@@ -2679,8 +3161,20 @@ function tick(){
   updateStatusPanel(liveFlags);
   updateControlsPanel(liveFlags);
   updateClock(T, paused, tVals.igniteDuration);
+  // Purely additive — doesn't read or touch any of the state above, so it
+  // can't disturb the keyframe/ignition logic this file already had.
+  updateIntroNebula(camera);
   renderer.render(scene, camera);
+  updateFpsCounter(now);
 }
+// Force-compile every material's shader now, at page load, instead of
+// letting the GPU driver defer it to whenever that material is first
+// actually used mid-scene. drainMat/cvortMat sit invisible (gAlpha:0) from
+// load until collapse begins at T=56 — without this, their first real use
+// is exactly at that transition, which is a well-known WebGL cause of a
+// one-time stall right at that moment (it never recurs once compiled,
+// which is why it was recovering on its own by T=59).
+renderer.compile(scene, camera);
 tick();
 
 </script>

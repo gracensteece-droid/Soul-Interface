@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Nebula — Cosmogenesis Handoff Test (10s)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{position:fixed;inset:0}
+#info{
+  position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+  font-family:monospace;font-size:9px;letter-spacing:0.2em;
+  color:rgba(200,175,135,0.35);pointer-events:none;
+  text-align:center;
+}
+#fadeOverlay{
+  position:fixed;inset:0;background:#000;opacity:0;
+  pointer-events:none;z-index:20;
+}
+#tunePanel{
+  position:fixed;top:16px;right:16px;z-index:30;
+  background:rgba(10,10,14,0.78);border:1px solid rgba(200,175,135,0.25);
+  border-radius:6px;padding:12px 14px;
+  font-family:monospace;font-size:11px;color:rgba(230,220,200,0.9);
+  width:230px;
+}
+#tunePanel h3{
+  font-size:10px;letter-spacing:0.15em;font-weight:normal;
+  color:rgba(200,175,135,0.7);margin-bottom:8px;text-transform:uppercase;
+}
+#tunePanel label{display:block;margin-top:8px;display:flex;justify-content:space-between}
+#tunePanel input[type=range]{width:100%;display:block;margin-top:2px}
+#tunePanel .readout{margin-top:8px;padding-top:8px;border-top:1px solid rgba(200,175,135,0.18);
+  font-size:10px;opacity:0.75;line-height:1.6}
+#tunePanel button{
+  margin-top:10px;width:100%;font-family:monospace;font-size:10px;
+  background:rgba(200,175,135,0.15);color:inherit;border:1px solid rgba(200,175,135,0.3);
+  border-radius:4px;padding:4px;cursor:pointer;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="fadeOverlay"></div>
+<div id="info">NEBULA -> COSMOGENESIS HANDOFF TEST — drag to orbit, scroll to zoom</div>
+<div id="tunePanel">
+  <h3>Scene Tuning</h3>
+  <label>Crossfade start (s) <span id="vCrossfadeStart"></span><input type="range" id="sCrossfadeStart" min="0.5" max="7" step="0.1"></label>
+  <div class="readout">
+    Camera (drag to orbit, scroll to zoom):<br/>
+    r=<span id="rCamR"></span> theta=<span id="rCamTheta"></span> phi=<span id="rCamPhi"></span>
+  </div>
+  <button id="btnReset">Reset to defaults</button>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+window.onerror = function(msg,src,line){
+  document.body.innerHTML += `<div style="position:fixed;bottom:20px;left:20px;right:20px;background:#1a0000;color:#ff8080;font-family:monospace;font-size:12px;padding:16px;z-index:9999;border:1px solid #660000;">JS Error (line ${line}): ${msg}</div>`;
+};
+
+const canvas   = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000308, 1);
+
+const scene  = new THREE.Scene();
+// Far plane extended from 3000 — the background cosmogenesis-nebula group
+// sits ~2200 units out, and the camera can zoom out to r=1400, so worst-case
+// camera-to-background distance is ~3600; 5000 keeps clear margin.
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 5000);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+const smoothstep = (t) => t*t*(3-2*t);
+const lerp = (a,b,t) => a+(b-a)*t;
+
+// ── Spherical camera — same rig as nebula-volumetric-prototype.html. Drag to
+// orbit, scroll to zoom, for dialing in the framing; auto-rotate keeps drifting
+// gently underneath while not actively dragging. r pulled back from 460 to
+// 620 by default — was too close.
+const CAM_DEFAULTS = { r:620, theta:0.30, phi:0.46 };
+const sph       = Object.assign({}, CAM_DEFAULTS);
+const sphTarget = Object.assign({}, CAM_DEFAULTS);
+function applyCamera(){
+  camera.position.set(
+    sph.r*Math.sin(sph.phi)*Math.sin(sph.theta),
+    sph.r*Math.cos(sph.phi),
+    sph.r*Math.sin(sph.phi)*Math.cos(sph.theta)
+  );
+  camera.lookAt(0,0,0);
+}
+
+let drag=false, prev={x:0,y:0};
+canvas.addEventListener('mousedown', e=>{ drag=true; prev={x:e.clientX,y:e.clientY}; });
+window.addEventListener('mouseup', ()=>drag=false);
+window.addEventListener('mousemove', e=>{
+  if(!drag) return;
+  sphTarget.theta -= (e.clientX-prev.x)*0.004;
+  sphTarget.phi    = clamp(sphTarget.phi+(e.clientY-prev.y)*0.004, 0.05, Math.PI*0.88);
+  prev={x:e.clientX,y:e.clientY};
+});
+window.addEventListener('wheel', e=>{
+  sphTarget.r = clamp(sphTarget.r+e.deltaY*0.20, 110, 1400);
+},{passive:true});
+
+// ── Star field (rendered behind — the volume composites over it) ────────────
+function makeDiscTexture(){
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 32;
+  const ctx = cv.getContext('2d');
+  const g = ctx.createRadialGradient(16,16,0,16,16,16);
+  g.addColorStop(0,   'rgba(255,255,255,1)');
+  g.addColorStop(0.4, 'rgba(255,255,255,0.9)');
+  g.addColorStop(1,   'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,32,32);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.needsUpdate = true;
+  return tex;
+}
+{
+  const N=4500,geo=new THREE.BufferGeometry();
+  const p=new Float32Array(N*3),c=new Float32Array(N*3);
+  const pal=[[0.88,0.94,1],[1,1,0.88],[0.68,0.80,1],[1,0.82,0.62]];
+  for(let i=0;i<N;i++){
+    const a=Math.random()*Math.PI*2,b=Math.acos(2*Math.random()-1),r=300+Math.random()*700;
+    p[i*3]=r*Math.sin(b)*Math.cos(a); p[i*3+1]=r*Math.sin(b)*Math.sin(a); p[i*3+2]=r*Math.cos(b);
+    const sc=pal[Math.floor(Math.random()*pal.length)];
+    c[i*3]=sc[0]; c[i*3+1]=sc[1]; c[i*3+2]=sc[2];
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+  geo.setAttribute('color',new THREE.BufferAttribute(c,3));
+  scene.add(new THREE.Points(geo,new THREE.PointsMaterial({
+    size:2.2,sizeAttenuation:true,vertexColors:true,
+    map:makeDiscTexture(), alphaTest:0.01,
+    transparent:true,opacity:0.55,depthWrite:false,blending:THREE.AdditiveBlending
+  })));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VOLUMETRIC NEBULA — verbatim from nebula-volumetric-prototype.html's base 19
+// pieces (no custom-added clouds — those were never persisted anywhere, see
+// Session 19/20 build logs). This is a disposable handoff test, not the
+// tuning tool, so the density control panel and drag/zoom camera are left out.
+// ═══════════════════════════════════════════════════════════════════════════════
+function createNebulaVolume(opts){
+  const {
+    center, size, seed,
+    rimColor, deepColor,
+    steps = 36,
+    densityThreshold = 0.30,
+    densityContrast = 3.6,
+    erosionStrength = 0.48,
+    name = 'piece',
+  } = opts;
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uCameraPos:    { value: new THREE.Vector3() },
+      uHalfSize:     { value: size.clone() },
+      uCenter:       { value: center.clone() },
+      uTime:         { value: 0 },
+      uSeed:         { value: seed },
+      uRimColor:     { value: rimColor },
+      uDeepColor:    { value: deepColor },
+      uStepBudget:   { value: steps },
+      uDensityThreshold: { value: densityThreshold },
+      uErosionStrength:  { value: erosionStrength },
+      // Global crossfade multiplier — lets the whole piece fade out as a unit
+      // (for the nebula-to-nebula blend) without touching the density/shape
+      // math at all.
+      uGlobalAlpha:  { value: 1.0 },
+    },
+    vertexShader: `
+      varying vec3 vWorldPos;
+      void main(){
+        vWorldPos = (modelMatrix * vec4(position,1.0)).xyz;
+        gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position,1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3  uCameraPos;
+      uniform vec3  uHalfSize;
+      uniform vec3  uCenter;
+      uniform float uTime;
+      uniform float uSeed;
+      uniform vec3  uRimColor;
+      uniform vec3  uDeepColor;
+      uniform int   uStepBudget;
+      uniform float uDensityThreshold;
+      uniform float uErosionStrength;
+      uniform float uGlobalAlpha;
+      varying vec3  vWorldPos;
+
+      float hash31(vec3 p){
+        p = fract(p*0.3183099+0.1);
+        p *= 17.0;
+        return fract(p.x*p.y*p.z*(p.x+p.y+p.z));
+      }
+      float noise3(vec3 x){
+        vec3 i=floor(x), f=fract(x);
+        f = f*f*(3.0-2.0*f);
+        return mix(
+          mix(mix(hash31(i+vec3(0,0,0)),hash31(i+vec3(1,0,0)),f.x),
+              mix(hash31(i+vec3(0,1,0)),hash31(i+vec3(1,1,0)),f.x),f.y),
+          mix(mix(hash31(i+vec3(0,0,1)),hash31(i+vec3(1,0,1)),f.x),
+              mix(hash31(i+vec3(0,1,1)),hash31(i+vec3(1,1,1)),f.x),f.y),
+        f.z);
+      }
+      float fbm3(vec3 p, int octaves){
+        float v=0.0, a=0.5;
+        for(int i=0;i<3;i++){
+          if(i>=octaves) break;
+          v += a*noise3(p);
+          p *= 2.02;
+          a *= 0.5;
+        }
+        return v;
+      }
+
+      float density(vec3 p){
+        float r = length(p);
+        float falloff = smoothstep(1.18, 0.09, r);
+        if (falloff <= 0.0) return 0.0;
+
+        vec3 drift = vec3(0.05, 0.012, -0.03) * uTime;
+        vec3 q = p * 0.95 + drift + uSeed;
+
+        float macro = fbm3(q*1.5, 3);
+        float wisps = fbm3(q*4.2 + 5.0, 3);
+        float grain = fbm3(q*14.0 + 9.0, 3);
+        float shape = macro*0.50 + wisps*0.28 + grain*0.22 + 0.12;
+
+        float erosionRaw = fbm3(q*2.1 + 20.0, 2);
+        float veins = pow(1.0 - abs(erosionRaw*2.0 - 1.0), 2.2);
+        shape -= veins * uErosionStrength * 0.9;
+
+        return clamp((shape - uDensityThreshold) * ${JSON.stringify(densityContrast)}, 0.0, 1.0) * falloff;
+      }
+
+      vec2 boxIntersect(vec3 ro, vec3 rd){
+        vec3 inv = 1.0/rd;
+        vec3 t0 = (-1.0 - ro)*inv;
+        vec3 t1 = ( 1.0 - ro)*inv;
+        vec3 tmin = min(t0,t1), tmax = max(t0,t1);
+        float tN = max(max(tmin.x,tmin.y),tmin.z);
+        float tF = min(min(tmax.x,tmax.y),tmax.z);
+        return vec2(tN,tF);
+      }
+
+      void main(){
+        vec3 ro = (uCameraPos - uCenter) / uHalfSize;
+        vec3 rd = normalize((vWorldPos - uCameraPos) / uHalfSize);
+
+        vec2 tb = boxIntersect(ro, rd);
+        if (tb.x > tb.y || tb.y < 0.0) { discard; }
+        float tStart = max(tb.x, 0.0);
+        float tEnd   = tb.y;
+
+        const int MAX_STEPS = ${JSON.stringify(steps)};
+        int budget = min(uStepBudget, MAX_STEPS);
+        float stepSize = (tEnd - tStart) / float(budget);
+        vec3 pos = ro + rd*tStart;
+
+        vec3  accumColor = vec3(0.0);
+        float accumAlpha = 0.0;
+        float depthAccum = 0.0;
+
+        for (int i=0; i<MAX_STEPS; i++){
+          if (i >= budget) break;
+          if (accumAlpha > 0.97) break;
+          float d = density(pos);
+          if (d > 0.003){
+            depthAccum += d*stepSize;
+            float depthFrac = clamp(depthAccum*2.4, 0.0, 1.0);
+            vec3 col = mix(uRimColor, uDeepColor, depthFrac) * 1.5;
+
+            float alpha = d * stepSize * 2.6;
+            accumColor += col * alpha * (1.0-accumAlpha);
+            accumAlpha += alpha * (1.0-accumAlpha);
+          }
+          pos += rd*stepSize;
+        }
+
+        if (accumAlpha < 0.01 || uGlobalAlpha < 0.01) discard;
+        gl_FragColor = vec4(accumColor, accumAlpha * uGlobalAlpha);
+      }
+    `,
+    side: THREE.BackSide,
+    transparent: true,
+    depthWrite: false,
+  });
+
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), mat);
+  mesh.position.copy(center);
+  mesh.scale.copy(size);
+  scene.add(mesh);
+  mat.userData.mesh       = mesh;
+  mat.userData.baseSteps  = steps;
+  mat.userData.center     = center.clone();
+  mat.userData.charRadius = (size.x + size.y + size.z) / 3;
+  // Formation reveal — same technique as nebula-intro-prototype.html and the
+  // radial reveal cosmogenesis.html's own nebula uses: each piece eases in
+  // from fully invisible, staggered by distance from the origin so it reads
+  // as condensing outward from the core rather than the whole thing popping
+  // in or fading uniformly.
+  mat.userData.baseThreshold = densityThreshold;
+  mat.userData.baseErosion   = erosionStrength;
+  mat.userData.formDelayRatio = clamp(center.length()/400, 0, 1);
+  return mat;
+}
+
+const hsl = (h,s,l) => { const c = new THREE.Color(); c.setHSL(h,s,l); return c; };
+
+function warmPalette(seed, opts){
+  opts = opts || {};
+  const jitter = Math.sin(seed*12.9898) * 0.5 + 0.5;
+  const rimHue = (opts.rimHue !== undefined ? opts.rimHue : 0.09) + (jitter-0.5)*0.025;
+  const rimLum = (opts.rimLum !== undefined ? opts.rimLum : 0.62) + (jitter-0.5)*0.08;
+  const deepHue = ((opts.deepHue !== undefined ? opts.deepHue : 0.98) + (jitter-0.5)*0.02 + 1) % 1;
+  const deepLum = (opts.deepLum !== undefined ? opts.deepLum : 0.22) + (jitter-0.5)*0.05;
+  return {
+    rim:  hsl(rimHue, opts.rimSat !== undefined ? opts.rimSat : 0.90, rimLum),
+    deep: hsl(deepHue, opts.deepSat !== undefined ? opts.deepSat : 0.78, deepLum),
+  };
+}
+
+const nebulaVolumes = [
+  createNebulaVolume({
+    center: new THREE.Vector3(0, 0, 0), size: new THREE.Vector3(85, 85, 85),
+    seed: 0.0, steps: 50, name:'Core', densityThreshold: 0.27,
+    ...(() => { const p = warmPalette(0.0); return { rimColor: p.rim, deepColor: p.deep }; })(),
+  }),
+  createNebulaVolume({
+    center: new THREE.Vector3(110, 10, -15), size: new THREE.Vector3(130, 42, 48),
+    seed: 41.3, steps: 36, name:'Filament',
+    ...(() => { const p = warmPalette(41.3); return { rimColor: p.rim, deepColor: p.deep }; })(),
+    densityThreshold: 0.31, erosionStrength: 0.42,
+  }),
+  createNebulaVolume({
+    center: new THREE.Vector3(-58, -22, 58), size: new THREE.Vector3(72, 78, 62),
+    seed: 87.7, steps: 36, name:'Wall',
+    ...(() => { const p = warmPalette(87.7, {deepHue:0.99}); return { rimColor: p.rim, deepColor: p.deep }; })(),
+    densityThreshold: 0.29, erosionStrength: 0.50,
+  }),
+  createNebulaVolume({
+    center: new THREE.Vector3(18, 55, -75), size: new THREE.Vector3(46, 50, 58),
+    seed: 133.9, steps: 30, name:'Top Pocket',
+    ...(() => { const p = warmPalette(133.9, {rimHue:0.54, rimLum:0.62, rimSat:0.75, deepHue:0.70, deepLum:0.20}); return { rimColor: p.rim, deepColor: p.deep }; })(),
+    densityThreshold: 0.28, erosionStrength: 0.44,
+  }),
+  createNebulaVolume({
+    center: new THREE.Vector3(-65, 32, -55), size: new THREE.Vector3(70, 46, 56),
+    seed: 61.2, steps: 30, name:'Bridging Arm',
+    ...(() => { const p = warmPalette(61.2, {rimHue:0.03, deepHue:0.85}); return { rimColor: p.rim, deepColor: p.deep }; })(),
+    densityThreshold: 0.30, erosionStrength: 0.46,
+  }),
+  createNebulaVolume({
+    center: new THREE.Vector3(22, -18, 32), size: new THREE.Vector3(55, 58, 55),
+    seed: 15.6, steps: 32, name:'Hot Knot',
+    ...(() => { const p = warmPalette(15.6, {rimLum:0.72, rimSat:0.95}); return { rimColor: p.rim, deepColor: p.deep }; })(),
+    densityThreshold: 0.27, erosionStrength: 0.40,
+  }),
+  createNebulaVolume({
+    center: new THREE.Vector3(235, -8, -55), size: new THREE.Vector3(95, 32, 34),
+    seed: 202.4, steps: 18, name:'Far Streamer',
+    ...(() => { const p = warmPalette(202.4, {rimHue:0.96, deepHue:0.80}); return { rimColor: p.rim, deepColor: p.deep }; })(),
+    densityThreshold: 0.33, erosionStrength: 0.40,
+  }),
+  createNebulaVolume({
+    center: new THREE.Vector3(-22, 22, -28), size: new THREE.Vector3(48, 45, 50),
+    seed: 300.1, steps: 18, name:'Gap Filler',
+    ...(() => { const p = warmPalette(300.1); return { rimColor: p.rim, deepColor: p.deep }; })(),
+    densityThreshold: 0.31, erosionStrength: 0.42,
+  }),
+  createNebulaVolume({
+    center: new THREE.Vector3(330, 22, -115), size: new THREE.Vector3(105, 52, 60),
+    seed: 411.8, steps: 14, name:'Rose Reach 1',
+    ...(() => { const p = warmPalette(411.8, {rimHue:0.90, rimSat:0.80, deepHue:0.76, deepLum:0.20}); return { rimColor: p.rim, deepColor: p.deep }; })(),
+    densityThreshold: 0.32, erosionStrength: 0.42,
+  }),
+  createNebulaVolume({
+    center: new THREE.Vector3(300, 65, -190), size: new THREE.Vector3(92, 62, 72),
+    seed: 455.2, steps: 12, name:'Rose Reach 2',
+    ...(() => { const p = warmPalette(455.2, {rimHue:0.88, rimSat:0.75, rimLum:0.55, deepHue:0.74, deepLum:0.18}); return { rimColor: p.rim, deepColor: p.deep }; })(),
+    densityThreshold: 0.34, erosionStrength: 0.40,
+  }),
+  createNebulaVolume({
+    center: new THREE.Vector3(85, 58, -95), size: new THREE.Vector3(72, 68, 68),
+    seed: 620.3, steps: 26, name:'Bridge A',
+    ...(() => { const p = warmPalette(620.3, {rimHue:0.68, rimSat:0.68, rimLum:0.56, deepHue:0.78, deepLum:0.20}); return { rimColor: p.rim, deepColor: p.deep }; })(),
+    densityThreshold: 0.30, erosionStrength: 0.42,
+  }),
+  createNebulaVolume({
+    center: new THREE.Vector3(140, 40, -115), size: new THREE.Vector3(65, 62, 64),
+    seed: 641.1, steps: 24, name:'Bridge B',
+    ...(() => { const p = warmPalette(641.1, {rimHue:0.78, rimSat:0.70, rimLum:0.54, deepHue:0.80, deepLum:0.19}); return { rimColor: p.rim, deepColor: p.deep }; })(),
+    densityThreshold: 0.29, erosionStrength: 0.44,
+  }),
+  createNebulaVolume({
+    center: new THREE.Vector3(195, 62, -135), size: new THREE.Vector3(68, 60, 62),
+    seed: 664.7, steps: 24, name:'Bridge C',
+    ...(() => { const p = warmPalette(664.7, {rimHue:0.86, rimSat:0.75, rimLum:0.52, deepHue:0.79, deepLum:0.19}); return { rimColor: p.rim, deepColor: p.deep }; })(),
+    densityThreshold: 0.29, erosionStrength: 0.44,
+  }),
+  createNebulaVolume({
+    center: new THREE.Vector3(120, 25, -150), size: new THREE.Vector3(60, 56, 58),
+    seed: 688.4, steps: 22, name:'Bridge D',
+    ...(() => { const p = warmPalette(688.4, {rimHue:0.82, rimSat:0.72, rimLum:0.50, deepHue:0.79, deepLum:0.18}); return { rimColor: p.rim, deepColor: p.deep }; })(),
+    densityThreshold: 0.30, erosionStrength: 0.42,
+  }),
+  createNebulaVolume({
+    center: new THREE.Vector3(-50, 15, -230), size: new THREE.Vector3(150, 105, 95),
+    seed: 512.6, steps: 10, name:'Backdrop A',
+    ...(() => { const p = warmPalette(512.6, {rimHue:0.58, rimSat:0.55, rimLum:0.48, deepHue:0.72, deepLum:0.16}); return { rimColor: p.rim, deepColor: p.deep }; })(),
+    densityThreshold: 0.37, erosionStrength: 0.38,
+  }),
+  createNebulaVolume({
+    center: new THREE.Vector3(160, -65, -260), size: new THREE.Vector3(125, 95, 85),
+    seed: 561.9, steps: 10, name:'Backdrop B',
+    ...(() => { const p = warmPalette(561.9, {rimHue:0.60, rimSat:0.50, rimLum:0.44, deepHue:0.70, deepLum:0.15}); return { rimColor: p.rim, deepColor: p.deep }; })(),
+    densityThreshold: 0.38, erosionStrength: 0.38,
+  }),
+  createNebulaVolume({
+    center: new THREE.Vector3(8, 42, -35), size: new THREE.Vector3(40, 40, 42),
+    seed: 951.2, steps: 8, name:'Seam Fill 1',
+    ...(() => { const p = warmPalette(951.2, {rimHue:0.30, rimSat:0.60, deepHue:0.75}); return { rimColor: p.rim, deepColor: p.deep }; })(),
+    densityThreshold: 0.35, erosionStrength: 0.36,
+  }),
+  createNebulaVolume({
+    center: new THREE.Vector3(50, 62, -80), size: new THREE.Vector3(38, 40, 40),
+    seed: 972.6, steps: 8, name:'Seam Fill 2',
+    ...(() => { const p = warmPalette(972.6, {rimHue:0.60, rimSat:0.55, deepHue:0.74}); return { rimColor: p.rim, deepColor: p.deep }; })(),
+    densityThreshold: 0.35, erosionStrength: 0.36,
+  }),
+  createNebulaVolume({
+    center: new THREE.Vector3(-30, 20, -42), size: new THREE.Vector3(38, 38, 38),
+    seed: 988.1, steps: 8, name:'Seam Fill 3',
+    ...(() => { const p = warmPalette(988.1, {rimHue:0.02, deepHue:0.90}); return { rimColor: p.rim, deepColor: p.deep }; })(),
+    densityThreshold: 0.35, erosionStrength: 0.36,
+  }),
+];
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COSMOGENESIS'S OWN NEBULA — ported from cosmogenesis.html (fine/cloud/spark
+// particle layers, its "LAYER 1/2/3"), scaled way down and pushed behind the
+// big raymarch nebula so it reads as a small, distant preview of what's
+// coming next. Void/star-field dressing from that scene isn't ported — this
+// preview only needs the nebula particles themselves. Uses Math.random()
+// instead of cosmogenesis's seeded mulberry32 PRNG — reproducible seeding
+// doesn't matter for a preview.
+//
+// Real performance risk, flagged rather than discovered the hard way: this is
+// 25,800 particles across 3 custom per-vertex shaders, running at the same
+// time as the already-tuned 19-piece raymarch nebula. If this chugs, the
+// first thing to cut is bgSparkMat's 9000 particles (SPARK_N below) — least
+// visually important of the three at this tiny background scale.
+// ═══════════════════════════════════════════════════════════════════════════════
+const HSL_GLSL = `
+  vec3 hsl2rgb(float h,float s,float l){
+    vec3 rgb=clamp(abs(mod(h*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
+    return l+s*(rgb-0.5)*(1.0-abs(2.0*l-1.0));
+  }
+`;
+const HUE_REMAP_GLSL = `
+  float remapHue(float h){
+    if     (h<0.20) return h*0.30;
+    else if(h<0.45) return 0.55+(h-0.20)*0.60;
+    else if(h<0.65) return 0.48+(h-0.45)*0.35;
+    else if(h<0.82) return 0.75+(h-0.65)*0.59;
+    else            return 0.08+(h-0.82)*0.67;
+  }
+`;
+const NUM_ARMS_BG = 3;
+let bgFineMat, bgCloudMat, bgSparkMat;
+
+{
+  const FINE_N = 14000;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(FINE_N*3), seed = new Float32Array(FINE_N);
+  for(let i=0;i<FINE_N;i++){
+    const arm=i%NUM_ARMS_BG, t=Math.random(), r=5+t*130, spin=r*0.022;
+    const base=(arm/NUM_ARMS_BG)*Math.PI*2;
+    const u=Math.random()*0.999+0.0005;
+    const g=Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*Math.random());
+    const angle=base+spin+g*0.16, rFinal=r+g*r*0.07;
+    pos[i*3]=rFinal*Math.cos(angle); pos[i*3+1]=g*r*0.022; pos[i*3+2]=rFinal*Math.sin(angle);
+    seed[i]=Math.random();
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('nSeed',new THREE.BufferAttribute(seed,1));
+  bgFineMat = new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0}, gAlpha:{value:0}, formT:{value:0}, rotSpeed:{value:0.058}, rotAngle:{value:0}, brightMult:{value:1.0}, warmBias:{value:0}, collapseT:{value:0}, galaxyT:{value:0}, turbMult:{value:1.0}, spiralMult:{value:1.0}, coreMult:{value:1.0}, hotHue:{value:0.07}, satMult:{value:1.0}, cloudScale:{value:1.0}, ballForm:{value:0.0} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
+      attribute float nSeed;
+      uniform float time,formT,rotSpeed,rotAngle,warmBias,collapseT,galaxyT,turbMult,spiralMult,coreMult,hotHue,satMult,cloudScale,ballForm;
+      varying vec3 vColor; varying float vAlpha;
+      void main(){
+        float s=nSeed;
+        float formFactor=0.5+0.5*sin(time*0.028+s*2.1);
+        float formEnvelope=smoothstep(0.0,0.35,formT);
+        float amp=(2.0+formFactor*11.0)*formEnvelope;
+        float t1=time*(0.052+s*0.038)+s*6.2832, t2=time*(0.079+s*0.026)+s*4.1888, t3=time*(0.065+s*0.044)+s*2.0944;
+        vec3 drift=vec3(sin(t1)*amp+cos(t2*0.67)*amp*0.36,(cos(t2)*0.12+sin(t3)*0.08)*amp,cos(t3)*amp+sin(t1*0.73)*amp*0.36);
+        float breathe=1.0+0.05*sin(time*0.14+s*4.0);
+        vec3 basePos=vec3(position.x*breathe,position.y,position.z*breathe);
+        float cr=cos(rotAngle),sr=sin(rotAngle);
+        basePos=vec3(basePos.x*cr-basePos.z*sr,basePos.y,basePos.x*sr+basePos.z*cr);
+        float cloudiness=1.0-smoothstep(0.18,0.92,formT);
+        vec3 cloudScatter=vec3(sin(s*71.9+time*0.042)*88.0+cos(s*43.1+time*0.031)*42.0,sin(s*53.7+time*0.038)*58.0+cos(s*29.3+time*0.055)*32.0,cos(s*83.5+time*0.036)*88.0+sin(s*37.7+time*0.043)*42.0)*cloudiness;
+        vec3 nebulaPos=basePos+drift+cloudScatter;
+        float normR=length(position.xz)/130.0;
+        float reveal=smoothstep(0.0,0.22,formT*1.30-normR);
+        float radHue;
+        if(normR<0.10) radHue=0.60; else if(normR<0.38) radHue=0.58; else if(normR<0.58) radHue=0.50; else if(normR<0.78) radHue=0.04; else radHue=0.80;
+        float sh=remapHue(fract(s*1.618+time*0.008));
+        float shWeight=0.36*smoothstep(0.0,0.5,formT);
+        float nebulaHue=mix(mix(radHue,sh,shWeight),0.08+s*0.07,warmBias);
+        float nebulaLum=0.28+s*0.20+(1.0-normR)*0.10;
+        float formed=1.0-formFactor;
+        float nebulaAlpha=0.75*(0.38+formed*0.68)*reveal*(1.0-cloudiness*0.42);
+        float coreFactor=1.0+(1.0-normR)*0.9;
+        float nebulaPtSz=2.4*(0.50+s*1.55)*coreFactor*(0.62+formed*0.48)*(1.0+cloudiness*1.1)*640.0;
+        vec3 pos=nebulaPos;
+        vColor=hsl2rgb(nebulaHue,0.86,nebulaLum)*((0.22+formed*0.78)*0.90);
+        vAlpha=nebulaAlpha;
+        vec4 mvPos=modelViewMatrix*vec4(pos,1.0);
+        gl_PointSize=clamp(nebulaPtSz/-mvPos.z,0.5,13.0);
+        gl_Position=projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader:`
+      uniform float gAlpha,brightMult; varying vec3 vColor; varying float vAlpha;
+      void main(){
+        if(gAlpha<0.004) discard;
+        vec2 c=gl_PointCoord-0.5; float d=length(c)*2.0;
+        if(d>1.0) discard;
+        float crisp=smoothstep(0.42,0.0,d), core=max(0.0,1.0-d*9.0)*0.65;
+        float alpha=(crisp*0.40+core)*(0.50+vAlpha*0.60)*gAlpha;
+        if(alpha<0.003) discard;
+        gl_FragColor=vec4(vColor*brightMult,alpha);
+      }
+    `,
+  });
+  scene.add(new THREE.Points(geo, bgFineMat));
+}
+
+{
+  const CLOUD_N = 2800;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(CLOUD_N*3), seed = new Float32Array(CLOUD_N);
+  for(let i=0;i<CLOUD_N;i++){
+    const arm=i%NUM_ARMS_BG, t=Math.random(), r=8+t*125, spin=r*0.022;
+    const base=(arm/NUM_ARMS_BG)*Math.PI*2, scatter=(Math.random()-0.5)*r*0.55;
+    const angle=base+spin+scatter/Math.max(r,1), rFinal=r+(Math.random()-0.5)*r*0.35;
+    pos[i*3]=rFinal*Math.cos(angle); pos[i*3+1]=(Math.random()-0.5)*r*0.12; pos[i*3+2]=rFinal*Math.sin(angle);
+    seed[i]=Math.random();
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('nSeed',new THREE.BufferAttribute(seed,1));
+  bgCloudMat = new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0}, gAlpha:{value:0}, rotSpeed:{value:0.026}, rotAngle:{value:0}, brightMult:{value:1.0}, warmBias:{value:0} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
+      attribute float nSeed;
+      uniform float time,gAlpha,rotSpeed,rotAngle,warmBias;
+      varying vec3 vColor; varying float vAlpha; varying vec2 vSeedOff;
+      void main(){
+        float s=nSeed;
+        float formFactor=0.5+0.5*sin(time*0.012+s*1.5);
+        float amp=(4.0+formFactor*10.0)*smoothstep(0.0,0.5,gAlpha);
+        float t1=time*(0.018+s*0.010)+s*6.2832, t2=time*(0.024+s*0.008)+s*4.1888, t3=time*(0.020+s*0.013)+s*2.0944;
+        vec3 drift=vec3(sin(t1)*amp+cos(t2*0.55)*amp*0.40,(cos(t2)*0.10+sin(t3)*0.07)*amp,cos(t3)*amp+sin(t1*0.68)*amp*0.40);
+        float cr=cos(rotAngle),sr=sin(rotAngle);
+        vec3 basePos=vec3(position.x*cr-position.z*sr,position.y,position.x*sr+position.z*cr);
+        vec3 pos=basePos+drift;
+        float globalHue=fract(time*0.0048);
+        float nebulaHue=mix(remapHue(fract(globalHue+s*0.42)),0.08+s*0.06,warmBias);
+        vColor=hsl2rgb(nebulaHue,0.80,0.22+s*0.14)*0.62;
+        float fadeCC=0.5+0.5*sin(time*0.055+s*3.14);
+        vAlpha=0.55;
+        vSeedOff=vec2(s*17.31+time*0.030, s*11.73+time*0.020);
+        vec4 mvPos=modelViewMatrix*vec4(pos,1.0);
+        float ptSz=(22.0+s*38.0)*0.92*640.0/-mvPos.z;
+        gl_PointSize=clamp(ptSz,4.0,400.0);
+        gl_Position=projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader: HSL_GLSL + HUE_REMAP_GLSL + `
+      uniform float gAlpha,brightMult; varying vec3 vColor; varying float vAlpha; varying vec2 vSeedOff;
+      float h2(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+      float n2(vec2 p){
+        vec2 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+        return mix(mix(h2(i),h2(i+vec2(1,0)),u.x),mix(h2(i+vec2(0,1)),h2(i+vec2(1,1)),u.x),u.y);
+      }
+      float fbm(vec2 p){ float v=0.0,a=0.5; for(int i=0;i<4;i++){v+=a*n2(p);p=p*2.1+vec2(1.3,7.9);a*=0.5;} return v; }
+      void main(){
+        if(gAlpha<0.004) discard;
+        vec2 c=gl_PointCoord-0.5; float d=length(c);
+        if(d>0.52) discard;
+        float n=fbm(c*4.5+vSeedOff);
+        float edge=d-n*0.32+0.04;
+        float shape=smoothstep(0.48,0.06,edge);
+        float detail=fbm(c*9.0+vSeedOff*1.8)*0.45+0.55;
+        float alpha=shape*detail*vAlpha*0.48*gAlpha;
+        if(alpha<0.002) discard;
+        gl_FragColor=vec4(vColor*detail*brightMult,alpha);
+      }
+    `,
+  });
+  scene.add(new THREE.Points(geo, bgCloudMat));
+}
+
+{
+  const SPARK_N = 9000;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(SPARK_N*3), seed = new Float32Array(SPARK_N);
+  for(let i=0;i<SPARK_N;i++){
+    const arm=i%NUM_ARMS_BG, t=Math.random(), r=5+t*130, spin=r*0.022;
+    const base=(arm/NUM_ARMS_BG)*Math.PI*2, angle=base+spin+(Math.random()-0.5)*0.08;
+    const rF=r+(Math.random()-0.5)*r*0.03;
+    pos[i*3]=rF*Math.cos(angle); pos[i*3+1]=(Math.random()-0.5)*1.5; pos[i*3+2]=rF*Math.sin(angle);
+    seed[i]=Math.random();
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('nSeed',new THREE.BufferAttribute(seed,1));
+  bgSparkMat = new THREE.ShaderMaterial({
+    uniforms:{ time:{value:0}, gAlpha:{value:0}, rotSpeed:{value:0.058}, rotAngle:{value:0} },
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader: HSL_GLSL + HUE_REMAP_GLSL + `
+      attribute float nSeed;
+      uniform float time,rotSpeed,rotAngle;
+      varying vec3 vColor; varying float vAlpha;
+      void main(){
+        float s=nSeed;
+        float cycleLen=5.0+s*9.0;
+        float phase=fract((time+s*cycleLen)/cycleLen);
+        float activeWin=0.22;
+        float t=clamp(phase/activeWin,0.0,1.0);
+        float isActive=step(phase,activeWin);
+        vec2 radDir=normalize(position.xz+vec2(0.0002,0.0002));
+        vec2 tangDir=normalize(vec2(-position.z,position.x));
+        vec2 ejectDir=normalize(radDir*0.25+tangDir*0.75);
+        float reach=t*(24.0+s*44.0);
+        vec3 ejPos=vec3(position.x+ejectDir.x*reach,position.y+(s-0.5)*reach*0.04,position.z+ejectDir.y*reach);
+        float cr=cos(rotAngle),sr=sin(rotAngle);
+        ejPos=vec3(ejPos.x*cr-ejPos.z*sr,ejPos.y,ejPos.x*sr+ejPos.z*cr);
+        float normR=length(position.xz)/130.0;
+        float armHue=mix(0.58,0.04,normR);
+        float hue=mix(0.60,remapHue(armHue),t);
+        float lum=0.70-t*0.32;
+        vColor=hsl2rgb(hue,0.80,lum)*(1.2-t*0.65)*isActive;
+        vAlpha=isActive*(1.0-t)*(1.0-t)*0.48;
+        vec4 mvPos=modelViewMatrix*vec4(ejPos,1.0);
+        float ptSz=(0.7+s*0.6)*isActive*640.0/-mvPos.z;
+        gl_PointSize=clamp(ptSz,0.6,5.0);
+        gl_Position=projectionMatrix*mvPos;
+      }
+    `,
+    fragmentShader:`
+      uniform float gAlpha; varying vec3 vColor; varying float vAlpha;
+      void main(){
+        if(gAlpha<0.004||vAlpha<0.004) discard;
+        vec2 c=gl_PointCoord-0.5; float d=length(c)*2.0;
+        if(d>1.0) discard;
+        float alpha=vAlpha*smoothstep(0.5,0.05,d)*gAlpha;
+        gl_FragColor=vec4(vColor,alpha);
+      }
+    `,
+  });
+  scene.add(new THREE.Points(geo, bgSparkMat));
+}
+
+// Group all three so one transform pushes them small and far behind the big
+// nebula, on the opposite side of the origin from the camera's starting
+// direction — holds up for this whole short clip without needing to track
+// the camera every frame, since the auto-rotate drift is slow and slight.
+const bgCamDir = new THREE.Vector3(
+  Math.sin(CAM_DEFAULTS.phi)*Math.sin(CAM_DEFAULTS.theta),
+  Math.cos(CAM_DEFAULTS.phi),
+  Math.sin(CAM_DEFAULTS.phi)*Math.cos(CAM_DEFAULTS.theta)
+);
+const bgNebulaGroup = new THREE.Group();
+// Pulled from 2200/0.15 to 1100/0.35 — at the old distance/scale the actual
+// spiral structure was well below resolvable size, so it just read as a
+// point of light instead of a recognizable (if small/distant) nebula.
+bgNebulaGroup.position.copy(bgCamDir).multiplyScalar(-1100);
+bgNebulaGroup.scale.setScalar(0.35);
+// Captured once, as the starting state to animate FROM during the crossfade
+// — growing toward centered/full-scale (matching where cosmogenesis's real
+// nebula sits) instead of just fading alpha at a fixed small size.
+const BG_START_POS   = bgNebulaGroup.position.clone();
+const BG_START_SCALE = 0.35;
+const BG_END_POS      = new THREE.Vector3(0, 0, 0);
+const BG_END_SCALE    = 1.0;
+// Re-parent the three meshes just added into the group (scene.add above put
+// them at the scene root so their own construction blocks stay self-
+// contained/copy-pasteable; move them under the group now).
+[bgFineMat, bgCloudMat, bgSparkMat].forEach(mat => {
+  const mesh = scene.children.find(o => o.material === mat);
+  if (mesh) bgNebulaGroup.add(mesh);
+});
+scene.add(bgNebulaGroup);
+
+let bgRotFine=0, bgRotCloud=0, bgRotSpark=0;
+
+// ── Live tuning panel: crossfade start + camera readout ──────────────────────
+const TUNE_KEY = 'nebulaCosmogenesisHandoffTuning';
+const TUNE_DEFAULTS = { crossfadeStart: 2 };
+let tuneState = Object.assign({}, TUNE_DEFAULTS);
+try {
+  const saved = JSON.parse(localStorage.getItem(TUNE_KEY));
+  if (saved) Object.assign(tuneState, saved);
+} catch(e){}
+
+const sCrossfadeStart = document.getElementById('sCrossfadeStart');
+const vCrossfadeStart = document.getElementById('vCrossfadeStart');
+function applyTuning(){
+  sCrossfadeStart.value = tuneState.crossfadeStart;
+  vCrossfadeStart.textContent = tuneState.crossfadeStart.toFixed(1) + 's';
+}
+sCrossfadeStart.addEventListener('input', () => {
+  tuneState.crossfadeStart = parseFloat(sCrossfadeStart.value);
+  localStorage.setItem(TUNE_KEY, JSON.stringify(tuneState));
+  applyTuning();
+});
+document.getElementById('btnReset').addEventListener('click', () => {
+  tuneState = Object.assign({}, TUNE_DEFAULTS);
+  localStorage.setItem(TUNE_KEY, JSON.stringify(tuneState));
+  Object.assign(sphTarget, CAM_DEFAULTS);
+  applyTuning();
+});
+
+const rCamR = document.getElementById('rCamR');
+const rCamTheta = document.getElementById('rCamTheta');
+const rCamPhi = document.getElementById('rCamPhi');
+
+// ── Timeline: big nebula forms in fast, then crossfades into cosmogenesis's
+// own (small, distant) nebula, holds on it fully-visible-alone, then cuts ───
+// Crossfade now ends at a FIXED point (CROSSFADE_END=7), not stretched all
+// the way to TOTAL_DURATION — that was the other half of the "didn't really
+// fade, just cut" problem: the reveal was still ramping right up to the same
+// instant the black fade-out began, so there was never a moment where the
+// background nebula was just sitting there, fully visible on its own, before
+// the cut. Now there's a clear ~1.5s hold on it before the fade to black.
+const fadeOverlay = document.getElementById('fadeOverlay');
+const BIG_FORM_STAGGER = 0.3;
+const BIG_FORM_DURATION = 1.2; // big nebula fully formed by t=1.5s
+const INVISIBLE_THRESHOLD = 1.05;
+const CROSSFADE_END = 7;      // crossfade finishes here, not at TOTAL_DURATION
+const TOTAL_DURATION = 10;    // fixed, as asked — not derived from anything
+const FADE_DURATION = 1.5;
+// Single source of truth for the handoff camera distance — used both to
+// animate this scene's own camera toward it during the crossfade AND in the
+// navigate URL below, so they can't drift out of sync with each other.
+const HANDOFF_CAM_R = 580;
+const FADE_START = TOTAL_DURATION - FADE_DURATION; // 8.5 — masks the scale
+                                                     // jump into full-size
+                                                     // cosmogenesis at handoff
+
+let navigated = false;
+
+const infoEl = document.getElementById('info');
+let last = performance.now();
+let simTime = 0;
+function tick(){
+  requestAnimationFrame(tick);
+  const now = performance.now();
+  const dt = Math.min((now-last)/1000, 0.05); last = now;
+  simTime += dt;
+
+  // Crossfade driver: 0 before tuneState.crossfadeStart, ramps to 1 by
+  // CROSSFADE_END (fixed, well before TOTAL_DURATION — leaves a real hold on
+  // the fully-formed background nebula before the fade to black). A single
+  // smoothstep for every layer, not a mix of easeOut/slowForm curves — that
+  // mismatch was making layers fade in at visibly different rates instead of
+  // reading as one clean, unified fade.
+  const crossfadeT = smoothstep(clamp((simTime - tuneState.crossfadeStart) / (CROSSFADE_END - tuneState.crossfadeStart), 0, 1));
+
+  // Grow the background nebula from its small/distant starting position
+  // toward centered-and-full-scale, and ease the camera's own distance
+  // toward the same value the handoff URL uses — so by the time of the cut,
+  // the framing already roughly matches what cosmogenesis.html opens on,
+  // instead of the object just fading in place at a fixed small size.
+  bgNebulaGroup.position.lerpVectors(BG_START_POS, BG_END_POS, crossfadeT);
+  bgNebulaGroup.scale.setScalar(lerp(BG_START_SCALE, BG_END_SCALE, crossfadeT));
+  if (!drag) sphTarget.r = lerp(CAM_DEFAULTS.r, HANDOFF_CAM_R, crossfadeT);
+
+  for (const mat of nebulaVolumes){
+    mat.uniforms.uTime.value = simTime;
+    mat.uniforms.uCameraPos.value.copy(camera.position);
+    mat.uniforms.uGlobalAlpha.value = 1 - crossfadeT;
+
+    const delay = mat.userData.formDelayRatio * BIG_FORM_STAGGER;
+    const formT = smoothstep(clamp((simTime - delay) / BIG_FORM_DURATION, 0, 1));
+    mat.uniforms.uDensityThreshold.value = lerp(INVISIBLE_THRESHOLD, mat.userData.baseThreshold, formT);
+    mat.uniforms.uErosionStrength.value  = lerp(0, mat.userData.baseErosion, formT);
+
+    const dist  = camera.position.distanceTo(mat.userData.center);
+    const ratio = dist / mat.userData.charRadius;
+    const lod   = clamp(ratio / 2.2, 0.22, 1.0);
+    mat.uniforms.uStepBudget.value = Math.max(6, Math.round(mat.userData.baseSteps * lod));
+  }
+
+  bgRotFine  += bgFineMat.uniforms.rotSpeed.value  * dt;
+  bgRotCloud += bgCloudMat.uniforms.rotSpeed.value * dt;
+  bgRotSpark += bgSparkMat.uniforms.rotSpeed.value * dt;
+  bgFineMat.uniforms.time.value = simTime;
+  bgFineMat.uniforms.rotAngle.value = bgRotFine;
+  bgFineMat.uniforms.formT.value = crossfadeT;
+  bgFineMat.uniforms.gAlpha.value = crossfadeT;
+  bgCloudMat.uniforms.time.value = simTime;
+  bgCloudMat.uniforms.rotAngle.value = bgRotCloud;
+  bgCloudMat.uniforms.gAlpha.value = crossfadeT * 0.92;
+  bgSparkMat.uniforms.time.value = simTime;
+  bgSparkMat.uniforms.rotAngle.value = bgRotSpark;
+  bgSparkMat.uniforms.gAlpha.value = crossfadeT;
+
+  if(!drag) sphTarget.theta += 0.00038;
+  sph.r     += (sphTarget.r-sph.r)*0.08;
+  sph.theta += (sphTarget.theta-sph.theta)*0.08;
+  sph.phi   += (sphTarget.phi-sph.phi)*0.08;
+  applyCamera();
+  renderer.render(scene, camera);
+
+  rCamR.textContent     = sph.r.toFixed(0);
+  rCamTheta.textContent = sph.theta.toFixed(3);
+  rCamPhi.textContent   = sph.phi.toFixed(3);
+
+  const fadeT = Math.min(1, Math.max(0, (simTime - FADE_START) / FADE_DURATION));
+  fadeOverlay.style.opacity = fadeT;
+  if (!navigated && simTime >= TOTAL_DURATION){
+    navigated = true;
+    // startT=13 lands cosmogenesis.html's own internal timeline right where
+    // its nebula-formation phase cuts to the next part of its sequence.
+    // startR uses the same HANDOFF_CAM_R this scene's own camera was easing
+    // toward during the crossfade, so the cut isn't also a camera-distance
+    // jump on top of everything else.
+    window.location.href = `cosmogenesis.html?startT=13&startR=${HANDOFF_CAM_R}`;
+  }
+
+  infoEl.textContent = navigated
+    ? 'HANDING OFF TO COSMOGENESIS.HTML…'
+    : `NEBULA -> COSMOGENESIS HANDOFF TEST — t=${simTime.toFixed(1)}s / ${TOTAL_DURATION.toFixed(1)}s`;
+}
+applyTuning();
+tick();
+</script>
+</body>
+</html>
