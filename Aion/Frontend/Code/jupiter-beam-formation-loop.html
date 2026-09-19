@@ -85,6 +85,10 @@ canvas{position:fixed;inset:0}
     <label><span>Hit onset sharpness %</span><span id="valOnsetSharp">70</span></label>
     <input type="range" id="onsetSharpSlider" min="0" max="100" step="1" value="70"/>
   </div>
+  <div class="slider-row">
+    <label><span>Particle coherence %</span><span id="valCoherence">65</span></label>
+    <input type="range" id="coherenceSlider" min="0" max="100" step="1" value="65"/>
+  </div>
 
 
   <button id="restartBtn">RESTART PULSE</button>
@@ -272,6 +276,20 @@ let PRE_TRIGGER_SHAKE = 0.0;
 // into the settled sphere). Defaults high since "no delay at the moment of
 // contact" was the actual ask; dial it back toward 0 for a gentler onset.
 let HIT_ONSET_SHARPNESS = 0.7;
+// Each particle samples the turbulence field at its own position offset by
+// s*COHERENCE_OFFSET (s = that particle's random seed, 0..1) — this offset
+// exists so exactly-overlapping particles don't sample identical noise, but
+// at its original scale (40 units) it scatters neighboring particles roughly
+// two full noise-field wavelengths apart (the field's own spatial frequency
+// is 0.05, i.e. ~20-unit features), so physically close particles end up
+// sampling totally unrelated parts of an otherwise spatially coherent field.
+// The result: each particle jitters on its own, independent of its
+// neighbors, instead of picking up the same local swirl/current they're
+// sitting in — reading as independent fading rather than particles visibly
+// pushing/pulling on each other. PARTICLE_COHERENCE blends that offset down
+// (lerp(40, 2, coherence)) so nearby particles share nearly the same sample
+// point and move together in connected streams/eddies instead.
+let PARTICLE_COHERENCE = 0.65;
 
 
 // ── Ring guides — ported verbatim from index.html's real orbit rings (same
@@ -976,6 +994,7 @@ wireSlider('revealDurSlider','valRevealDur', v=>{ REVEAL_DURATION=v; }, v=>v.toF
 wireSlider('shakeSlider','valShake', v=>{ SHAKE_INTENSITY=v; }, v=>v.toFixed(1));
 wireSlider('preShakeSlider','valPreShake', v=>{ PRE_TRIGGER_SHAKE=v/100; }, v=>v.toFixed(0));
 wireSlider('onsetSharpSlider','valOnsetSharp', v=>{ HIT_ONSET_SHARPNESS=v/100; }, v=>v.toFixed(0));
+wireSlider('coherenceSlider','valCoherence', v=>{ PARTICLE_COHERENCE=v/100; }, v=>v.toFixed(0));
 
 
 // Resets Jupiter back to scattered ring dust — shared by the manual restart
@@ -1142,6 +1161,7 @@ function tick(){
   const gatherT   = ease(formT / Math.max(0.001, GATHER_END));
   const collapseT = ease((formT - COLLAPSE_START) / Math.max(0.001, (COLLAPSE_END - COLLAPSE_START)));
   const posAttr = jupGeo.attributes.position;
+  const cohOffset = lerp(40.0, 2.0, PARTICLE_COHERENCE);
   for(let i=0;i<JUP_N;i++){
     const s = jupSeed[i];
     const angle = lerpAngleShortest(jupStartAngle[i], JUPITER_ANGLE, gatherT);
@@ -1152,7 +1172,7 @@ function tick(){
     const bx = lerp(ringX, jupTarget[i*3],   collapseT);
     const by = lerp(ringY, jupTarget[i*3+1], collapseT);
     const bz = lerp(ringZ, jupTarget[i*3+2], collapseT);
-    turbulenceJS(bx+s*40.0, by+s*40.0, bz+s*40.0, globalT, _turbScratch);
+    turbulenceJS(bx+s*cohOffset, by+s*cohOffset, bz+s*cohOffset, globalT, _turbScratch);
     posAttr.array[i*3]   = bx + _turbScratch[0]*shakeAmp;
     posAttr.array[i*3+1] = by + _turbScratch[1]*shakeAmp;
     posAttr.array[i*3+2] = bz + _turbScratch[2]*shakeAmp;
