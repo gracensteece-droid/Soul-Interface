@@ -710,9 +710,21 @@ const jupStartY     = new Float32Array(JUP_N);
 const jupTarget     = new Float32Array(JUP_N*3);
 const jupUnit       = new Float32Array(JUP_N*3); // fibonacci-sphere unit vectors, reused by applyJupiterSize()
 const jupSeed       = new Float32Array(JUP_N);
+// Particles are grouped into small clumps that each get ONE shared, strongly
+// visible drifting offset (computed once per clump per frame, not per
+// particle) — so groups of particles visibly swirl/stream/merge together as
+// distinct little swarms instead of each moving on its own. This is a much
+// bigger, more legible "particles affecting each other" cue than a subtle
+// per-particle noise-field tweak: you can actually see clumps of dust
+// pulling together and drifting as one instead of a uniform haze.
+const JUP_CLUMP_COUNT = 34;
+const jupClump = new Int32Array(JUP_N);
+const jupClumpOffsets = new Float32Array(JUP_CLUMP_COUNT*3); // refilled once per frame in tick()
+let JUP_CLUMP_AMP = 9.0; // world units — deliberately large relative to the ring's own ~7-unit scatter, so clumps visibly swirl and merge as groups, not a subtle nudge
 {
   const pos = new Float32Array(JUP_N*3);
   for(let i=0;i<JUP_N;i++){
+    jupClump[i] = i % JUP_CLUMP_COUNT;
     // Scattered start: the FULL ring at Jupiter's radius, all the way around.
     jupStartAngle[i] = Math.random()*Math.PI*2;
     jupStartR[i]     = JUPITER_R + (Math.random()-0.5)*7;
@@ -1160,6 +1172,24 @@ function tick(){
   const ease = x => lerp(smoothstep(x), easeSnap(x), HIT_ONSET_SHARPNESS);
   const gatherT   = ease(formT / Math.max(0.001, GATHER_END));
   const collapseT = ease((formT - COLLAPSE_START) / Math.max(0.001, (COLLAPSE_END - COLLAPSE_START)));
+  // Clump motion — the actual "particles visibly affect each other" driver.
+  // One shared offset per clump (computed once per clump here, not per
+  // particle), so every particle in that clump gets pulled the same
+  // direction at the same time: whole little swarms of dust visibly drift,
+  // swirl and merge together rather than each particle moving on its own.
+  // Active across the WHOLE gather/collapse journey (envelope keyed to
+  // collapseT, not to the narrow passing-wavefront shake window), so it's
+  // visible for the full ~2s convergence, not a brief flash near the end —
+  // and fades to exactly 0 right as each particle reaches its real target,
+  // so the settled sphere doesn't keep wobbling.
+  const clumpEnv = jupFormTriggerTime !== null ? (1 - collapseT) : 0;
+  for(let c=0;c<JUP_CLUMP_COUNT;c++){
+    turbulenceJS(c*23.7, c*31.1, c*17.3, globalT*0.4, _turbScratch);
+    jupClumpOffsets[c*3]   = _turbScratch[0]*JUP_CLUMP_AMP*clumpEnv;
+    jupClumpOffsets[c*3+1] = _turbScratch[1]*JUP_CLUMP_AMP*clumpEnv;
+    jupClumpOffsets[c*3+2] = _turbScratch[2]*JUP_CLUMP_AMP*clumpEnv;
+  }
+
   const posAttr = jupGeo.attributes.position;
   const cohOffset = lerp(40.0, 2.0, PARTICLE_COHERENCE);
   for(let i=0;i<JUP_N;i++){
@@ -1173,9 +1203,10 @@ function tick(){
     const by = lerp(ringY, jupTarget[i*3+1], collapseT);
     const bz = lerp(ringZ, jupTarget[i*3+2], collapseT);
     turbulenceJS(bx+s*cohOffset, by+s*cohOffset, bz+s*cohOffset, globalT, _turbScratch);
-    posAttr.array[i*3]   = bx + _turbScratch[0]*shakeAmp;
-    posAttr.array[i*3+1] = by + _turbScratch[1]*shakeAmp;
-    posAttr.array[i*3+2] = bz + _turbScratch[2]*shakeAmp;
+    const cid = jupClump[i]*3;
+    posAttr.array[i*3]   = bx + _turbScratch[0]*shakeAmp + jupClumpOffsets[cid];
+    posAttr.array[i*3+1] = by + _turbScratch[1]*shakeAmp + jupClumpOffsets[cid+1];
+    posAttr.array[i*3+2] = bz + _turbScratch[2]*shakeAmp + jupClumpOffsets[cid+2];
   }
   posAttr.needsUpdate = true;
   jupMat.uniforms.formT.value = formT;
