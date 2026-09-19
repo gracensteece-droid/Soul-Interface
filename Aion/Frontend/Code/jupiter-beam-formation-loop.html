@@ -77,6 +77,14 @@ canvas{position:fixed;inset:0}
     <label><span>Shake intensity</span><span id="valShake">4.5</span></label>
     <input type="range" id="shakeSlider" min="0" max="12" step="0.1" value="4.5"/>
   </div>
+  <div class="slider-row">
+    <label><span>Pre-trigger shake %</span><span id="valPreShake">0</span></label>
+    <input type="range" id="preShakeSlider" min="0" max="100" step="1" value="0"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Hit onset sharpness %</span><span id="valOnsetSharp">70</span></label>
+    <input type="range" id="onsetSharpSlider" min="0" max="100" step="1" value="70"/>
+  </div>
 
 
   <button id="restartBtn">RESTART PULSE</button>
@@ -107,6 +115,13 @@ window.addEventListener('resize', () => {
 const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
 const smoothstep = t => { t = clamp(t,0,1); return t*t*(3-2*t); };
 const lerp = (a,b,t) => a+(b-a)*t;
+// Quadratic ease-OUT only — nonzero velocity right at t=0 (derivative 2 vs
+// smoothstep's 0), still settling smoothly into t=1. Blended against
+// smoothstep via HIT_ONSET_SHARPNESS so the very first instant of the
+// gather/collapse motion can read as an immediate snap at the moment of
+// contact, rather than easing in from a standstill, while still settling
+// softly into the formed sphere rather than ending on a hard stop.
+const easeSnap = t => { t = clamp(t,0,1); return 1 - (1-t)*(1-t); };
 
 // JS mirror of the GPU turbulence() function (same value-noise field) so the
 // Jupiter precursor cluster shakes in the same organic style as the disc.
@@ -237,6 +252,26 @@ let COLLAPSE_END    = 0.45;  // formT fraction where radial collapse fully finis
 let REVEAL_START    = 0.79;  // fraction *of the collapse window* (COLLAPSE_START..COLLAPSE_END) where the solid mesh starts materializing
 let REVEAL_DURATION = 2.2;   // seconds the materialize dissolve takes once it starts — independent of formT/FORM_DURATION so it can be slowed down without affecting the particle motion
 let SHAKE_INTENSITY = 4.5;
+// The turbulence shake on the ring dust is driven by how close the
+// TRAVELING PULSE currently is to Jupiter's ring (shakeEnv, computed from
+// pr regardless of trigger state) — not by whether formation has actually
+// triggered. That meant the belt visibly jostled as the incoming beam swept
+// through it on approach, BEFORE jupFormTriggerTime was ever set and BEFORE
+// any coordinated gather/collapse motion began — a real, separate "contract"
+// event distinct from (and immediately followed by) the actual formation
+// collapse. Read as "it contracts, then contracts again and forms."
+// PRE_TRIGGER_SHAKE gates that pre-formation jostle so the two merge into
+// one motion on the first real hit — 0 removes it entirely (the belt sits
+// still while the beam approaches, then gathers+collapses+shakes as one
+// event the instant it triggers); raised above 0 brings back a fraction of
+// that pre-hit shimmer if a subtler "the wave is approaching" cue is wanted.
+let PRE_TRIGGER_SHAKE = 0.0;
+// Blends gatherT/collapseT's easing curve from pure smoothstep (0 — soft,
+// symmetric ease-in/ease-out, the original flat-start feel) toward pure
+// easeSnap (1 — immediate velocity right at the hit, still easing softly
+// into the settled sphere). Defaults high since "no delay at the moment of
+// contact" was the actual ask; dial it back toward 0 for a gentler onset.
+let HIT_ONSET_SHARPNESS = 0.7;
 
 
 // ── Ring guides — ported verbatim from index.html's real orbit rings (same
@@ -939,6 +974,8 @@ wireSlider('collapseEndSlider','valCollapseEnd', v=>{ COLLAPSE_END=v/100; }, v=>
 wireSlider('revealStartSlider','valRevealStart', v=>{ REVEAL_START=v/100; }, v=>v.toFixed(0));
 wireSlider('revealDurSlider','valRevealDur', v=>{ REVEAL_DURATION=v; }, v=>v.toFixed(1)+'s');
 wireSlider('shakeSlider','valShake', v=>{ SHAKE_INTENSITY=v; }, v=>v.toFixed(1));
+wireSlider('preShakeSlider','valPreShake', v=>{ PRE_TRIGGER_SHAKE=v/100; }, v=>v.toFixed(0));
+wireSlider('onsetSharpSlider','valOnsetSharp', v=>{ HIT_ONSET_SHARPNESS=v/100; }, v=>v.toFixed(0));
 
 
 // Resets Jupiter back to scattered ring dust — shared by the manual restart
@@ -1046,8 +1083,20 @@ function tick(){
   // this cluster's position is already CPU-driven for the accretion lerp —
   // fades out as formT commits so the shake hands off into the converge
   // instead of fighting it.
+  // Raw linear elapsed-fraction, NOT smoothstepped — formT used to be
+  // smoothstep()'d here, which on its own has zero velocity at t=0 (that's
+  // what makes it an "ease-in"). gatherT/collapseT below then applied a
+  // SECOND smoothstep on top of that already-flat-started value, compounding
+  // the flatness (closer to quartic than quadratic near zero) — the belt's
+  // reaction technically began the instant it triggered, but its velocity
+  // was near-zero for the first several frames, reading as "a slight delay
+  // right at the moment it's hit." formT is now the single raw source of
+  // truth for elapsed progress; downstream consumers apply their own easing
+  // exactly once instead of compounding on an already-eased curve. This
+  // doesn't shift WHEN formation completes (smoothstep(0)=0/smoothstep(1)=1
+  // either way) — only how fast the motion starts.
   const formT = jupFormTriggerTime !== null
-    ? smoothstep((T - jupFormTriggerTime) / JUP_FORM_DURATION) : 0;
+    ? clamp((T - jupFormTriggerTime) / JUP_FORM_DURATION, 0, 1) : 0;
   if(jupFormTriggerTime !== null) phase = formT < 1 ? 'Jupiter accreting' : 'Jupiter settled into orbit';
   if(formT>=1 && seqAdvanceAt===null) seqAdvanceAt = T + HOLD_DURATION;
   if(seqAdvanceAt!==null && pendingLegBoundary===null && T>=seqAdvanceAt){
@@ -1070,13 +1119,28 @@ function tick(){
   // duration, since formT itself is still far from 1 at that point. That
   // read as "triggers but doesn't condense fluidly" — the shape snaps into
   // place but then visibly jitters instead of settling.
-  const shakeAmp = shakeEnv * SHAKE_INTENSITY * (1 - smoothstep(formT / Math.max(0.001, COLLAPSE_END)));
+  // Gate the shake by trigger state, not just proximity — shakeEnv alone
+  // rises as the traveling pulse approaches JUPITER_R regardless of whether
+  // formation has actually started, so without this gate the belt visibly
+  // jostles in place as the beam sweeps in, THEN a separate coordinated
+  // collapse begins once it triggers — two distinct motions back to back.
+  // Gating on jupFormTriggerTime merges them into one: the belt sits still
+  // through the approach and only starts shaking the instant it also starts
+  // gathering/collapsing. PRE_TRIGGER_SHAKE (0 by default) lets a fraction
+  // of that pre-hit jostle back in if a softer "the wave is coming" cue is
+  // ever wanted instead of dead calm.
+  const preTriggerGate = jupFormTriggerTime !== null ? 1.0 : PRE_TRIGGER_SHAKE;
+  const shakeAmp = shakeEnv * SHAKE_INTENSITY * preTriggerGate * (1 - smoothstep(formT / Math.max(0.001, COLLAPSE_END)));
 
   // Two-stage accretion: gather angularly along the ring toward the formation
   // point (from whichever direction is shorter), then collapse radially
   // inward into the sphere. The stages overlap slightly for a smooth handoff.
-  const gatherT   = smoothstep(formT / Math.max(0.001, GATHER_END));
-  const collapseT = smoothstep((formT - COLLAPSE_START) / Math.max(0.001, (COLLAPSE_END - COLLAPSE_START)));
+  // Eased via a smoothstep/easeSnap blend (HIT_ONSET_SHARPNESS) rather than
+  // raw smoothstep alone, so the reaction can have real velocity right at
+  // the hit instead of easing in from a standstill.
+  const ease = x => lerp(smoothstep(x), easeSnap(x), HIT_ONSET_SHARPNESS);
+  const gatherT   = ease(formT / Math.max(0.001, GATHER_END));
+  const collapseT = ease((formT - COLLAPSE_START) / Math.max(0.001, (COLLAPSE_END - COLLAPSE_START)));
   const posAttr = jupGeo.attributes.position;
   for(let i=0;i<JUP_N;i++){
     const s = jupSeed[i];
