@@ -78,8 +78,8 @@ canvas{position:fixed;inset:0}
     <input type="range" id="shakeSlider" min="0" max="12" step="0.1" value="4.5"/>
   </div>
   <div class="slider-row">
-    <label><span>Pre-trigger shake %</span><span id="valPreShake">0</span></label>
-    <input type="range" id="preShakeSlider" min="0" max="100" step="1" value="0"/>
+    <label><span>Pre-trigger shake %</span><span id="valPreShake">100</span></label>
+    <input type="range" id="preShakeSlider" min="0" max="100" step="1" value="100"/>
   </div>
   <div class="slider-row">
     <label><span>Hit onset sharpness %</span><span id="valOnsetSharp">70</span></label>
@@ -179,6 +179,25 @@ window.addEventListener('wheel', e=>{
   sph.r=sphTarget.r;
 },{passive:true});
 
+// ── Mouse interaction — belt + beam react to the cursor ──────────────────────
+// Same approach as index.html's asteroid belt: cast the cursor into a
+// world-space point on the y=0 orbital plane every frame, then let the disc
+// and pulse shaders push nearby particles radially away from that point and
+// brighten them. mouseInScene gates it off (uMouse parked far outside any
+// particle's radius) once the cursor leaves the canvas, so nothing sticks to
+// a stale position.
+const raycaster = new THREE.Raycaster();
+const mouseNDC  = new THREE.Vector2(9999, 9999);
+const interactionPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const interactionPoint = new THREE.Vector3(9999, 0, 9999);
+let mouseInScene = false;
+window.addEventListener('mousemove', e=>{
+  mouseNDC.x =  (e.clientX / window.innerWidth)  * 2 - 1;
+  mouseNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  mouseInScene = true;
+});
+canvas.addEventListener('mouseleave', ()=>{ mouseInScene = false; });
+
 // ── Star field backdrop ───────────────────────────────────────────────────────
 function makeDiscTexture(){
   const cv = document.createElement('canvas');
@@ -264,12 +283,27 @@ let SHAKE_INTENSITY = 4.5;
 // any coordinated gather/collapse motion began — a real, separate "contract"
 // event distinct from (and immediately followed by) the actual formation
 // collapse. Read as "it contracts, then contracts again and forms."
-// PRE_TRIGGER_SHAKE gates that pre-formation jostle so the two merge into
-// one motion on the first real hit — 0 removes it entirely (the belt sits
-// still while the beam approaches, then gathers+collapses+shakes as one
-// event the instant it triggers); raised above 0 brings back a fraction of
-// that pre-hit shimmer if a subtler "the wave is approaching" cue is wanted.
-let PRE_TRIGGER_SHAKE = 0.0;
+// PRE_TRIGGER_SHAKE gates that pre-formation jostle. Defaulted to 0 in an
+// earlier pass so the belt sat still while the beam approached, only
+// gathering+collapsing+shaking as one event at the instant of trigger — but
+// that's also what made it read as inert/static compared to every other
+// ring in the disc, which always jostles continuously as the passing
+// wavefront nears and crosses their radius. Full strength (1.0) makes
+// Jupiter's ring do the same: react to the beam sweeping toward and through
+// it exactly like the rest of the disc, with the coordinated gather/collapse
+// motion still layering on top once formation actually triggers.
+let PRE_TRIGGER_SHAKE = 1.0;
+// Formation used to trigger only once pr reached JUPITER_R exactly — the
+// dead center of the shake's gaussian falloff — so by the time gather/
+// collapse actually started moving particles, the shake had already been
+// climbing for a while as the wave approached from ~20+ units out, reading
+// as two back-to-back phases (jostle in place, THEN converge) rather than
+// one blended motion. Triggering this many units early — while the shake is
+// still on its way up, not yet near full strength — means the coordinated
+// convergence and the shake's own climb start from the same moment and
+// build together, so the reaction visibly flows straight into the planet
+// forming instead of preceding it as a separate beat.
+let JUP_REACT_LEAD = 14.0;
 // Blends gatherT/collapseT's easing curve from pure smoothstep (0 — soft,
 // symmetric ease-in/ease-out, the original flat-start feel) toward pure
 // easeSnap (1 — immediate velocity right at the hit, still easing softly
@@ -385,11 +419,12 @@ const discGeo = new THREE.BufferGeometry();
   discGeo.setAttribute('nSeed',    new THREE.BufferAttribute(seeds, 1));
 }
 const discMat = new THREE.ShaderMaterial({
-  uniforms:{ time:{value:0}, gAlpha:{value:1}, uPulseR:{value:-1000}, uEnvelope:{value:1} },
+  uniforms:{ time:{value:0}, gAlpha:{value:1}, uPulseR:{value:-1000}, uEnvelope:{value:1}, uMouse:{value:new THREE.Vector3(9999,0,9999)} },
   transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
   vertexShader: HSL_GLSL + `
     attribute float nSeed;
     uniform float time, gAlpha, uPulseR, uEnvelope;
+    uniform vec3 uMouse;
     varying vec3  vColor;
     varying float vAlpha;
     float hashN(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
@@ -441,14 +476,25 @@ const discMat = new THREE.ShaderMaterial({
       float shakeAmp = shakeEnv * 7.0;
       rotPos += turbulence(rotPos + s*40.0, time) * shakeAmp;
 
+      // Interactive disturbance — dust within range of the cursor's projected
+      // position gets pushed radially outward from it and brightens, the same
+      // "belt parts around your pointer" cue as index.html's asteroid belt,
+      // scaled up for this scene's larger orbital radii (14-310 vs. 21-25).
+      float distToMouse = distance(rotPos.xz, uMouse.xz);
+      float influenceRadius = 16.0;
+      float push = smoothstep(influenceRadius, 0.0, distToMouse);
+      vec3 pushDir = vec3(rotPos.x - uMouse.x, 0.0, rotPos.z - uMouse.z);
+      float pushLen = length(pushDir);
+      rotPos += (pushLen > 0.0001 ? pushDir / pushLen : vec3(0.0)) * push * 9.0;
+
       float cool = step(0.78, fract(s*8.11));
       float hue = mix(mix(0.06,0.11,fract(s*4.3)), mix(0.57,0.65,fract(s*6.1)), cool);
       float lum = 0.62 + fract(s*7.9)*0.36;
       float sat = 0.42 + fract(s*3.1)*0.35;
-      vColor = hsl2rgb(hue, sat, lum) * (1.1 + fract(s*2.3)*0.9 + shakeEnv*0.8);
+      vColor = hsl2rgb(hue, sat, lum) * (1.1 + fract(s*2.3)*0.9 + shakeEnv*0.8 + push*1.8);
       vAlpha = 0.65 + fract(s*5.7)*0.35;
       vec4 mvPos = modelViewMatrix * vec4(rotPos, 1.0);
-      gl_PointSize = clamp((0.7+fract(s*4.2)*1.5)*640.0/-mvPos.z, 0.8, 7.0);
+      gl_PointSize = clamp((0.7+fract(s*4.2)*1.5)*640.0/-mvPos.z, 0.8, 7.0) * (1.0 + push*0.9);
       gl_Position  = projectionMatrix * mvPos;
     }
   `,
@@ -628,38 +674,53 @@ const pulseGeo = new THREE.BufferGeometry();
   pulseGeo.setAttribute('aSeed',  new THREE.BufferAttribute(seed,1));
 }
 const pulseMat = new THREE.ShaderMaterial({
-  uniforms:{ uPulseR:{value:0}, time:{value:0}, uEnvelope:{value:0} },
+  uniforms:{ uPulseR:{value:0}, time:{value:0}, uEnvelope:{value:0}, uMouse:{value:new THREE.Vector3(9999,0,9999)} },
   transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
   vertexShader:`
     attribute float aAngle, aRJit, aYJit, aSeed;
     uniform float uPulseR, time;
+    uniform vec3 uMouse;
     varying float vFlicker;
+    varying float vPush;
     float hash1(float n){ return fract(sin(n)*43758.5453); }
     void main(){
       float r = uPulseR + aRJit;
       vec3 pos = vec3(r*cos(aAngle), aYJit, r*sin(aAngle));
+
+      // Same cursor-push cue as the dust disc — these are the particles
+      // visibly protruding outward from the sun as the wavefront travels, so
+      // they need to read as reacting to the cursor too, not just the belt.
+      float distToMouse = distance(pos.xz, uMouse.xz);
+      float influenceRadius = 16.0;
+      float push = smoothstep(influenceRadius, 0.0, distToMouse);
+      vec3 pushDir = vec3(pos.x - uMouse.x, 0.0, pos.z - uMouse.z);
+      float pushLen = length(pushDir);
+      pos += (pushLen > 0.0001 ? pushDir / pushLen : vec3(0.0)) * push * 9.0;
+      vPush = push;
+
       // Quantized random flashes per particle, a few times a second — reads
       // as sparking/crackling rather than a smooth pulsing glow.
       float flashA = hash1(floor(time*6.0  + aSeed*97.0));
       float flashB = hash1(floor(time*13.0 + aSeed*53.0) + 31.7);
       vFlicker = max(pow(flashA,3.0), pow(flashB,4.0)*0.7);
       vec4 mvPos = modelViewMatrix*vec4(pos,1.0);
-      gl_PointSize = clamp((2.5+aSeed*3.5)*640.0/-mvPos.z, 1.0, 9.0);
+      gl_PointSize = clamp((2.5+aSeed*3.5)*640.0/-mvPos.z, 1.0, 9.0) * (1.0 + push*0.8);
       gl_Position = projectionMatrix*mvPos;
     }
   `,
   fragmentShader:`
     uniform float uEnvelope;
     varying float vFlicker;
+    varying float vPush;
     void main(){
       vec2 c = gl_PointCoord-0.5;
       float d = length(c)*2.0;
       if(d>1.0) discard;
       float core  = smoothstep(0.6,0.0,d);
-      float alpha = core * vFlicker * uEnvelope;
+      float alpha = core * vFlicker * uEnvelope * (1.0 + vPush*0.6);
       if(alpha<0.01) discard;
       vec3 col = mix(vec3(1.0,0.75,0.4), vec3(1.0,0.95,0.85), vFlicker);
-      gl_FragColor = vec4(col*1.4, alpha);
+      gl_FragColor = vec4(col*1.4*(1.0+vPush*1.6), alpha);
     }
   `
 });
@@ -710,6 +771,12 @@ const jupStartY     = new Float32Array(JUP_N);
 const jupTarget     = new Float32Array(JUP_N*3);
 const jupUnit       = new Float32Array(JUP_N*3); // fibonacci-sphere unit vectors, reused by applyJupiterSize()
 const jupSeed       = new Float32Array(JUP_N);
+// Per-particle cursor-push amount, recomputed every frame in tick() alongside
+// the shake/clump displacement (this cluster's position is CPU-driven, not
+// shader-driven, so the interaction has to be computed here too instead of
+// in jupMat's vertex shader) and re-uploaded as a dynamic attribute purely to
+// drive the color/size brightening below.
+const jupPush = new Float32Array(JUP_N);
 // Particles are grouped into small clumps that each get ONE shared, strongly
 // visible drifting offset (computed once per clump per frame, not per
 // particle) — so groups of particles visibly swirl/stream/merge together as
@@ -750,6 +817,7 @@ let JUP_CLUMP_AMP = 9.0; // world units — deliberately large relative to the r
   }
   jupGeo.setAttribute('position', new THREE.BufferAttribute(pos,3));
   jupGeo.setAttribute('nSeed',    new THREE.BufferAttribute(jupSeed,1));
+  jupGeo.setAttribute('aPush',    new THREE.BufferAttribute(jupPush,1));
 }
 function lerpAngleShortest(a,b,t){
   let d = (b-a) % (Math.PI*2);
@@ -762,6 +830,7 @@ const jupMat = new THREE.ShaderMaterial({
   transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
   vertexShader: HSL_GLSL + `
     attribute float nSeed;
+    attribute float aPush;
     uniform float formT, revealT;
     varying vec3  vColor;
     varying float vAlpha;
@@ -769,13 +838,13 @@ const jupMat = new THREE.ShaderMaterial({
       float s = nSeed;
       vec3 dustCol   = hsl2rgb(mix(0.09,0.13,fract(s*4.3)), 0.4, 0.65);
       vec3 jupColBand= hsl2rgb(mix(0.09,0.11,fract(s*8.1)), 0.32, mix(0.55,0.85,step(0.5,fract(s*6.7))));
-      vColor = mix(dustCol, jupColBand, smoothstep(0.5,1.0,formT));
+      vColor = mix(dustCol, jupColBand, smoothstep(0.5,1.0,formT)) * (1.0 + aPush*1.8);
       // Fades out against the solid's own materialize progress (revealT), not
       // raw formT — so the particle swarm stays visible, converging and
       // settling, for as long as the surface is still solidifying.
       vAlpha = mix(0.7, 0.0, smoothstep(0.35,1.0,revealT));
       vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-      gl_PointSize = clamp((1.4+fract(s*3.0)*1.8)*640.0/-mvPos.z, 0.8, 8.0);
+      gl_PointSize = clamp((1.4+fract(s*3.0)*1.8)*640.0/-mvPos.z, 0.8, 8.0) * (1.0 + aPush*0.9);
       gl_Position  = projectionMatrix * mvPos;
     }
   `,
@@ -1060,6 +1129,19 @@ function tick(){
   sunMat.uniforms.time.value  = globalT;
   RINGS.forEach(ring => { ringMeshes[ring.name].flickerMesh.material.uniforms.time.value = globalT; });
 
+  // Reproject the cursor onto the orbital plane every frame (not just on
+  // mousemove) so the interaction point stays correct as the camera orbits
+  // even without new mouse movement — same approach as index.html's belt.
+  if(mouseInScene){
+    raycaster.setFromCamera(mouseNDC, camera);
+    const hit = new THREE.Vector3();
+    if(raycaster.ray.intersectPlane(interactionPlane, hit)) interactionPoint.copy(hit);
+  } else {
+    interactionPoint.set(9999, 0, 9999);
+  }
+  discMat.uniforms.uMouse.value.copy(interactionPoint);
+  pulseMat.uniforms.uMouse.value.copy(interactionPoint);
+
   // pr is relative to the CURRENT leg only — it resets to 0 each time a new
   // planet's burst launches (pulseLegStartT) — but within a leg it now
   // REPEATS every PULSE_REPEAT_PERIOD seconds (phase 0->1 maps to 0->legTarget)
@@ -1098,12 +1180,14 @@ function tick(){
   sunRippleMat.uniforms.rippleR.value     = rippleR;
   sunRippleMat.uniforms.rippleAlpha.value = rippleFadeIn * Math.max(0, 1 - smoothstep(rippleAge/RIPPLE_FADE_DURATION));
 
-  // Triggers once the first full pulse cycle has completed its trip to the
-  // target — equivalent to "pr reached the ring," but checked via elapsed
-  // time rather than pr's own value, since pr now wraps via modulo and a
-  // frame could otherwise land exactly between "just under target" and
-  // "wrapped back to ~0" without ever registering pr >= target in between.
-  if(jupFormTriggerTime === null && (T - pulseLegStartT) >= PULSE_REPEAT_PERIOD){
+  // Triggers once the traveling wave is JUP_REACT_LEAD units short of the
+  // ring — not once it fully arrives — so the shake (already audibly/
+  // visibly climbing at this distance, see JUP_REACT_LEAD above) and the
+  // start of gather/collapse land on the same moment instead of the shake
+  // getting a head start. Checked directly against pr (which climbs
+  // monotonically from 0 within each leg before wrapping via modulo) rather
+  // than elapsed time, so it fires exactly once per leg at that distance.
+  if(jupFormTriggerTime === null && pr >= legTarget - JUP_REACT_LEAD){
     jupFormTriggerTime = T;
   }
 
@@ -1150,16 +1234,13 @@ function tick(){
   // duration, since formT itself is still far from 1 at that point. That
   // read as "triggers but doesn't condense fluidly" — the shape snaps into
   // place but then visibly jitters instead of settling.
-  // Gate the shake by trigger state, not just proximity — shakeEnv alone
-  // rises as the traveling pulse approaches JUPITER_R regardless of whether
-  // formation has actually started, so without this gate the belt visibly
-  // jostles in place as the beam sweeps in, THEN a separate coordinated
-  // collapse begins once it triggers — two distinct motions back to back.
-  // Gating on jupFormTriggerTime merges them into one: the belt sits still
-  // through the approach and only starts shaking the instant it also starts
-  // gathering/collapsing. PRE_TRIGGER_SHAKE (0 by default) lets a fraction
-  // of that pre-hit jostle back in if a softer "the wave is coming" cue is
-  // ever wanted instead of dead calm.
+  // preTriggerGate scales the pre-formation jostle. PRE_TRIGGER_SHAKE
+  // defaults to 1.0 (full) so the belt reacts to the passing wavefront the
+  // same way every other ring in the disc does — continuously, before,
+  // during, and after the exact trigger instant — rather than sitting dead
+  // calm until formation starts. Turn it down toward 0 to go back to the
+  // "sits still through the approach, then gathers/collapses/shakes as one
+  // event" feel from an earlier pass.
   const preTriggerGate = jupFormTriggerTime !== null ? 1.0 : PRE_TRIGGER_SHAKE;
   const shakeAmp = shakeEnv * SHAKE_INTENSITY * preTriggerGate * (1 - smoothstep(formT / Math.max(0.001, COLLAPSE_END)));
 
@@ -1191,7 +1272,9 @@ function tick(){
   }
 
   const posAttr = jupGeo.attributes.position;
+  const pushAttr = jupGeo.attributes.aPush;
   const cohOffset = lerp(40.0, 2.0, PARTICLE_COHERENCE);
+  const INTERACT_RADIUS = 16.0, INTERACT_PUSH = 9.0;
   for(let i=0;i<JUP_N;i++){
     const s = jupSeed[i];
     const angle = lerpAngleShortest(jupStartAngle[i], JUPITER_ANGLE, gatherT);
@@ -1204,11 +1287,24 @@ function tick(){
     const bz = lerp(ringZ, jupTarget[i*3+2], collapseT);
     turbulenceJS(bx+s*cohOffset, by+s*cohOffset, bz+s*cohOffset, globalT, _turbScratch);
     const cid = jupClump[i]*3;
-    posAttr.array[i*3]   = bx + _turbScratch[0]*shakeAmp + jupClumpOffsets[cid];
-    posAttr.array[i*3+1] = by + _turbScratch[1]*shakeAmp + jupClumpOffsets[cid+1];
-    posAttr.array[i*3+2] = bz + _turbScratch[2]*shakeAmp + jupClumpOffsets[cid+2];
+    const px = bx + _turbScratch[0]*shakeAmp + jupClumpOffsets[cid];
+    const py = by + _turbScratch[1]*shakeAmp + jupClumpOffsets[cid+1];
+    const pz = bz + _turbScratch[2]*shakeAmp + jupClumpOffsets[cid+2];
+
+    // Same cursor-push cue as the belt/beam — this precursor cluster IS the
+    // asteroid belt for the purposes of this test, so it needs to visibly
+    // deflect around the pointer too, not just settle/shake on its own.
+    const pdx = px - interactionPoint.x, pdz = pz - interactionPoint.z;
+    const distToMouse = Math.hypot(pdx, pdz);
+    const push = smoothstep(1 - distToMouse / INTERACT_RADIUS);
+    const invLen = distToMouse > 0.0001 ? 1/distToMouse : 0;
+    posAttr.array[i*3]   = px + pdx*invLen*push*INTERACT_PUSH;
+    posAttr.array[i*3+1] = py;
+    posAttr.array[i*3+2] = pz + pdz*invLen*push*INTERACT_PUSH;
+    pushAttr.array[i] = push;
   }
   posAttr.needsUpdate = true;
+  pushAttr.needsUpdate = true;
   jupMat.uniforms.formT.value = formT;
 
   // The reveal STARTS once collapse is nearly done (anchored to the collapse

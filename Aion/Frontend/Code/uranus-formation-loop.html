@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Uranus Formation — Loop Test</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{position:fixed;inset:0}
+#hud{
+  position:fixed; top:14px; left:14px; width:280px; max-height:94vh; overflow:auto;
+  background:rgba(10,8,6,0.82); border:1px solid rgba(200,175,135,0.25);
+  border-radius:6px; font-family:monospace; color:rgba(230,215,190,0.92);
+  font-size:11px; padding:10px 12px; backdrop-filter:blur(4px); z-index:10;
+}
+#hud .phase{ font-size:13px; letter-spacing:0.05em; margin-bottom:6px; color:#ffd9a0; }
+#hud .row{ display:flex; justify-content:space-between; opacity:0.75; margin:3px 0; }
+#hud .section{ margin-top:10px; padding-top:8px; border-top:1px solid rgba(200,175,135,0.15); color:#ffd9a0; opacity:0.85; }
+#hud .slider-row{ margin-top:8px; }
+#hud .slider-row label{ display:flex; justify-content:space-between; opacity:0.85; margin-bottom:2px; }
+#hud .slider-row input[type=range]{ width:100%; }
+#hud button{
+  margin-top:8px; width:100%; padding:6px; background:rgba(140,200,255,0.10);
+  border:1px solid rgba(140,200,255,0.35); border-radius:4px; color:rgba(200,225,255,0.95);
+  font-family:inherit; font-size:11px; cursor:pointer;
+}
+#hud button:hover{ background:rgba(140,200,255,0.18); }
+#hud button.active{ background:rgba(140,255,170,0.18); border-color:rgba(140,255,170,0.4); }
+#info{
+  position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+  font-family:monospace;font-size:9px;letter-spacing:0.25em;
+  color:rgba(200,175,135,0.16);pointer-events:none;text-align:center;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div class="phase" id="phaseLabel">gathering</div>
+  <div class="row"><span>formT</span><span id="valFormT">0.00</span></div>
+  <div class="row"><span>loop T</span><span id="valLoopT">0.0s</span></div>
+
+  <div class="section">SHAPE</div>
+  <div class="slider-row">
+    <label><span>Uranus size</span><span id="valUraSize">2.0</span></label>
+    <input type="range" id="uraSizeSlider" min="1" max="16" step="0.1" value="2.0"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Grid overscale</span><span id="valGridOverscale">1.07</span></label>
+    <input type="range" id="gridOverscaleSlider" min="1.0" max="1.5" step="0.01" value="1.07"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Ring radius</span><span id="valRingR">9</span></label>
+    <input type="range" id="ringRSlider" min="3" max="90" step="1" value="9"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Hue shift</span><span id="valHue">0°</span></label>
+    <input type="range" id="hueSlider" min="-180" max="180" step="1" value="0"/>
+  </div>
+
+  <div class="section">TIMING</div>
+  <div class="slider-row">
+    <label><span>Formation duration</span><span id="valFormDur">4.9s</span></label>
+    <input type="range" id="formDurSlider" min="1" max="12" step="0.1" value="4.9"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Gather end %</span><span id="valGatherEnd">100</span></label>
+    <input type="range" id="gatherEndSlider" min="10" max="100" step="1" value="100"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Collapse start %</span><span id="valCollapseStart">19</span></label>
+    <input type="range" id="collapseStartSlider" min="0" max="90" step="1" value="19"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Reveal start (% of collapse)</span><span id="valRevealStart">79</span></label>
+    <input type="range" id="revealStartSlider" min="20" max="99" step="1" value="79"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Reveal duration</span><span id="valRevealDur">2.2s</span></label>
+    <input type="range" id="revealDurSlider" min="0.3" max="8" step="0.1" value="2.2"/>
+  </div>
+
+  <div class="section">MOTION</div>
+  <div class="slider-row">
+    <label><span>Shake intensity</span><span id="valShake">4.5</span></label>
+    <input type="range" id="shakeSlider" min="0" max="12" step="0.1" value="4.5"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Hold duration</span><span id="valHold">3.5s</span></label>
+    <input type="range" id="holdSlider" min="0" max="6" step="0.1" value="3.5"/>
+  </div>
+
+  <button id="pauseBtn">PAUSE LOOP</button>
+  <button id="restartBtn">RESTART CYCLE</button>
+</div>
+<div id="info">DRAG · SCROLL TO ZOOM<br/>URANUS FORMATION — LOOP TEST</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+window.onerror = function(msg,src,line){
+  document.body.innerHTML += `<div style="position:fixed;bottom:20px;left:20px;right:20px;background:#1a0000;color:#ff8080;font-family:monospace;font-size:12px;padding:16px;z-index:9999;border:1px solid #660000;">JS Error (line ${line}): ${msg}</div>`;
+};
+
+const canvas   = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000, 1);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(44, window.innerWidth/window.innerHeight, 0.1, 3000);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+const smoothstep = t => { t = clamp(t,0,1); return t*t*(3-2*t); };
+const lerp = (a,b,t) => a+(b-a)*t;
+
+// JS mirror of the GPU turbulence() function (same value-noise field used
+// throughout the other prototypes) so the accreting cluster shakes organically.
+function hashN3(x,y,z){ const v=Math.sin(x*127.1+y*311.7+z*74.7)*43758.5453; return v-Math.floor(v); }
+function noiseN3(x,y,z){
+  const xi=Math.floor(x), yi=Math.floor(y), zi=Math.floor(z);
+  const xf=x-xi, yf=y-yi, zf=z-zi;
+  const u=xf*xf*(3-2*xf), v=yf*yf*(3-2*yf), w=zf*zf*(3-2*zf);
+  const x00=lerp(hashN3(xi,yi,zi),hashN3(xi+1,yi,zi),u);
+  const x10=lerp(hashN3(xi,yi+1,zi),hashN3(xi+1,yi+1,zi),u);
+  const x01=lerp(hashN3(xi,yi,zi+1),hashN3(xi+1,yi,zi+1),u);
+  const x11=lerp(hashN3(xi,yi+1,zi+1),hashN3(xi+1,yi+1,zi+1),u);
+  return lerp(lerp(x00,x10,v), lerp(x01,x11,v), w);
+}
+function turbulenceJS(px,py,pz,t,out){
+  const qx=px*0.05+t*0.55, qy=py*0.05+t*0.42, qz=pz*0.05+t*0.61;
+  const bx=noiseN3(qx,qy,qz)-0.5, by=noiseN3(qx+9.2,qy+1.3,qz+4.1)-0.5, bz=noiseN3(qx+2.7,qy+8.4,qz+5.5)-0.5;
+  const qx2=qx*2.3+11.0, qy2=qy*2.3+11.0, qz2=qz*2.3+11.0;
+  const fx=noiseN3(qx2,qy2,qz2)-0.5, fy=noiseN3(qx2+5.1,qy2+7.7,qz2+2.2)-0.5, fz=noiseN3(qx2+6.6,qy2+3.3,qz2+9.9)-0.5;
+  out[0]=bx*0.75+fx*0.45; out[1]=by*0.75+fy*0.45; out[2]=bz*0.75+fz*0.45;
+}
+const _turbScratch = [0,0,0];
+
+// ── Spherical camera, orbiting the planet's formation point (not the sun) ────
+const sph       = { r:20, theta:0, phi:Math.PI/2 };
+const sphTarget = { r:20, theta:0, phi:Math.PI/2 };
+const camFocus  = new THREE.Vector3(0,0,0); // set to uraTargetPos once known
+
+function applyCamera(){
+  camera.position.set(
+    camFocus.x + sph.r*Math.sin(sph.phi)*Math.sin(sph.theta),
+    camFocus.y + sph.r*Math.cos(sph.phi),
+    camFocus.z + sph.r*Math.sin(sph.phi)*Math.cos(sph.theta)
+  );
+  camera.lookAt(camFocus);
+}
+
+let drag=false, prev={x:0,y:0};
+canvas.addEventListener('mousedown', e=>{ drag=true; prev={x:e.clientX,y:e.clientY}; });
+window.addEventListener('mouseup', ()=>drag=false);
+window.addEventListener('mousemove', e=>{
+  if(!drag) return;
+  sphTarget.theta -= (e.clientX-prev.x)*0.004;
+  sphTarget.phi    = clamp(sphTarget.phi+(e.clientY-prev.y)*0.004, 0.05, Math.PI*0.88);
+  prev={x:e.clientX,y:e.clientY};
+  sph.theta=sphTarget.theta; sph.phi=sphTarget.phi;
+});
+window.addEventListener('wheel', e=>{
+  sphTarget.r = clamp(sphTarget.r+e.deltaY*0.12, 8, 400);
+  sph.r=sphTarget.r;
+},{passive:true});
+
+// ── Star field backdrop ───────────────────────────────────────────────────────
+function makeDiscTexture(){
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 32;
+  const ctx = cv.getContext('2d');
+  const g = ctx.createRadialGradient(16,16,0,16,16,16);
+  g.addColorStop(0,   'rgba(255,255,255,1)');
+  g.addColorStop(0.4, 'rgba(255,255,255,0.9)');
+  g.addColorStop(1,   'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,32,32);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.needsUpdate = true;
+  return tex;
+}
+{
+  const N=2000,geo=new THREE.BufferGeometry();
+  const p=new Float32Array(N*3),c=new Float32Array(N*3);
+  const pal=[[0.88,0.94,1],[1,1,0.88],[0.68,0.80,1],[1,0.82,0.62]];
+  for(let i=0;i<N;i++){
+    const a=Math.random()*Math.PI*2,b=Math.acos(2*Math.random()-1),r=300+Math.random()*600;
+    p[i*3]=r*Math.sin(b)*Math.cos(a); p[i*3+1]=r*Math.sin(b)*Math.sin(a); p[i*3+2]=r*Math.cos(b);
+    const sc=pal[Math.floor(Math.random()*pal.length)];
+    c[i*3]=sc[0]; c[i*3+1]=sc[1]; c[i*3+2]=sc[2];
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+  geo.setAttribute('color',new THREE.BufferAttribute(c,3));
+  scene.add(new THREE.Points(geo,new THREE.PointsMaterial({
+    size:2.0,sizeAttenuation:true,vertexColors:true,
+    map:makeDiscTexture(), alphaTest:0.01,
+    transparent:true,opacity:0.5,depthWrite:false,blending:THREE.AdditiveBlending
+  })));
+}
+
+const HSL_GLSL = `
+  vec3 hsl2rgb(float h,float s,float l){
+    vec3 rgb=clamp(abs(mod(h*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
+    return l+s*(rgb-0.5)*(1.0-abs(2.0*l-1.0));
+  }
+`;
+
+// ── Tunable formation parameters (all live-editable via the HUD sliders) ────
+let URANUS_SIZE       = 2.0;
+let URA_GRID_OVERSCALE = 1.07;
+let RING_R              = 9; // kept close to URANUS_SIZE so the whole ring-to-planet motion stays inside one close-up frame
+let FORM_DURATION      = 4.9;   // seconds for formT 0 -> 1
+let GATHER_END         = 1.00;  // formT fraction where angular gather finishes
+let COLLAPSE_START     = 0.19;  // formT fraction where radial collapse begins
+let REVEAL_START       = 0.79;  // fraction *of the collapse window* where the solid mesh starts fading in — kept relative to COLLAPSE_START/1.0 so it can't desync from the grid regardless of how collapse timing is tuned
+let REVEAL_DURATION    = 2.2;   // seconds the materialize dissolve takes once it starts — independent of formT/FORM_DURATION so it can be slowed down without affecting the particle motion
+let SHAKE_INTENSITY    = 4.5;
+let HUE_SHIFT           = 0; // degrees, rotates the sampled texture's color live
+let HOLD_DURATION      = 3.5;   // seconds fully-formed before the loop resets
+let looping            = true;
+
+const uraTargetPos = new THREE.Vector3(0,0,0); // formation happens at the origin in this test
+camFocus.copy(uraTargetPos);
+
+// ── Sun (small, off to the side — just enough to justify Uranus's lighting) ─
+const SUN_R = 4;
+const sunMat = new THREE.MeshBasicMaterial({ color:0xffcf7a });
+const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(SUN_R,32,32), sunMat);
+sunMesh.position.set(-90, 10, -40);
+scene.add(sunMesh);
+const sunLight = new THREE.PointLight(0xfff4e0, 14.0, 900);
+sunLight.position.copy(sunMesh.position);
+scene.add(sunLight);
+// Ambient + rimB raised well above index.html's original values — at this
+// close-up scale, a single point light with barely-there fill left the far
+// hemisphere almost pure black, reading as a hard binary "divided" sphere
+// instead of a softly shaded one. This isn't meant to be physically
+// accurate, just to keep the night side visibly textured.
+scene.add(new THREE.AmbientLight(0x151022, 1.1));
+const rimA = new THREE.DirectionalLight(0x112244, 0.35);
+rimA.position.set(-100, 50, -80);
+scene.add(rimA);
+const rimB = new THREE.DirectionalLight(0x4a2c1c, 0.65);
+rimB.position.set(80, -40, 100);
+scene.add(rimB);
+
+function setAniso(tex){ tex.anisotropy = 16; return tex; }
+
+// ── Accreting particle cluster (ring -> gather -> collapse) ─────────────────
+const URA_N = 2200;
+const uraGeo = new THREE.BufferGeometry();
+const uraStartAngle = new Float32Array(URA_N);
+const uraStartR     = new Float32Array(URA_N);
+const uraStartY     = new Float32Array(URA_N);
+const uraTarget     = new Float32Array(URA_N*3);
+const uraUnit       = new Float32Array(URA_N*3);
+const uraSeed       = new Float32Array(URA_N);
+const URANUS_ANGLE = 0.62; // fixed angular position on the ring where it forms
+{
+  const pos = new Float32Array(URA_N*3);
+  for(let i=0;i<URA_N;i++){
+    uraStartAngle[i] = Math.random()*Math.PI*2;
+    uraStartY[i]     = (Math.random()-0.5)*2.2;
+
+    const gi = i + 0.5;
+    const phi = Math.acos(1 - 2*gi/URA_N);
+    const theta = Math.PI * (1+Math.sqrt(5)) * gi;
+    uraUnit[i*3]   = Math.sin(phi)*Math.cos(theta);
+    uraUnit[i*3+1] = Math.cos(phi);
+    uraUnit[i*3+2] = Math.sin(phi)*Math.sin(theta);
+
+    uraSeed[i] = Math.random();
+    pos[i*3]   = 0; pos[i*3+1] = 0; pos[i*3+2] = 0; // filled by applyRingRadius()
+  }
+  uraGeo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  uraGeo.setAttribute('nSeed',    new THREE.BufferAttribute(uraSeed,1));
+}
+function applyRingRadius(){
+  for(let i=0;i<URA_N;i++){
+    uraStartR[i] = RING_R + (Math.random()-0.5)*(RING_R*0.09);
+  }
+}
+applyRingRadius();
+function lerpAngleShortest(a,b,t){
+  let d = (b-a) % (Math.PI*2);
+  if(d > Math.PI) d -= Math.PI*2;
+  if(d < -Math.PI) d += Math.PI*2;
+  return a + d*t;
+}
+const uraMat = new THREE.ShaderMaterial({
+  uniforms:{ formT:{value:0}, revealT:{value:0} },
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  vertexShader: HSL_GLSL + `
+    attribute float nSeed;
+    uniform float formT, revealT;
+    varying vec3  vColor;
+    varying float vAlpha;
+    void main(){
+      float s = nSeed;
+      vec3 dustCol   = hsl2rgb(mix(0.09,0.13,fract(s*4.3)), 0.4, 0.65);
+      vec3 uraColBand= hsl2rgb(mix(0.09,0.11,fract(s*8.1)), 0.32, mix(0.55,0.85,step(0.5,fract(s*6.7))));
+      vColor = mix(dustCol, uraColBand, smoothstep(0.5,1.0,formT));
+      // Fades out against the solid's own materialize progress (revealT), not
+      // raw formT — so the particle swarm stays visible, converging and
+      // settling, for as long as the surface is still solidifying.
+      vAlpha = mix(0.7, 0.0, smoothstep(0.35,1.0,revealT));
+      vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = clamp((1.4+fract(s*3.0)*1.8)*640.0/-mvPos.z, 0.8, 8.0);
+      gl_Position  = projectionMatrix * mvPos;
+    }
+  `,
+  fragmentShader:`
+    varying vec3  vColor;
+    varying float vAlpha;
+    void main(){
+      if(vAlpha < 0.004) discard;
+      vec2  c = gl_PointCoord - 0.5;
+      float d = length(c) * 2.0;
+      if(d > 1.0) discard;
+      float alpha = smoothstep(0.55,0.0,d) * vAlpha;
+      if(alpha < 0.003) discard;
+      gl_FragColor = vec4(vColor, alpha);
+    }
+  `
+});
+const uraPoints = new THREE.Points(uraGeo, uraMat);
+scene.add(uraPoints);
+
+// Solid planet mesh — index.html's ACTUAL in-scene Uranus material
+// (pData[6] there: emissive 0x081420 @ 0.08, roughness 0.48, metalness 0.05,
+// bumpScale 0.8 — shared across all planets). No rings — Uranus's real rings
+// are far too faint/dark to be part of this asset pipeline (unlike Saturn's).
+// Extreme 98° axial tilt ported from planet.html's renderUranus3D — Uranus
+// famously rolls through its orbit on its side rather than spinning upright.
+const uraSolidGroup = new THREE.Group();
+uraSolidGroup.position.copy(uraTargetPos);
+uraSolidGroup.rotation.z = 98 * Math.PI/180; // never animated — a tilted group must never spin per-frame or it precesses instead of sitting still
+scene.add(uraSolidGroup);
+
+function applyUranusSize(){
+  uraSolidGroup.scale.setScalar(URANUS_SIZE);
+  const gridR = URANUS_SIZE * URA_GRID_OVERSCALE;
+  for(let i=0;i<URA_N;i++){
+    uraTarget[i*3]   = uraTargetPos.x + uraUnit[i*3]  *gridR;
+    uraTarget[i*3+1] = uraTargetPos.y + uraUnit[i*3+1]*gridR;
+    uraTarget[i*3+2] = uraTargetPos.z + uraUnit[i*3+2]*gridR;
+  }
+}
+
+// A 1x1 placeholder map is set from the start (not just once the real texture
+// loads) so USE_MAP is defined on the very first shader compile — otherwise
+// three.js never declares the `vUv` varying our dissolve code below reads,
+// and the fragment shader fails to compile (mesh silently renders nothing)
+// until the async texture load triggers a recompile.
+const uraPlaceholderTex = new THREE.DataTexture(new Uint8Array([255,255,255,255]), 1, 1, THREE.RGBAFormat);
+uraPlaceholderTex.needsUpdate = true;
+const uraSolidMat = new THREE.MeshStandardMaterial({
+  color: 0xffffff,
+  map: uraPlaceholderTex,
+  emissive: new THREE.Color(0x081420), emissiveIntensity: 0.08,
+  roughness: 0.48, metalness: 0.05, bumpScale: 0.8,
+  transparent:true, opacity:1,
+});
+// Materialize dissolve: instead of a flat opacity fade (which reads as a
+// ghost sphere fading in, not a surface forming), the texture solidifies
+// across the sphere in an organic, flowing blob pattern driven by a UV-space
+// fbm noise field animated over time, with a warm molten edge glow riding
+// the growing boundary. uReveal/uTime are pushed in from tick() each frame.
+// Living surface: the UV used for both the color map and bump map is drifted
+// in the vertex shader by a zonal-jet flow field — different latitude bands
+// scroll horizontally at different speeds (like Uranus's real counter-flowing
+// cloud bands), plus a slow turbulent swirl — so the texture itself is never
+// static, before or after formation. Texture wrap is set to Repeat so the
+// drift can run indefinitely without streaking at the seam.
+let uranusShaderRef = null;
+uraSolidMat.onBeforeCompile = (shader) => {
+  shader.uniforms.uReveal = { value: 0 };
+  shader.uniforms.uTime   = { value: 0 };
+  shader.uniforms.uHue    = { value: 0 }; // radians, rotates the sampled texture's hue live
+  uranusShaderRef = shader;
+  shader.vertexShader = `
+    uniform float uTime;
+    float vjhash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+    float vjnoise(vec2 p){
+      vec2 i=floor(p), f=fract(p);
+      float a=vjhash(i), b=vjhash(i+vec2(1.0,0.0)), c=vjhash(i+vec2(0.0,1.0)), d=vjhash(i+vec2(1.0,1.0));
+      vec2 u=f*f*(3.0-2.0*f);
+      return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);
+    }
+  ` + shader.vertexShader;
+  shader.vertexShader = shader.vertexShader.replace(
+    '#include <uv_vertex>',
+    `#include <uv_vertex>
+    {
+      float lat = uv.y - 0.5;
+      // Damps the drift to zero at the poles — without this, any horizontal
+      // UV drift spins infinitely fast right at the pole singularity (u wraps
+      // a full turn over zero physical distance), reading as a spiral pinch.
+      float poleDamp = cos(lat*3.14159265);
+      float jet = sin(lat*22.0)*0.5 + 0.5;
+      // Oscillates back and forth instead of drifting forever in one
+      // direction — an unbounded drift eventually wraps the texture across
+      // its own non-seamless edge (the real photo doesn't tile), showing up
+      // as a hard seam. Staying within a small bounded range never reaches it.
+      float driftX = sin(uTime*mix(0.35,0.55,jet) + lat*30.0) * mix(0.014,0.022,jet) * poleDamp;
+      float swirl = (vjnoise(vec2(uv.x*5.0 + uTime*0.06, uv.y*9.0 - uTime*0.04)) - 0.5) * poleDamp;
+      vUv += vec2(driftX, swirl*0.004);
+    }`
+  );
+  shader.fragmentShader = `
+    uniform float uReveal;
+    uniform float uTime;
+    uniform float uHue;
+    vec3 hueRotate(vec3 col, float rad){
+      float c = cos(rad), s = sin(rad);
+      mat3 m = mat3(0.299,0.587,0.114, 0.299,0.587,0.114, 0.299,0.587,0.114) +
+               mat3(0.701,-0.587,-0.114, -0.299,0.413,-0.114, -0.300,-0.588,0.886) * c +
+               mat3(0.168,0.330,-0.497, -0.328,0.035,0.292, -1.250,1.050,0.203) * s;
+      return clamp(m * col, 0.0, 1.0);
+    }
+    float jhash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+    float jnoise(vec2 p){
+      vec2 i=floor(p), f=fract(p);
+      float a=jhash(i), b=jhash(i+vec2(1.0,0.0)), c=jhash(i+vec2(0.0,1.0)), d=jhash(i+vec2(1.0,1.0));
+      vec2 u=f*f*(3.0-2.0*f);
+      return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);
+    }
+    float jfbm(vec2 p){
+      float v=0.0, amp=0.55;
+      for(int i=0;i<4;i++){ v+=amp*jnoise(p); p*=2.05; amp*=0.55; }
+      return v;
+    }
+  ` + shader.fragmentShader;
+  shader.fragmentShader = shader.fragmentShader.replace(
+    '#include <map_fragment>',
+    `#include <map_fragment>
+    {
+      diffuseColor.rgb = hueRotate(diffuseColor.rgb, uHue);
+      float dn = min(jfbm(vUv*7.0 + vec2(uTime*0.05, -uTime*0.035)), 0.9); // clamped: jfbm can theoretically sum past 1.0, and the uReveal band (max 1.0+0.06) can never reach values above ~0.94 -- those fragments would otherwise never fully solidify even at full reveal
+      float edge = smoothstep(uReveal-0.07, uReveal, dn) - smoothstep(uReveal, uReveal+0.07, dn);
+      diffuseColor.rgb += edge * vec3(1.6,1.0,0.5) * 1.5;
+      float solidMask = 1.0 - smoothstep(uReveal-0.06, uReveal+0.06, dn);
+      diffuseColor.a *= solidMask;
+
+      // Sparkle field over the not-yet-solid region — a sparse scatter of
+      // bright, flickering points instead of flat transparency, so the gaps
+      // read as glinting particles about to settle rather than a dark "hole"
+      // or shadow sweeping across the surface.
+      float notYetSolid = 1.0 - solidMask;
+      float sparkleField   = jnoise(vUv*260.0 + vec2(37.0,91.0));
+      float sparkleFlicker = jnoise(vUv*41.0 + vec2(uTime*2.6, -uTime*1.9));
+      float sparkle = step(0.986, sparkleField) * step(0.55, sparkleFlicker) * notYetSolid;
+      diffuseColor.rgb += sparkle * vec3(1.7,1.3,0.8) * 2.2;
+      diffuseColor.a = max(diffuseColor.a, sparkle * 0.85);
+    }`
+  );
+};
+const uraSolidMesh = new THREE.Mesh(new THREE.SphereGeometry(1,64,64), uraSolidMat);
+uraSolidMesh.frustumCulled = false; // group scale + async texture swap can otherwise get this culled out before it ever compiles
+uraSolidGroup.add(uraSolidMesh);
+{
+  const loader = new THREE.TextureLoader();
+  // Uranus's raw JWST-derived photo is genuinely subtle even in the source —
+  // same contrast/saturation boost pipeline as Saturn's (see
+  // loadEnhancedTexture()'s comment in planet.html), tuned values matching
+  // planet.html's renderUranus3D and index.html's in-scene Uranus exactly.
+  loader.load('textures/tex_uranus.jpg', tex => {
+    const img = tex.image;
+    const cv = document.createElement('canvas');
+    cv.width = img.width; cv.height = img.height;
+    const ctx = cv.getContext('2d');
+    ctx.filter = 'contrast(150%) saturate(160%)';
+    ctx.drawImage(img,0,0);
+    const enhanced = new THREE.CanvasTexture(cv);
+    enhanced.needsUpdate = true;
+    setAniso(enhanced);
+    enhanced.wrapS = THREE.RepeatWrapping; enhanced.wrapT = THREE.RepeatWrapping;
+    uraSolidMat.map = enhanced; uraSolidMat.bumpMap = enhanced; uraSolidMat.needsUpdate = true;
+  }, undefined, err => {
+    document.body.innerHTML += `<div style="position:fixed;bottom:60px;left:20px;right:20px;background:#1a0000;color:#ff8080;font-family:monospace;font-size:12px;padding:16px;z-index:9999;border:1px solid #660000;">Uranus texture FAILED to load: ${err}</div>`;
+  });
+}
+
+// Pale cyan limb glow — Uranus's real methane-haze atmosphere (no rings —
+// unlike Saturn's, Uranus's real rings are far too faint/dark to be part of
+// this asset pipeline).
+const uraAtmoMat = new THREE.ShaderMaterial({
+  uniforms:{ reveal:{value:0} },
+  vertexShader:`varying vec3 vN; void main(){ vN=normalize(normalMatrix*normal); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader:`varying vec3 vN; uniform float reveal;
+    void main(){ float i=pow(0.65-dot(vN,vec3(0,0,1.0)),3.0); gl_FragColor=vec4(0.55,0.90,0.95,clamp(i,0.0,1.0)*0.42*reveal); }`,
+  blending:THREE.AdditiveBlending, side:THREE.BackSide, transparent:true,
+});
+const uraAtmoMesh = new THREE.Mesh(new THREE.SphereGeometry(1.03,48,48), uraAtmoMat);
+uraAtmoMesh.frustumCulled = false;
+uraSolidGroup.add(uraAtmoMesh);
+
+applyUranusSize();
+
+// ── Auto-looping formation cycle ─────────────────────────────────────────────
+// cycle = [0, FORM_DURATION) forming, [FORM_DURATION, FORM_DURATION+HOLD_DURATION)
+// holding fully formed, then it wraps straight back to the scattered ring.
+function cycleLength(){
+  // Make sure a slow REVEAL_DURATION always has room to finish (plus the
+  // requested hold) before the loop wraps back to scattered dust — otherwise
+  // slowing the reveal down would just get it cut off mid-materialize.
+  const revealStartFormT = COLLAPSE_START + REVEAL_START*(1-COLLAPSE_START);
+  const revealEndLoopT = revealStartFormT*FORM_DURATION + REVEAL_DURATION;
+  return Math.max(FORM_DURATION, revealEndLoopT) + HOLD_DURATION;
+}
+
+const startTime = performance.now();
+let cycleStartTime = startTime;
+let pausedAt = null; // when paused, freezes loopT at this value
+
+const phaseLabel = document.getElementById('phaseLabel');
+const valFormT  = document.getElementById('valFormT');
+const valLoopT  = document.getElementById('valLoopT');
+
+function wireSlider(id, valId, onChange, fmt){
+  const el = document.getElementById(id);
+  const out = document.getElementById(valId);
+  el.addEventListener('input', ()=>{
+    const v = parseFloat(el.value);
+    onChange(v);
+    out.textContent = fmt ? fmt(v) : v;
+  });
+}
+wireSlider('uraSizeSlider','valUraSize', v=>{ URANUS_SIZE=v; applyUranusSize(); }, v=>v.toFixed(1));
+wireSlider('gridOverscaleSlider','valGridOverscale', v=>{ URA_GRID_OVERSCALE=v; applyUranusSize(); }, v=>v.toFixed(2));
+wireSlider('ringRSlider','valRingR', v=>{ RING_R=v; applyRingRadius(); }, v=>v.toFixed(0));
+wireSlider('formDurSlider','valFormDur', v=>{ FORM_DURATION=v; }, v=>v.toFixed(1)+'s');
+wireSlider('gatherEndSlider','valGatherEnd', v=>{ GATHER_END=v/100; }, v=>v.toFixed(0));
+wireSlider('collapseStartSlider','valCollapseStart', v=>{ COLLAPSE_START=v/100; }, v=>v.toFixed(0));
+wireSlider('revealStartSlider','valRevealStart', v=>{ REVEAL_START=v/100; }, v=>v.toFixed(0));
+wireSlider('revealDurSlider','valRevealDur', v=>{ REVEAL_DURATION=v; }, v=>v.toFixed(1)+'s');
+wireSlider('shakeSlider','valShake', v=>{ SHAKE_INTENSITY=v; }, v=>v.toFixed(1));
+wireSlider('hueSlider','valHue', v=>{ HUE_SHIFT=v; }, v=>v.toFixed(0)+'°');
+wireSlider('holdSlider','valHold', v=>{ HOLD_DURATION=v; }, v=>v.toFixed(1)+'s');
+
+const pauseBtn = document.getElementById('pauseBtn');
+pauseBtn.addEventListener('click', ()=>{
+  looping = !looping;
+  pauseBtn.textContent = looping ? 'PAUSE LOOP' : 'RESUME LOOP';
+  pauseBtn.classList.toggle('active', !looping);
+  if(!looping) pausedAt = performance.now();
+  else cycleStartTime += (performance.now() - pausedAt);
+});
+document.getElementById('restartBtn').addEventListener('click', ()=>{
+  cycleStartTime = performance.now();
+});
+
+function tick(){
+  requestAnimationFrame(tick);
+  const now = performance.now();
+  const globalT = (now - startTime) / 1000;
+  applyCamera();
+
+  const rawLoopT = looping ? (now - cycleStartTime) / 1000 : (pausedAt - cycleStartTime) / 1000;
+  const cLen = cycleLength();
+  const loopT = rawLoopT % cLen;
+
+  const formT = clamp(loopT / FORM_DURATION, 0, 1);
+
+  const gatherT   = smoothstep(formT / Math.max(0.001, GATHER_END));
+  const collapseT = smoothstep((formT - COLLAPSE_START) / Math.max(0.001, (1 - COLLAPSE_START)));
+
+  const shakeAmp = SHAKE_INTENSITY * (1 - smoothstep(formT));
+
+  const posAttr = uraGeo.attributes.position;
+  for(let i=0;i<URA_N;i++){
+    const s = uraSeed[i];
+    const angle = lerpAngleShortest(uraStartAngle[i], URANUS_ANGLE, gatherT);
+    const ringR = lerp(uraStartR[i], RING_R, gatherT);
+    const ringX = ringR*Math.cos(angle);
+    const ringY = lerp(uraStartY[i], 0, gatherT);
+    const ringZ = ringR*Math.sin(angle);
+    const bx = lerp(ringX, uraTarget[i*3],   collapseT);
+    const by = lerp(ringY, uraTarget[i*3+1], collapseT);
+    const bz = lerp(ringZ, uraTarget[i*3+2], collapseT);
+    turbulenceJS(bx+s*40.0, by+s*40.0, bz+s*40.0, globalT, _turbScratch);
+    posAttr.array[i*3]   = bx + _turbScratch[0]*shakeAmp;
+    posAttr.array[i*3+1] = by + _turbScratch[1]*shakeAmp;
+    posAttr.array[i*3+2] = bz + _turbScratch[2]*shakeAmp;
+  }
+  posAttr.needsUpdate = true;
+  uraMat.uniforms.formT.value = formT;
+
+  // The reveal STARTS once collapse is nearly done (anchored to the collapse
+  // window, not raw formT, so the solid can never appear before the particle
+  // cloud has actually finished converging) — but how long it then takes to
+  // fully materialize is its own real-seconds duration (REVEAL_DURATION),
+  // independent of FORM_DURATION, so it can be slowed down on its own.
+  const revealStartFormT = COLLAPSE_START + REVEAL_START*(1-COLLAPSE_START);
+  const revealStartLoopT = revealStartFormT * FORM_DURATION;
+  const revealT = smoothstep((loopT - revealStartLoopT) / Math.max(0.001, REVEAL_DURATION));
+  if(uranusShaderRef){
+    uranusShaderRef.uniforms.uReveal.value = revealT;
+    uranusShaderRef.uniforms.uTime.value   = globalT;
+    uranusShaderRef.uniforms.uHue.value    = HUE_SHIFT * Math.PI/180;
+  }
+  uraAtmoMat.uniforms.reveal.value = revealT;
+  uraMat.uniforms.revealT.value = revealT;
+
+  let phase = 'gathering';
+  if(formT >= COLLAPSE_START)   phase = 'collapsing';
+  if(formT >= revealStartFormT) phase = 'revealing solid';
+  if(revealT >= 1)              phase = 'holding (formed)';
+  phaseLabel.textContent = phase;
+  valFormT.textContent = formT.toFixed(2);
+  valLoopT.textContent = loopT.toFixed(1)+'s / '+cLen.toFixed(1)+'s';
+
+  sph.r     += (sphTarget.r-sph.r)*0.08;
+  sph.theta += (sphTarget.theta-sph.theta)*0.08;
+  sph.phi   += (sphTarget.phi-sph.phi)*0.08;
+
+  renderer.render(scene, camera);
+}
+tick();
+</script>
+</body>
+</html>

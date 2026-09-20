@@ -296,7 +296,7 @@ const CONTROL_GROUPS = [
     { key:'formLock',     label:'formLock',   min:-1, max:1, step:0.01 },
   ]},
   { name:'Collapse', window: () => [12,74], range: () => `~12–74s (cloud puffs — warmBias only; brightMult ⚠ unwired)`, props:[
-    { key:'collapseBright', label:'brightMult ⚠', min:0, max:3, step:0.01 },
+    { key:'collapseBright', label:'brightMult ⚠', min:0, max:3, step:0.01, unwired:true },
     { key:'collapseWarm',   label:'warmBias',      min:0, max:1, step:0.01 },
     { key:'collapseLock',   label:'collapseLock',  min:-1, max:1, step:0.01 },
   ]},
@@ -430,6 +430,7 @@ function applySequencers(){
     const span = end-start;
     const localT = span<=0 ? 0 : clamp((T-start)/span, 0, 1);
     group.props.forEach(p => {
+      if (p.unwired) return; // confirmed dead — nothing reads this value, skip evaluating it at all
       const kfs = getKeyframes(group.name, p.key);
       if (kfs.length >= 1) tVals[p.key] = evalKeyframes(kfs, localT);
     });
@@ -1238,7 +1239,7 @@ scene.add(new THREE.Points(voidGeo, voidMat));
 // LAYER 1 — FINE SPIRAL PARTICLES
 // ═══════════════════════════════════════════════════════════════════════════════
 const NUM_ARMS = 3;
-const FINE_N   = 14000;
+const FINE_N   = 10000;
 let fineMat, fineMesh;
 {
   const geo  = new THREE.BufferGeometry();
@@ -1411,7 +1412,7 @@ let fineMat, fineMesh;
 // ═══════════════════════════════════════════════════════════════════════════════
 // LAYER 2 — VOLUMETRIC CLOUD PUFFS
 // ═══════════════════════════════════════════════════════════════════════════════
-const CLOUD_N = 2800;
+const CLOUD_N = 2000;
 let cloudMat, cloudMesh;
 {
   const geo  = new THREE.BufferGeometry();
@@ -1858,6 +1859,11 @@ function createIntroNebulaGroup(blobs, name, steps){
   mat.userData.blobBaseThreshold = offsetBlobs.map(b => b.densityThreshold);
   mat.userData.blobBaseErosion   = offsetBlobs.map(b => b.erosionStrength);
   mat.userData.blobFormDelayRatio= offsetBlobs.map(b => clamp(b.center.length()/400, 0, 1));
+  // Scratch arrays allocated once and reused every frame in updateIntroNebula
+  // (mutated in place, not reallocated) — reallocating a fresh Array(n) here
+  // 60 times/sec across all 6 groups was real, confirmed GC pressure.
+  mat.userData._thresholds = new Array(N);
+  mat.userData._erosions   = new Array(N);
   // Live/editable per-blob centers — click-to-select finds the nearest of
   // these to the raycast hit point, then the position sliders edit this
   // array (and the matching uCenter uniform entry) directly.
@@ -1881,14 +1887,14 @@ const introNebulaVolumes = [
     makeIntroBlob(new THREE.Vector3(0, 0, 0),      new THREE.Vector3(85, 85, 85), 0.0,  'Core',     0.27, 0.48),
     makeIntroBlob(new THREE.Vector3(22, -18, 32),  new THREE.Vector3(55, 58, 55), 15.6, 'Hot Knot', 0.27, 0.40, {rimLum:0.72, rimSat:0.95}),
     makeIntroBlob(new THREE.Vector3(-22, 22, -28), new THREE.Vector3(48, 45, 50), 300.1,'Gap Filler',0.31, 0.42),
-  ], 'Group A (Core)', 16),
+  ], 'Group A (Core)', 11),
 
   createIntroNebulaGroup([
     makeIntroBlob(new THREE.Vector3(-58, -22, 58), new THREE.Vector3(72, 78, 62), 87.7,  'Wall',         0.29, 0.50, {deepHue:0.99}),
     makeIntroBlob(new THREE.Vector3(-65, 32, -55), new THREE.Vector3(70, 46, 56), 61.2,  'Bridging Arm', 0.30, 0.46, {rimHue:0.03, deepHue:0.85}),
     makeIntroBlob(new THREE.Vector3(8, 42, -35),   new THREE.Vector3(40, 40, 42), 951.2, 'Seam Fill 1',  0.35, 0.36, {rimHue:0.30, rimSat:0.60, deepHue:0.75}),
     makeIntroBlob(new THREE.Vector3(-30, 20, -42), new THREE.Vector3(38, 38, 38), 988.1, 'Seam Fill 3',  0.35, 0.36, {rimHue:0.02, deepHue:0.90}),
-  ], 'Group B (Wall)', 12),
+  ], 'Group B (Wall)', 8),
 
   createIntroNebulaGroup([
     // Filament's center already reflects the manual reposition from earlier
@@ -1896,42 +1902,65 @@ const introNebulaVolumes = [
     makeIntroBlob(new THREE.Vector3(110, 10, -77), new THREE.Vector3(130, 42, 48), 41.3,  'Filament',    0.31, 0.42),
     makeIntroBlob(new THREE.Vector3(18, 55, -75),  new THREE.Vector3(46, 50, 58),  133.9, 'Top Pocket',  0.28, 0.44, {rimHue:0.54, rimLum:0.62, rimSat:0.75, deepHue:0.70, deepLum:0.20}),
     makeIntroBlob(new THREE.Vector3(50, 62, -80),  new THREE.Vector3(38, 40, 40),  972.6, 'Seam Fill 2', 0.35, 0.36, {rimHue:0.60, rimSat:0.55, deepHue:0.74}),
-  ], 'Group C (Filament)', 12),
+  ], 'Group C (Filament)', 8),
 
   createIntroNebulaGroup([
     makeIntroBlob(new THREE.Vector3(85, 58, -95),   new THREE.Vector3(72, 68, 68), 620.3, 'Bridge A', 0.30, 0.42, {rimHue:0.68, rimSat:0.68, rimLum:0.56, deepHue:0.78, deepLum:0.20}),
     makeIntroBlob(new THREE.Vector3(140, 40, -115), new THREE.Vector3(65, 62, 64), 641.1, 'Bridge B', 0.29, 0.44, {rimHue:0.78, rimSat:0.70, rimLum:0.54, deepHue:0.80, deepLum:0.19}),
     makeIntroBlob(new THREE.Vector3(195, 62, -135), new THREE.Vector3(68, 60, 62), 664.7, 'Bridge C', 0.29, 0.44, {rimHue:0.86, rimSat:0.75, rimLum:0.52, deepHue:0.79, deepLum:0.19}),
     makeIntroBlob(new THREE.Vector3(120, 25, -150), new THREE.Vector3(60, 56, 58), 688.4, 'Bridge D', 0.30, 0.42, {rimHue:0.82, rimSat:0.72, rimLum:0.50, deepHue:0.79, deepLum:0.18}),
-  ], 'Group D (Bridge)', 9),
+  ], 'Group D (Bridge)', 6),
 
   createIntroNebulaGroup([
     makeIntroBlob(new THREE.Vector3(235, -8, -55),  new THREE.Vector3(95, 32, 34),  202.4, 'Far Streamer', 0.33, 0.40, {rimHue:0.96, deepHue:0.80}),
     makeIntroBlob(new THREE.Vector3(330, 22, -115), new THREE.Vector3(105, 52, 60), 411.8, 'Rose Reach 1', 0.32, 0.42, {rimHue:0.90, rimSat:0.80, deepHue:0.76, deepLum:0.20}),
     makeIntroBlob(new THREE.Vector3(300, 65, -190), new THREE.Vector3(92, 62, 72),  455.2, 'Rose Reach 2', 0.34, 0.40, {rimHue:0.88, rimSat:0.75, rimLum:0.55, deepHue:0.74, deepLum:0.18}),
-  ], 'Group E (Rose Reach)', 6),
+  ], 'Group E (Rose Reach)', 4),
 
   createIntroNebulaGroup([
     makeIntroBlob(new THREE.Vector3(-50, 15, -230),  new THREE.Vector3(150, 105, 95), 512.6, 'Backdrop A', 0.37, 0.38, {rimHue:0.58, rimSat:0.55, rimLum:0.48, deepHue:0.72, deepLum:0.16}),
     makeIntroBlob(new THREE.Vector3(160, -65, -260), new THREE.Vector3(125, 95, 85),  561.9, 'Backdrop B', 0.38, 0.38, {rimHue:0.60, rimSat:0.50, rimLum:0.44, deepHue:0.70, deepLum:0.15}),
-  ], 'Group F (Backdrop)', 4),
+  ], 'Group F (Backdrop)', 3),
 ];
+
+// Stagger which GROUPS are even active, not just which blobs are visible
+// within an active one. Before this, all 6 grouped shaders ran their full
+// raymarch loop from frame 1 regardless of formation state — an invisible
+// (still-below-threshold) blob is NOT a cheap blob, the GPU still runs the
+// entire per-pixel loop computing curl-noise for something that contributes
+// zero color. Each group's mesh now starts fully invisible (skipped by the
+// renderer entirely, zero draw cost) until its own turn, spreading the "6
+// simultaneous heavy shaders" cost across the opening seconds instead of
+// paying for all 6 from frame 1.
+const GROUP_STAGGER_INTERVAL = 0.5; // seconds between each group's activation
+introNebulaVolumes.forEach((mat, i) => {
+  mat.userData.groupIndex = i;
+  mat.userData.mesh.visible = false;
+});
 
 // Slowed from 0.3/1.2 — that formed the big nebula almost instantly. Now
 // takes until t=4.5s to fully form (stagger 1.0 + duration 3.5).
 const INTRO_BIG_FORM_STAGGER = 1.0;
 const INTRO_BIG_FORM_DURATION = 3.5;
 const INTRO_INVISIBLE_THRESHOLD = 1.05;
-// Start pushed to 5.5 (was 3) so the crossfade/fade-out doesn't begin until
-// AFTER the (now slower) big-nebula formation above has actually finished —
-// otherwise it'd still be condensing in while simultaneously fading out,
-// fighting itself. End pushed out by the same ~2.5s to preserve the same
-// ~25s crossfade duration rather than shortening it. At T0=12, elapsed=30
-// lands T at 42: fineSub ~93%, cloudSub ~79%, sparkSub ~50%.
-const INTRO_CROSSFADE_START = 5.5;
+// INTRO_CROSSFADE_START/END below still govern the REAL nebula's own reveal
+// pace (brightness fade-in, growing into place) — untouched, still gradual.
+// The BIG nebula's own fade-OUT is now a SEPARATE, deliberately short timer:
+// the previous approach reused crossfadeT with a slow cubed curve that
+// stayed >85% opaque past the halfway point of a 25s+ window — "started
+// fading" in name only, still paying full per-pixel cost for almost the
+// whole window. By request: once formed, fade back out promptly instead of
+// sitting there fully visible. Last group finishes its own local formation
+// at 2.5 (its activation delay) + 1.0 + 3.5 = 7.0s, so fade-out starts right
+// after that and takes 4s — big nebula is fully gone (and disposed) by ~11s
+// instead of lingering to 30s.
+const INTRO_BIG_FADEOUT_START = 7.0;
+const INTRO_BIG_FADEOUT_DURATION = 6.5;
+const INTRO_CROSSFADE_START = 4.5;
 const INTRO_CROSSFADE_END = 30;
 const introSceneStartTime = performance.now();
 let introNebulaDisposed = false;
+let introDisposeIndex = 0;
 
 // ?nointro=1 skips the intro nebula entirely (removed from the scene right
 // away) — a clean A/B test for whether a slowdown is caused by this system
@@ -1965,11 +1994,11 @@ const REAL_START_SCALE = 0.35;
 const REAL_END_POS     = new THREE.Vector3(0, 0, 0);
 const REAL_END_SCALE   = 1.0;
 
-// Camera starts farther out (620) and eases to this file's resting default
-// (580) over the same crossfade window — the "camera closing in" motion.
-const INTRO_CAM_START_R = 620;
-const INTRO_CAM_END_R   = 580;
-sph.r = INTRO_CAM_START_R; sphTarget.r = INTRO_CAM_START_R;
+// Camera-closing-in motion removed by request — it wasn't a real performance
+// cost (camera movement is essentially free; LOD if anything gives a CLOSER
+// object a smaller step budget), just an effect that wasn't wanted. Camera
+// now sits at a fixed distance the whole time.
+sph.r = 580; sphTarget.r = 580;
 
 // ── FPS counter — real numbers instead of guessing whether something is slow.
 // Averages frame time over a rolling window and only updates the on-screen
@@ -1992,10 +2021,15 @@ function updateFpsCounter(now){
 function updateIntroNebula(camera){
   const elapsed = (performance.now() - introSceneStartTime) / 1000;
   const crossfadeT = smoothstep(clamp((elapsed - INTRO_CROSSFADE_START) / (INTRO_CROSSFADE_END - INTRO_CROSSFADE_START), 0, 1));
+  // Separate, prompt fade-OUT for the big nebula specifically — linear, not
+  // held near 1.0 like crossfadeT's own curve, so uGlobalAlpha actually
+  // drops fast enough to hit the shader's early-discard (<0.01) well before
+  // this window ends, actually cutting GPU cost instead of just looking like
+  // it's fading while still paying full cost underneath.
+  const bigFadeOutT = clamp((elapsed - INTRO_BIG_FADEOUT_START) / INTRO_BIG_FADEOUT_DURATION, 0, 1);
 
   realNebulaGroup.position.lerpVectors(REAL_START_POS, REAL_END_POS, crossfadeT);
   realNebulaGroup.scale.setScalar(lerp(REAL_START_SCALE, REAL_END_SCALE, crossfadeT));
-  sphTarget.r = lerp(INTRO_CAM_START_R, INTRO_CAM_END_R, crossfadeT);
 
   // Brightness, handled completely separately from shape/formation: this
   // file's own timeline() (called earlier in tick(), before this function)
@@ -2013,22 +2047,34 @@ function updateIntroNebula(camera){
   if (introNebulaDisposed) return;
 
   for (const mat of introNebulaVolumes){
+    // This group hasn't reached its own activation turn yet — mesh stays
+    // invisible (skipped by the renderer entirely, zero draw/shader cost)
+    // and none of its uniform work runs either. This is what actually cuts
+    // opening-seconds cost: before, all 6 groups ran their full raymarch
+    // loop from frame 1 regardless of formation state.
+    const groupDelay = mat.userData.groupIndex * GROUP_STAGGER_INTERVAL;
+    const isActive = elapsed >= groupDelay;
+    mat.userData.mesh.visible = isActive;
+    if (!isActive) continue;
+
     mat.uniforms.uTime.value = elapsed;
     mat.uniforms.uCameraPos.value.copy(camera.position);
-    // Its own slow-to-start decline (cubed) instead of a plain linear
-    // 1-crossfadeT — stays fully visible for most of the window and only
-    // really fades in the last ~30-40%, so it isn't already half-gone while
-    // the real nebula (above) is still too faint to have taken over yet.
-    mat.uniforms.uGlobalAlpha.value = 1 - Math.pow(crossfadeT, 3);
+    // Prompt, linear fade-out once formed — not held near full opacity for
+    // most of a long window like before. See bigFadeOutT above.
+    mat.uniforms.uGlobalAlpha.value = 1 - bigFadeOutT;
 
     // Per-blob formation, written into this shared group material's uniform
     // arrays every frame — each blob within the group still fades in on its
     // own delay/threshold, same as when each had its own separate material.
+    // Measured from THIS group's own activation (localElapsed), not global
+    // elapsed, so a later-staggered group still condenses in from scratch
+    // instead of appearing to have been forming the whole time.
+    const localElapsed = elapsed - groupDelay;
     const n = mat.userData.blobBaseThreshold.length;
-    const thresholds = new Array(n), erosions = new Array(n);
+    const thresholds = mat.userData._thresholds, erosions = mat.userData._erosions;
     for (let i=0; i<n; i++){
       const delay = mat.userData.blobFormDelayRatio[i] * INTRO_BIG_FORM_STAGGER;
-      const formT = smoothstep(clamp((elapsed - delay) / INTRO_BIG_FORM_DURATION, 0, 1));
+      const formT = smoothstep(clamp((localElapsed - delay) / INTRO_BIG_FORM_DURATION, 0, 1));
       thresholds[i] = lerp(INTRO_INVISIBLE_THRESHOLD, mat.userData.blobBaseThreshold[i], formT);
       erosions[i]   = lerp(0, mat.userData.blobBaseErosion[i], formT);
     }
@@ -2041,16 +2087,23 @@ function updateIntroNebula(camera){
     mat.uniforms.uStepBudget.value = Math.max(6, Math.round(mat.userData.baseSteps * lod));
   }
 
-  // Once fully faded, stop touching it every frame and free the GPU memory —
-  // it's fully transparent (discarded every pixel) by then anyway.
-  if (crossfadeT >= 1 && elapsed > INTRO_CROSSFADE_END + 0.5){
-    for (const mat of introNebulaVolumes){
-      scene.remove(mat.userData.mesh);
-      mat.userData.mesh.geometry.dispose();
-      mat.dispose();
+  // Once fully faded, free the GPU memory — it's fully transparent (discarded
+  // every pixel) by then anyway. Spread across one mesh per frame instead of
+  // all 6 in a single frame — freeing 6 shader programs/geometries at once
+  // was a plausible real stutter in its own right (this lines up with a
+  // reported lag spot right around when this used to fire all at once). Now
+  // tied to the prompt bigFadeOutT, not the slow crossfadeT — disposal
+  // happens around elapsed~11.5s instead of ~30.5s.
+  if (bigFadeOutT >= 1 && elapsed > INTRO_BIG_FADEOUT_START + INTRO_BIG_FADEOUT_DURATION + 0.5 && introDisposeIndex < introNebulaVolumes.length){
+    const mat = introNebulaVolumes[introDisposeIndex];
+    scene.remove(mat.userData.mesh);
+    mat.userData.mesh.geometry.dispose();
+    mat.dispose();
+    introDisposeIndex++;
+    if (introDisposeIndex >= introNebulaVolumes.length){
+      introNebulaDisposed = true;
+      hideCloudPicker(); // in case a piece was still selected when it vanished
     }
-    introNebulaDisposed = true;
-    hideCloudPicker(); // in case a piece was still selected when it vanished
   }
 }
 
@@ -2726,10 +2779,17 @@ function updateLoops(t, worldR){
       }
     }
     const h=lp.h*hScale;
-    const p0={x:R*Math.cos(lp.a1),y:0,z:R*Math.sin(lp.a1)};
-    const p2={x:R*Math.cos(lp.a2),y:0,z:R*Math.sin(lp.a2)};
+    // Persistent scratch objects on the loop state itself, mutated in place —
+    // this ran 3 fresh object literals per loop, 10 loops, 60 times/sec,
+    // which was real, confirmed GC pressure (a major collection roughly
+    // every 2 seconds, each freeing ~20MB, the whole time this scene runs).
+    const p0 = lp._p0 || (lp._p0 = {x:0,y:0,z:0});
+    const p2 = lp._p2 || (lp._p2 = {x:0,y:0,z:0});
+    const p1 = lp._p1 || (lp._p1 = {x:0,y:0,z:0});
+    p0.x=R*Math.cos(lp.a1); p0.y=0; p0.z=R*Math.sin(lp.a1);
+    p2.x=R*Math.cos(lp.a2); p2.y=0; p2.z=R*Math.sin(lp.a2);
     const mx=(p0.x+p2.x)*0.5,mz=(p0.z+p2.z)*0.5,ml=Math.sqrt(mx*mx+mz*mz)||1;
-    const p1={x:mx/ml*(R+h),y:h*0.42,z:mz/ml*(R+h)};
+    p1.x=mx/ml*(R+h); p1.y=h*0.42; p1.z=mz/ml*(R+h);
     const base=li*LOOP_PTS;
     for(let j=0;j<LOOP_PTS;j++){
       const u=j/(LOOP_PTS-1),bp=bezP(u,p0,p1,p2);
@@ -2887,6 +2947,7 @@ function timeline(){
 // ── Render loop ───────────────────────────────────────────────────────────────
 let last = performance.now();
 let prevT = -1;
+let lastPanelUpdate = 0;
 
 function tick(){
   requestAnimationFrame(tick);
@@ -2895,6 +2956,14 @@ function tick(){
 
   // Auto-clock drives T
   if (!paused) T += dt * tVals.speed;
+  // The scene's own defined range ends at 90 — nothing past that changes
+  // anything visually, but T was never actually clamped here (only in the
+  // manual arrow-key stepping), so it grew unbounded forever once playback
+  // reached the end and was left running. Confirmed via instrumentation:
+  // idle long-task duration climbed over time (120ms -> 213ms) the longer
+  // this sat past 90s, and a longer-idle run hit a WebGL context loss.
+  // Clamping here stops T's magnitude from growing without bound.
+  if (T > 90 && !loopGroupName && !customLoopRange) T = 90;
   if (loopGroupName) {
     const loopGroup = CONTROL_GROUPS.find(g => g.name === loopGroupName);
     if (loopGroup) {
@@ -3149,17 +3218,24 @@ function tick(){
     flashMat.uniforms.opacity.value  *= tVals.flashIntensity;
   }
 
-  const liveFlags = {
-    fine:          fineMat.uniforms.gAlpha.value  > 0.01,
-    cloud:         cloudMat.uniforms.gAlpha.value > 0.01,
-    collapseShape: (fineMat.uniforms.collapseT.value  > 0.01 && fineMat.uniforms.gAlpha.value  > 0.01) ||
-                   (cloudMat.uniforms.collapseT.value > 0.01 && cloudMat.uniforms.gAlpha.value > 0.01),
-    ignite:        ignitionTriggered && !ignitionDone,
-    sun:           ignitionTriggered,
-    galaxy:        fineMat.uniforms.galaxyT.value > 0.01,
-  };
-  updateStatusPanel(liveFlags);
-  updateControlsPanel(liveFlags);
+  // Throttled to ~10Hz (was every single frame, unconditionally, even while
+  // hidden behind "Hide UI") — these only set .textContent/.style on DOM
+  // elements, which nothing needs at 60fps, and it was extra allocation/work
+  // in the hot per-frame path.
+  if (now - lastPanelUpdate > 100){
+    lastPanelUpdate = now;
+    const liveFlags = {
+      fine:          fineMat.uniforms.gAlpha.value  > 0.01,
+      cloud:         cloudMat.uniforms.gAlpha.value > 0.01,
+      collapseShape: (fineMat.uniforms.collapseT.value  > 0.01 && fineMat.uniforms.gAlpha.value  > 0.01) ||
+                     (cloudMat.uniforms.collapseT.value > 0.01 && cloudMat.uniforms.gAlpha.value > 0.01),
+      ignite:        ignitionTriggered && !ignitionDone,
+      sun:           ignitionTriggered,
+      galaxy:        fineMat.uniforms.galaxyT.value > 0.01,
+    };
+    updateStatusPanel(liveFlags);
+    updateControlsPanel(liveFlags);
+  }
   updateClock(T, paused, tVals.igniteDuration);
   // Purely additive — doesn't read or touch any of the state above, so it
   // can't disturb the keyframe/ignition logic this file already had.
@@ -3174,7 +3250,17 @@ function tick(){
 // is exactly at that transition, which is a well-known WebGL cause of a
 // one-time stall right at that moment (it never recurs once compiled,
 // which is why it was recovering on its own by T=59).
+//
+// renderer.compile() only compiles shaders for objects that are VISIBLE at
+// the moment it runs — it skips invisible ones the same way render() would.
+// 5 of the 6 intro-nebula groups start invisible (staggered activation,
+// added just above), so their shaders were never actually precompiled here
+// — each one was instead compiling lazily the first time it turned on,
+// which is very likely the "lags a bit right when the nebula appears"
+// report. Flip them all visible just for this call, then restore.
+introNebulaVolumes.forEach(mat => { mat.userData.mesh.visible = true; });
 renderer.compile(scene, camera);
+introNebulaVolumes.forEach(mat => { mat.userData.mesh.visible = false; });
 tick();
 
 </script>

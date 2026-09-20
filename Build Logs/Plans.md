@@ -1,5 +1,18 @@
 # Soul Interface — Plans / Next Session Reference
 
+### Planet Formation Sequencer — Next Steps
+*Updated September 7, 2026 (Session 22)*
+
+**Context**: `Aion/Frontend/Code/planet-formation-prototype.html` now runs the full Jupiter→Saturn→Uranus formation sequence with a unified sun-synced pulse system. Session 22's build log has the full detail — five separate bugs surfaced under one recurring "it skips" complaint (fade-in-at-r=0 pops, pulse/ripple period never actually locked, sequencer handoffs cutting an in-flight pulse, collapse timed against the wrong duration, shake-taper/gather-collapse staging left over from the pre-fix timing).
+
+**Not yet confirmed by Ricky**: the last fix of the session — setting `COLLAPSE_START = 0` for all three planets so angular gather and radial collapse run concurrently from the first beam-hit instead of two sequential motions. If he reports it's still not fully fluid, look at whether `GATHER_END`/`COLLAPSE_END` (currently both 45% of formT) need to come down further, or whether `SHAKE_INTENSITY` itself is too strong for how fast the collapse now happens.
+
+**Open question, discussed but not decided**: Ricky asked "can every beam form a planet?" — i.e. instead of one beam triggering a scripted formation timeline, have every beam add its own increment of accretion progress. Tradeoff raised: more causally satisfying (every beam visibly matters) but growth would look stepped rather than the current smooth continuous arc, and duration becomes beam-count-dependent. Not built — revisit if he brings it back up.
+
+**Key files**: `planet-formation-prototype.html` (active, full sequence), `jupiter-formation-loop.html`/`saturn-formation-loop.html`/`uranus-formation-loop.html` (isolated single-planet test pages, same tech propagated in lockstep), `sun-pulse-sync-test.html` (isolated pulse/ripple timing tuner — pulse period now defaults locked to 2× the ripple period, has a lock/drift HUD readout and 1×/2×/3× sync buttons).
+
+---
+
 ### Origin Scene — Next Steps
 *Updated July 5, 2026 (Session 9)*
 
