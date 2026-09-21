@@ -1,5 +1,18 @@
 # Soul Interface — Plans / Next Session Reference
 
+### Sun/Galaxy-to-Planet-Formation Bridge — Next Steps
+*Updated September 20, 2026 (Session 23)*
+
+**Context**: `Aion/Frontend/Code/sun-galaxy-to-planet-formation.html` connects `cosmogenesis-with-nebula-intro.html` to `planet-formation-prototype.html` — spiral disc morphs into rings matching that file's exact dimensions, then a beam forms Jupiter (Jupiter only, deliberately not Saturn-Pluto yet). See Session 23's build log for the full saga — three failed full-9-planet merge attempts before landing on this scope, plus a long list of real bugs found and fixed along the way (sun cold-start whiteout, stray giant-ring artifacts, intro-nebula real-time overlay, camera-fighting-user-control, a `T`-clamp that froze the entire Jupiter sequence).
+
+**Open, not resolved**: user reported something rendering very close to the camera once the beam/Jupiter sequence starts. Exhaustive diff against the reference file found no code divergence. Leading theory (unconfirmed): `userCameraControl` permanently disables scripted camera movement after any manual drag/scroll, so if the camera was manually zoomed in during earlier testing in the same page load, it'd still be sitting there when Jupiter forms. Asked Ricky to confirm whether he touched the canvas before the beam played — if he says no, this needs a fresh investigation, don't assume it's already explained.
+
+**Not yet built**: Saturn through Pluto. The plan (per Ricky's own direction) is to extend the same pattern already working for Jupiter — one planet at a time, reviewed before moving to the next — rather than porting the full remaining 8-planet sequence in one pass, given how the full-sequence approach went wrong three times already.
+
+**Key files**: `Aion/Frontend/Code/sun-galaxy-to-planet-formation.html` (active), `cosmogenesis-with-nebula-intro.html` / `planet-formation-prototype.html` (untouched references — do not port their content wholesale into the bridge file; match visually, don't duplicate).
+
+---
+
 ### Planet Formation Sequencer — Next Steps
 *Updated September 7, 2026 (Session 22)*
 
