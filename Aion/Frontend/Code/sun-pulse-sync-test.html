@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Sun / Pulse Sync Test</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{position:fixed;inset:0}
+#hud{
+  position:fixed; top:14px; left:14px; width:290px; max-height:94vh; overflow:auto;
+  background:rgba(10,8,6,0.82); border:1px solid rgba(200,175,135,0.25);
+  border-radius:6px; font-family:monospace; color:rgba(230,215,190,0.92);
+  font-size:11px; padding:10px 12px; backdrop-filter:blur(4px); z-index:10;
+}
+#hud .phase{ font-size:13px; letter-spacing:0.05em; margin-bottom:6px; color:#ffd9a0; }
+#hud .row{ display:flex; justify-content:space-between; opacity:0.8; margin:3px 0; }
+#hud .row.warn{ color:#ff9a6a; opacity:1; }
+#hud .row.ok{ color:#8aff9a; opacity:1; }
+#hud .section{ margin-top:10px; padding-top:8px; border-top:1px solid rgba(200,175,135,0.15); color:#ffd9a0; opacity:0.85; }
+#hud .slider-row{ margin-top:8px; }
+#hud .slider-row label{ display:flex; justify-content:space-between; opacity:0.85; margin-bottom:2px; }
+#hud .slider-row input[type=range]{ width:100%; }
+#hud button{
+  margin-top:6px; width:100%; padding:6px; background:rgba(140,200,255,0.10);
+  border:1px solid rgba(140,200,255,0.35); border-radius:4px; color:rgba(200,225,255,0.95);
+  font-family:inherit; font-size:11px; cursor:pointer;
+}
+#hud button:hover{ background:rgba(140,200,255,0.18); }
+#hud .syncRow{ display:flex; gap:4px; }
+#hud .syncRow button{ flex:1; margin-top:6px; }
+#info{
+  position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+  font-family:monospace;font-size:9px;letter-spacing:0.25em;
+  color:rgba(200,175,135,0.16);pointer-events:none;text-align:center;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div class="phase" id="phaseLabel">running</div>
+  <div class="row"><span>ripple period</span><span id="valRipplePeriod">1.18s</span></div>
+  <div class="row"><span>pulse period</span><span id="valPulsePeriodCalc">2.60s</span></div>
+  <div class="row" id="ratioRow"><span>pulse / ripple ratio</span><span id="valRatio">2.21x</span></div>
+
+  <div class="section">SUN RIPPLE</div>
+  <div class="slider-row">
+    <label><span>Ripple rate (time mult)</span><span id="valRippleRate">0.170</span></label>
+    <input type="range" id="rippleRateSlider" min="0.05" max="0.40" step="0.005" value="0.17"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Ripple stagger</span><span id="valRippleStagger">0.200</span></label>
+    <input type="range" id="rippleStaggerSlider" min="0.05" max="0.50" step="0.01" value="0.2"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Ripple strength</span><span id="valRippleStr">1.40</span></label>
+    <input type="range" id="rippleStrSlider" min="0" max="3" step="0.05" value="1.4"/>
+  </div>
+
+  <div class="section">TRAVELING PULSE</div>
+  <div class="slider-row">
+    <label><span>Pulse repeat period</span><span id="valPulsePeriod">2.35s</span></label>
+    <input type="range" id="pulsePeriodSlider" min="0.3" max="8" step="0.02" value="2.35"/>
+  </div>
+  <div class="syncRow">
+    <button id="sync1x">= 1× ripple</button>
+    <button id="sync2x">= 2× ripple</button>
+    <button id="sync3x">= 3× ripple</button>
+  </div>
+  <div class="slider-row">
+    <label><span>Target radius</span><span id="valTargetR">60</span></label>
+    <input type="range" id="targetRSlider" min="15" max="160" step="1" value="60"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Pulse fade-out start %</span><span id="valFadeStart">75</span></label>
+    <input type="range" id="fadeStartSlider" min="30" max="98" step="1" value="75"/>
+  </div>
+
+  <div class="section">TEST PARTICLES (at target ring)</div>
+  <div class="slider-row">
+    <label><span>Shake intensity</span><span id="valShake">4.5</span></label>
+    <input type="range" id="shakeSlider" min="0" max="14" step="0.1" value="4.5"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Shake width (sigma)</span><span id="valShakeSigma">10</span></label>
+    <input type="range" id="shakeSigmaSlider" min="2" max="30" step="1" value="10"/>
+  </div>
+
+  <button id="pauseBtn">PAUSE</button>
+  <button id="restartBtn">RESTART TIMERS</button>
+</div>
+<div id="info">DRAG · SCROLL TO ZOOM<br/>SUN / PULSE SYNC TEST</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+window.onerror = function(msg,src,line){
+  document.body.innerHTML += `<div style="position:fixed;bottom:20px;left:20px;right:20px;background:#1a0000;color:#ff8080;font-family:monospace;font-size:12px;padding:16px;z-index:9999;border:1px solid #660000;">JS Error (line ${line}): ${msg}</div>`;
+};
+
+const canvas   = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000, 1);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(44, window.innerWidth/window.innerHeight, 0.1, 3000);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+const smoothstep = t => { t = clamp(t,0,1); return t*t*(3-2*t); };
+const lerp = (a,b,t) => a+(b-a)*t;
+
+function hashN3(x,y,z){ const v=Math.sin(x*127.1+y*311.7+z*74.7)*43758.5453; return v-Math.floor(v); }
+function noiseN3(x,y,z){
+  const xi=Math.floor(x), yi=Math.floor(y), zi=Math.floor(z);
+  const xf=x-xi, yf=y-yi, zf=z-zi;
+  const u=xf*xf*(3-2*xf), v=yf*yf*(3-2*yf), w=zf*zf*(3-2*zf);
+  const x00=lerp(hashN3(xi,yi,zi),hashN3(xi+1,yi,zi),u);
+  const x10=lerp(hashN3(xi,yi+1,zi),hashN3(xi+1,yi+1,zi),u);
+  const x01=lerp(hashN3(xi,yi,zi+1),hashN3(xi+1,yi,zi+1),u);
+  const x11=lerp(hashN3(xi,yi+1,zi+1),hashN3(xi+1,yi+1,zi+1),u);
+  return lerp(lerp(x00,x10,v), lerp(x01,x11,v), w);
+}
+function turbulenceJS(px,py,pz,t,out){
+  const qx=px*0.05+t*0.55, qy=py*0.05+t*0.42, qz=pz*0.05+t*0.61;
+  const bx=noiseN3(qx,qy,qz)-0.5, by=noiseN3(qx+9.2,qy+1.3,qz+4.1)-0.5, bz=noiseN3(qx+2.7,qy+8.4,qz+5.5)-0.5;
+  const qx2=qx*2.3+11.0, qy2=qy*2.3+11.0, qz2=qz*2.3+11.0;
+  const fx=noiseN3(qx2,qy2,qz2)-0.5, fy=noiseN3(qx2+5.1,qy2+7.7,qz2+2.2)-0.5, fz=noiseN3(qx2+6.6,qy2+3.3,qz2+9.9)-0.5;
+  out[0]=bx*0.75+fx*0.45; out[1]=by*0.75+fy*0.45; out[2]=bz*0.75+fz*0.45;
+}
+const _turbScratch = [0,0,0];
+
+// ── Spherical camera ─────────────────────────────────────────────────────────
+const sph       = { r:110, theta:0.3, phi:0.55 };
+const sphTarget = { r:110, theta:0.3, phi:0.55 };
+function applyCamera(){
+  camera.position.set(
+    sph.r*Math.sin(sph.phi)*Math.sin(sph.theta),
+    sph.r*Math.cos(sph.phi),
+    sph.r*Math.sin(sph.phi)*Math.cos(sph.theta)
+  );
+  camera.lookAt(0,0,0);
+}
+let drag=false, prev={x:0,y:0};
+canvas.addEventListener('mousedown', e=>{ drag=true; prev={x:e.clientX,y:e.clientY}; });
+window.addEventListener('mouseup', ()=>drag=false);
+window.addEventListener('mousemove', e=>{
+  if(!drag) return;
+  sphTarget.theta -= (e.clientX-prev.x)*0.004;
+  sphTarget.phi    = clamp(sphTarget.phi+(e.clientY-prev.y)*0.004, 0.05, Math.PI*0.88);
+  prev={x:e.clientX,y:e.clientY};
+  sph.theta=sphTarget.theta; sph.phi=sphTarget.phi;
+});
+window.addEventListener('wheel', e=>{
+  sphTarget.r = clamp(sphTarget.r+e.deltaY*0.15, 12, 500);
+  sph.r=sphTarget.r;
+},{passive:true});
+
+// ── Starfield ─────────────────────────────────────────────────────────────────
+{
+  const N=1500,geo=new THREE.BufferGeometry();
+  const p=new Float32Array(N*3);
+  for(let i=0;i<N;i++){
+    const a=Math.random()*Math.PI*2,b=Math.acos(2*Math.random()-1),r=200+Math.random()*500;
+    p[i*3]=r*Math.sin(b)*Math.cos(a); p[i*3+1]=r*Math.sin(b)*Math.sin(a); p[i*3+2]=r*Math.cos(b);
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+  scene.add(new THREE.Points(geo,new THREE.PointsMaterial({
+    color:0xffffff,size:1.4,sizeAttenuation:true,transparent:true,opacity:0.55
+  })));
+}
+
+// ── Sun, with rippleWave/crestGlow — rate & stagger now tunable uniforms ─────
+const SUN_R = 5.5;
+const sunMat = new THREE.ShaderMaterial({
+  uniforms:{ time:{value:0}, rippleStr:{value:1.4}, rippleRate:{value:0.17}, rippleStagger:{value:0.2} },
+  vertexShader:`
+    varying vec3 vPos; varying vec3 vNormal;
+    uniform float time, rippleStr, rippleRate, rippleStagger;
+    float rippleWave(vec3 pn, vec3 c, float t, float off){
+      float p    = fract(t + off);
+      float cosA = clamp(dot(pn, normalize(c)), -1.0, 1.0);
+      float ang  = acos(cosA);
+      float env  = exp(-ang*1.5) * pow(max(0.0,1.0-p), 0.55);
+      return sin(ang*20.0 - p*26.0) * env;
+    }
+    void main(){
+      vec3 pn = normalize(position);
+      float rt = time * rippleRate;
+      vec3 srcs[5];
+      srcs[0]=vec3( 0.82, 0.40, 0.41); srcs[1]=vec3(-0.65, 0.72, 0.25); srcs[2]=vec3( 0.15,-0.88, 0.45);
+      srcs[3]=vec3(-0.50,-0.30, 0.81); srcs[4]=vec3( 0.30, 0.85,-0.43);
+      float rd = 0.0;
+      for(int i=0;i<5;i++){ rd += rippleWave(pn, srcs[i], rt, float(i)*rippleStagger); }
+      vec3 displaced = position + pn * rd * rippleStr * 0.38;
+      vPos = displaced;
+      vNormal = normalize(normalMatrix * normal);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
+    }
+  `,
+  fragmentShader:`
+    varying vec3 vPos; varying vec3 vNormal;
+    uniform float time, rippleStr, rippleRate, rippleStagger;
+    float crestGlow(vec3 pn, vec3 c, float t, float off){
+      float p    = fract(t + off);
+      float cosA = clamp(dot(pn, normalize(c)), -1.0, 1.0);
+      float ang  = acos(cosA);
+      float env  = exp(-ang*1.5) * pow(max(0.0,1.0-p), 0.50);
+      return max(0.0, sin(ang*20.0 - p*26.0)) * env;
+    }
+    float hash(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
+    float noise(vec3 p){
+      vec3 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+      return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),u.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),u.x),u.y),
+                 mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),u.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),u.x),u.y),u.z);
+    }
+    float fbm(vec3 p){float v=0.,a=0.5;for(int i=0;i<7;i++){v+=a*noise(p);p*=2.1;a*=0.48;}return v;}
+    void main(){
+      vec3 p = vPos*4.5 + vec3(time*0.10, time*0.07, time*0.13);
+      vec3 q = vec3(fbm(p), fbm(p+vec3(5.2,1.3,2.8)), fbm(p+vec3(1.7,9.2,3.1)));
+      float n = fbm(p+0.5*q); n = pow(n,1.5); n = clamp(n*1.8+0.2,0.0,1.0);
+      float spot = fbm(vPos*2.8+vec3(time*0.018)); spot = smoothstep(0.62,0.45,spot); n *= 0.70+spot*0.30;
+      float limb = abs(dot(normalize(vNormal),vec3(0.0,0.0,1.0))); n *= 0.55+0.45*limb;
+      vec3 deep = vec3(0.22,0.04,0.0);
+      vec3 hot  = mix(vec3(1.0,0.88,0.08),vec3(1.0,0.15,0.03), n);
+      vec3 col  = mix(deep, hot, n);
+      col += smoothstep(0.68,1.0,n)*1.5*vec3(1.6,0.90,0.28);
+      if(rippleStr > 0.01){
+        vec3 rpn = normalize(vPos);
+        float rt = time * rippleRate;
+        vec3 srcs[5];
+        srcs[0]=vec3( 0.82, 0.40, 0.41); srcs[1]=vec3(-0.65, 0.72, 0.25); srcs[2]=vec3( 0.15,-0.88, 0.45);
+        srcs[3]=vec3(-0.50,-0.30, 0.81); srcs[4]=vec3( 0.30, 0.85,-0.43);
+        float rg = 0.0;
+        for(int i=0;i<5;i++){ rg += crestGlow(rpn, srcs[i], rt, float(i)*rippleStagger); }
+        col += rg * vec3(1.6,0.90,0.28) * 5.0 * rippleStr;
+      }
+      gl_FragColor = vec4(col,1.0);
+    }
+  `,
+});
+const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(SUN_R,64,64), sunMat);
+scene.add(sunMesh);
+
+// ── Sun ripple flash (flat expanding ring in the orbital plane) ─────────────
+const sunRippleMat = new THREE.ShaderMaterial({
+  uniforms:{ rippleR:{value:0}, rippleAlpha:{value:0} },
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, side:THREE.DoubleSide,
+  vertexShader:`varying vec3 vPos; void main(){ vPos = position; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader:`
+    uniform float rippleR, rippleAlpha;
+    varying vec3 vPos;
+    void main(){
+      float r = length(vPos.xy);
+      float d = abs(r - rippleR);
+      float ring = 1.0 - smoothstep(0.0, 7.0, d);
+      float alpha = ring * rippleAlpha;
+      if(alpha < 0.01) discard;
+      gl_FragColor = vec4(vec3(0.95,0.98,1.0)*2.4, alpha);
+    }
+  `
+});
+const sunRippleMesh = new THREE.Mesh(new THREE.CircleGeometry(200, 96), sunRippleMat);
+sunRippleMesh.rotation.x = -Math.PI/2;
+sunRippleMesh.frustumCulled = false;
+scene.add(sunRippleMesh);
+
+// ── Traveling pulse (sparking ring) ──────────────────────────────────────────
+const PULSE_N = 700;
+const pulseGeo = new THREE.BufferGeometry();
+{
+  const dummyPos = new Float32Array(PULSE_N*3);
+  const ang  = new Float32Array(PULSE_N);
+  const rJit = new Float32Array(PULSE_N);
+  const yJit = new Float32Array(PULSE_N);
+  const seed = new Float32Array(PULSE_N);
+  for(let i=0;i<PULSE_N;i++){
+    ang[i]  = Math.random()*Math.PI*2;
+    rJit[i] = (Math.random()-0.5)*6.0;
+    yJit[i] = (Math.random()-0.5)*2.2;
+    seed[i] = Math.random();
+  }
+  pulseGeo.setAttribute('position', new THREE.BufferAttribute(dummyPos,3));
+  pulseGeo.setAttribute('aAngle', new THREE.BufferAttribute(ang,1));
+  pulseGeo.setAttribute('aRJit',  new THREE.BufferAttribute(rJit,1));
+  pulseGeo.setAttribute('aYJit',  new THREE.BufferAttribute(yJit,1));
+  pulseGeo.setAttribute('aSeed',  new THREE.BufferAttribute(seed,1));
+}
+const pulseMat = new THREE.ShaderMaterial({
+  uniforms:{ uPulseR:{value:0}, time:{value:0}, uEnvelope:{value:0} },
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  vertexShader:`
+    attribute float aAngle, aRJit, aYJit, aSeed;
+    uniform float uPulseR, time;
+    varying float vFlicker;
+    float hash1(float n){ return fract(sin(n)*43758.5453); }
+    void main(){
+      float r = uPulseR + aRJit;
+      vec3 pos = vec3(r*cos(aAngle), aYJit, r*sin(aAngle));
+      float flashA = hash1(floor(time*6.0  + aSeed*97.0));
+      float flashB = hash1(floor(time*13.0 + aSeed*53.0) + 31.7);
+      vFlicker = max(pow(flashA,3.0), pow(flashB,4.0)*0.7);
+      vec4 mvPos = modelViewMatrix*vec4(pos,1.0);
+      gl_PointSize = clamp((2.5+aSeed*3.5)*640.0/-mvPos.z, 1.0, 9.0);
+      gl_Position = projectionMatrix*mvPos;
+    }
+  `,
+  fragmentShader:`
+    uniform float uEnvelope;
+    varying float vFlicker;
+    void main(){
+      vec2 c = gl_PointCoord-0.5;
+      float d = length(c)*2.0;
+      if(d>1.0) discard;
+      float core  = smoothstep(0.6,0.0,d);
+      float alpha = core * vFlicker * uEnvelope;
+      if(alpha<0.01) discard;
+      vec3 col = mix(vec3(1.0,0.75,0.4), vec3(1.0,0.95,0.85), vFlicker);
+      gl_FragColor = vec4(col*1.4, alpha);
+    }
+  `
+});
+const pulseMesh = new THREE.Points(pulseGeo, pulseMat);
+scene.add(pulseMesh);
+
+// ── Target ring guide ─────────────────────────────────────────────────────────
+let TARGET_R = 60;
+const targetRingGeo = new THREE.BufferGeometry();
+{
+  const segs=128, pos=new Float32Array((segs+1)*3);
+  for(let i=0;i<=segs;i++){ const a=(i/segs)*Math.PI*2; pos[i*3]=Math.cos(a); pos[i*3+1]=0; pos[i*3+2]=Math.sin(a); }
+  targetRingGeo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+}
+const targetRingMat = new THREE.LineBasicMaterial({ color:0x66ccff, transparent:true, opacity:0.35, blending:THREE.AdditiveBlending, depthWrite:false });
+const targetRingMesh = new THREE.LineLoop(targetRingGeo, targetRingMat);
+function applyTargetR(){ targetRingMesh.scale.setScalar(TARGET_R); }
+applyTargetR();
+scene.add(targetRingMesh);
+
+// ── Test dust cluster sitting at the target ring — shakes when the pulse
+// passes through it, so you can SEE the "interacts with the particles" effect
+// in isolation, without the full multi-planet sequencer around it. ─────────
+let SHAKE_INTENSITY = 4.5;
+let SHAKE_SIGMA = 10;
+const TEST_N = 1200;
+const TEST_ANGLE = 0.6;
+const testStartAngle = new Float32Array(TEST_N);
+const testSeed = new Float32Array(TEST_N);
+const testBaseX = new Float32Array(TEST_N);
+const testBaseY = new Float32Array(TEST_N);
+const testBaseZ = new Float32Array(TEST_N);
+const testGeo = new THREE.BufferGeometry();
+{
+  const pos = new Float32Array(TEST_N*3);
+  for(let i=0;i<TEST_N;i++){
+    testSeed[i] = Math.random();
+    // Fibonacci-sphere clump sitting at (TARGET_R, 0, 0)-ish, radius ~4
+    const gi = i+0.5, phi = Math.acos(1-2*gi/TEST_N), theta = Math.PI*(1+Math.sqrt(5))*gi;
+    const tx = Math.sin(phi)*Math.cos(theta)*4.0, ty = Math.cos(phi)*4.0, tz = Math.sin(phi)*Math.sin(theta)*4.0;
+    testBaseX[i]=tx; testBaseY[i]=ty; testBaseZ[i]=tz;
+    pos[i*3]=tx; pos[i*3+1]=ty; pos[i*3+2]=tz;
+  }
+  testGeo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  testGeo.setAttribute('nSeed', new THREE.BufferAttribute(testSeed,1));
+}
+const testMat = new THREE.PointsMaterial({
+  color:0xffcf9a, size:2.2, sizeAttenuation:true, transparent:true, opacity:0.85,
+  blending:THREE.AdditiveBlending, depthWrite:false
+});
+const testPoints = new THREE.Points(testGeo, testMat);
+function repositionTestCluster(){
+  testPoints.position.set(TARGET_R, 0, 0);
+}
+repositionTestCluster();
+scene.add(testPoints);
+
+// ── HUD wiring ────────────────────────────────────────────────────────────────
+let RIPPLE_RATE = 0.17, RIPPLE_STAGGER = 0.2;
+let PULSE_PERIOD = 2 * (RIPPLE_STAGGER / RIPPLE_RATE); // locked to 2x the ripple period by default
+let FADE_START_FRAC = 0.75;
+
+function ripplePeriod(){ return RIPPLE_STAGGER / RIPPLE_RATE; }
+
+function wireSlider(id, valId, onChange, fmt){
+  const el = document.getElementById(id);
+  const out = document.getElementById(valId);
+  el.addEventListener('input', ()=>{
+    const v = parseFloat(el.value);
+    onChange(v);
+    out.textContent = fmt ? fmt(v) : v;
+  });
+}
+wireSlider('rippleRateSlider','valRippleRate', v=>{ RIPPLE_RATE=v; sunMat.uniforms.rippleRate.value=v; }, v=>v.toFixed(3));
+wireSlider('rippleStaggerSlider','valRippleStagger', v=>{ RIPPLE_STAGGER=v; sunMat.uniforms.rippleStagger.value=v; }, v=>v.toFixed(3));
+wireSlider('rippleStrSlider','valRippleStr', v=>{ sunMat.uniforms.rippleStr.value=v; }, v=>v.toFixed(2));
+wireSlider('pulsePeriodSlider','valPulsePeriod', v=>{ PULSE_PERIOD=v; }, v=>v.toFixed(2)+'s');
+wireSlider('targetRSlider','valTargetR', v=>{ TARGET_R=v; applyTargetR(); repositionTestCluster(); }, v=>v.toFixed(0));
+wireSlider('fadeStartSlider','valFadeStart', v=>{ FADE_START_FRAC=v/100; }, v=>v.toFixed(0));
+wireSlider('shakeSlider','valShake', v=>{ SHAKE_INTENSITY=v; }, v=>v.toFixed(1));
+wireSlider('shakeSigmaSlider','valShakeSigma', v=>{ SHAKE_SIGMA=v; }, v=>v.toFixed(0));
+
+function setPulsePeriod(v){
+  PULSE_PERIOD = v;
+  document.getElementById('pulsePeriodSlider').value = v;
+  document.getElementById('valPulsePeriod').textContent = v.toFixed(2)+'s';
+}
+document.getElementById('sync1x').addEventListener('click', ()=> setPulsePeriod(ripplePeriod()*1));
+document.getElementById('sync2x').addEventListener('click', ()=> setPulsePeriod(ripplePeriod()*2));
+document.getElementById('sync3x').addEventListener('click', ()=> setPulsePeriod(ripplePeriod()*3));
+
+let paused = false;
+const pauseBtn = document.getElementById('pauseBtn');
+pauseBtn.addEventListener('click', ()=>{
+  paused = !paused;
+  pauseBtn.textContent = paused ? 'RESUME' : 'PAUSE';
+});
+document.getElementById('restartBtn').addEventListener('click', ()=>{
+  cycleStartTime = performance.now();
+});
+
+// ── Render loop ────────────────────────────────────────────────────────────
+const startTime = performance.now();
+let cycleStartTime = startTime;
+let pausedAt = null;
+const phaseLabel = document.getElementById('phaseLabel');
+const valRipplePeriod = document.getElementById('valRipplePeriod');
+const valPulsePeriodCalc = document.getElementById('valPulsePeriodCalc');
+const valRatio = document.getElementById('valRatio');
+const ratioRow = document.getElementById('ratioRow');
+
+function tick(){
+  requestAnimationFrame(tick);
+  const now = performance.now();
+  if(paused){ if(pausedAt===null) pausedAt = now; renderer.render(scene, camera); return; }
+  if(pausedAt!==null){ cycleStartTime += (now - pausedAt); pausedAt = null; }
+
+  const T = (now - cycleStartTime) / 1000;
+  const globalT = (now - startTime) / 1000;
+  applyCamera();
+
+  sunMat.uniforms.time.value = globalT;
+
+  // Traveling pulse — repeats every PULSE_PERIOD, always reaching TARGET_R.
+  // fadeIn ramps in over distance PAST the sun's own radius (not a fixed
+  // time), so the ring only ever becomes visible once it's genuinely cleared
+  // the sun's surface — otherwise it starts at r=0, INSIDE the sun's own
+  // sphere, and "pops" into view a moment later right as it exits the sun's
+  // silhouette, which reads as a visible skip/glitch each cycle.
+  const prPhase = (T % PULSE_PERIOD) / PULSE_PERIOD;
+  const pr = prPhase * TARGET_R;
+  const fadeIn  = smoothstep((pr - SUN_R) / 8.0);
+  const fadeOut = 1 - smoothstep((prPhase-FADE_START_FRAC)/(1-FADE_START_FRAC));
+  pulseMat.uniforms.uPulseR.value = pr;
+  pulseMat.uniforms.time.value = globalT;
+  pulseMat.uniforms.uEnvelope.value = fadeIn * fadeOut;
+
+  // Sun ripple flash — fires at the start of every pulse repeat. Same
+  // radius-based fadeIn as the pulse ring: it starts at r=0 (inside the
+  // sun), so without it, it's at FULL brightness the instant it resets.
+  const rippleAge = T % PULSE_PERIOD;
+  const rFadeDur = Math.min(1.9, PULSE_PERIOD*0.7);
+  const rippleR = rippleAge * (TARGET_R/PULSE_PERIOD);
+  const rippleFadeIn = smoothstep((rippleR - SUN_R) / 8.0);
+  sunRippleMat.uniforms.rippleR.value = rippleR;
+  sunRippleMat.uniforms.rippleAlpha.value = rippleFadeIn * Math.max(0, 1 - smoothstep(rippleAge/rFadeDur));
+
+  // Shake the test cluster based on proximity to the current pulse radius.
+  const distToFront = Math.abs(TARGET_R - pr);
+  const shakeEnv = Math.exp(-(distToFront*distToFront) / (2*SHAKE_SIGMA*SHAKE_SIGMA));
+  const shakeAmp = shakeEnv * SHAKE_INTENSITY;
+  const posAttr = testGeo.attributes.position;
+  for(let i=0;i<TEST_N;i++){
+    const s = testSeed[i];
+    turbulenceJS(testBaseX[i]+s*40.0, testBaseY[i]+s*40.0, testBaseZ[i]+s*40.0, globalT, _turbScratch);
+    posAttr.array[i*3]   = testBaseX[i] + _turbScratch[0]*shakeAmp;
+    posAttr.array[i*3+1] = testBaseY[i] + _turbScratch[1]*shakeAmp;
+    posAttr.array[i*3+2] = testBaseZ[i] + _turbScratch[2]*shakeAmp;
+  }
+  posAttr.needsUpdate = true;
+
+  // HUD readouts
+  const rp = ripplePeriod();
+  valRipplePeriod.textContent = rp.toFixed(2)+'s';
+  valPulsePeriodCalc.textContent = PULSE_PERIOD.toFixed(2)+'s';
+  const ratio = PULSE_PERIOD/rp;
+  const nearestInt = Math.round(ratio);
+  const drift = Math.abs(ratio-nearestInt);
+  valRatio.textContent = ratio.toFixed(2)+'x';
+  ratioRow.className = 'row ' + (drift < 0.03 ? 'ok' : (drift < 0.15 ? '' : 'warn'));
+  phaseLabel.textContent = drift < 0.03 ? 'locked — pulse always lands on a ripple beat' : 'drifting — pulse launches at a different ripple phase each time';
+
+  sph.r     += (sphTarget.r-sph.r)*0.08;
+  sph.theta += (sphTarget.theta-sph.theta)*0.08;
+  sph.phi   += (sphTarget.phi-sph.phi)*0.08;
+
+  renderer.render(scene, camera);
+}
+tick();
+</script>
+</body>
+</html>

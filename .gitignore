@@ -15,3 +15,6 @@ dist/
 
 # Claude Code worktree checkouts (tool-internal state, not project content)
 .claude/worktrees/
+
+# Local dev server logs
+Aion/Frontend/Code/server.log

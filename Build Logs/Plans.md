@@ -1,5 +1,31 @@
 # Soul Interface — Plans / Next Session Reference
 
+### Sun/Galaxy-to-Planet-Formation Bridge — Next Steps
+*Updated September 20, 2026 (Session 23)*
+
+**Context**: `Aion/Frontend/Code/sun-galaxy-to-planet-formation.html` connects `cosmogenesis-with-nebula-intro.html` to `planet-formation-prototype.html` — spiral disc morphs into rings matching that file's exact dimensions, then a beam forms Jupiter (Jupiter only, deliberately not Saturn-Pluto yet). See Session 23's build log for the full saga — three failed full-9-planet merge attempts before landing on this scope, plus a long list of real bugs found and fixed along the way (sun cold-start whiteout, stray giant-ring artifacts, intro-nebula real-time overlay, camera-fighting-user-control, a `T`-clamp that froze the entire Jupiter sequence).
+
+**Open, not resolved**: user reported something rendering very close to the camera once the beam/Jupiter sequence starts. Exhaustive diff against the reference file found no code divergence. Leading theory (unconfirmed): `userCameraControl` permanently disables scripted camera movement after any manual drag/scroll, so if the camera was manually zoomed in during earlier testing in the same page load, it'd still be sitting there when Jupiter forms. Asked Ricky to confirm whether he touched the canvas before the beam played — if he says no, this needs a fresh investigation, don't assume it's already explained.
+
+**Not yet built**: Saturn through Pluto. The plan (per Ricky's own direction) is to extend the same pattern already working for Jupiter — one planet at a time, reviewed before moving to the next — rather than porting the full remaining 8-planet sequence in one pass, given how the full-sequence approach went wrong three times already.
+
+**Key files**: `Aion/Frontend/Code/sun-galaxy-to-planet-formation.html` (active), `cosmogenesis-with-nebula-intro.html` / `planet-formation-prototype.html` (untouched references — do not port their content wholesale into the bridge file; match visually, don't duplicate).
+
+---
+
+### Planet Formation Sequencer — Next Steps
+*Updated September 7, 2026 (Session 22)*
+
+**Context**: `Aion/Frontend/Code/planet-formation-prototype.html` now runs the full Jupiter→Saturn→Uranus formation sequence with a unified sun-synced pulse system. Session 22's build log has the full detail — five separate bugs surfaced under one recurring "it skips" complaint (fade-in-at-r=0 pops, pulse/ripple period never actually locked, sequencer handoffs cutting an in-flight pulse, collapse timed against the wrong duration, shake-taper/gather-collapse staging left over from the pre-fix timing).
+
+**Not yet confirmed by Ricky**: the last fix of the session — setting `COLLAPSE_START = 0` for all three planets so angular gather and radial collapse run concurrently from the first beam-hit instead of two sequential motions. If he reports it's still not fully fluid, look at whether `GATHER_END`/`COLLAPSE_END` (currently both 45% of formT) need to come down further, or whether `SHAKE_INTENSITY` itself is too strong for how fast the collapse now happens.
+
+**Open question, discussed but not decided**: Ricky asked "can every beam form a planet?" — i.e. instead of one beam triggering a scripted formation timeline, have every beam add its own increment of accretion progress. Tradeoff raised: more causally satisfying (every beam visibly matters) but growth would look stepped rather than the current smooth continuous arc, and duration becomes beam-count-dependent. Not built — revisit if he brings it back up.
+
+**Key files**: `planet-formation-prototype.html` (active, full sequence), `jupiter-formation-loop.html`/`saturn-formation-loop.html`/`uranus-formation-loop.html` (isolated single-planet test pages, same tech propagated in lockstep), `sun-pulse-sync-test.html` (isolated pulse/ripple timing tuner — pulse period now defaults locked to 2× the ripple period, has a lock/drift HUD readout and 1×/2×/3× sync buttons).
+
+---
+
 ### Origin Scene — Next Steps
 *Updated July 5, 2026 (Session 9)*
 

@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Jupiter Formation Loop — Sun Pulse</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{position:fixed;inset:0}
+#hud{
+  position:fixed; top:14px; left:14px; width:260px; max-height:94vh; overflow:auto;
+  background:rgba(10,8,6,0.78); border:1px solid rgba(200,175,135,0.25);
+  border-radius:6px; font-family:monospace; color:rgba(230,215,190,0.92);
+  font-size:11px; padding:10px 12px; backdrop-filter:blur(4px); z-index:10;
+}
+#hud .phase{ font-size:13px; letter-spacing:0.05em; margin-bottom:6px; color:#ffd9a0; }
+#hud .row{ display:flex; justify-content:space-between; opacity:0.75; margin:3px 0; }
+#hud button{
+  margin-top:8px; width:100%; padding:6px; background:rgba(140,200,255,0.10);
+  border:1px solid rgba(140,200,255,0.35); border-radius:4px; color:rgba(200,225,255,0.95);
+  font-family:inherit; font-size:11px; cursor:pointer;
+}
+#hud button:hover{ background:rgba(140,200,255,0.18); }
+#hud .slider-row{ margin-top:10px; }
+#hud .slider-row label{ display:flex; justify-content:space-between; opacity:0.85; margin-bottom:2px; }
+#hud .slider-row input[type=range]{ width:100%; }
+#hud .section{ margin-top:10px; padding-top:8px; border-top:1px solid rgba(200,175,135,0.15); color:#ffd9a0; opacity:0.85; }
+#info{
+  position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+  font-family:monospace;font-size:9px;letter-spacing:0.25em;
+  color:rgba(200,175,135,0.16);pointer-events:none;text-align:center;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div class="phase" id="phaseLabel">disc forming</div>
+  <div class="row"><span>T</span><span id="valT">0.0s</span></div>
+  <div class="row"><span>pulse radius</span><span id="valPulseR">0</span></div>
+  <div class="slider-row">
+    <label><span>Jupiter size</span><span id="valJupSize">2.0</span></label>
+    <input type="range" id="jupSizeSlider" min="2" max="16" step="0.1" value="2.0"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Grid overscale</span><span id="valGridOverscale">1.07</span></label>
+    <input type="range" id="gridOverscaleSlider" min="1.0" max="1.5" step="0.01" value="1.07"/>
+  </div>
+
+  <div class="section">FORMATION TIMING</div>
+  <div class="slider-row">
+    <label><span>Formation duration</span><span id="valFormDur">4.9s</span></label>
+    <input type="range" id="formDurSlider" min="1" max="12" step="0.1" value="4.9"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Gather end %</span><span id="valGatherEnd">45</span></label>
+    <input type="range" id="gatherEndSlider" min="10" max="100" step="1" value="45"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Collapse start %</span><span id="valCollapseStart">0</span></label>
+    <input type="range" id="collapseStartSlider" min="0" max="90" step="1" value="0"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Collapse end %</span><span id="valCollapseEnd">45</span></label>
+    <input type="range" id="collapseEndSlider" min="20" max="100" step="1" value="45"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Reveal start (% of collapse)</span><span id="valRevealStart">79</span></label>
+    <input type="range" id="revealStartSlider" min="20" max="99" step="1" value="79"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Reveal duration</span><span id="valRevealDur">2.2s</span></label>
+    <input type="range" id="revealDurSlider" min="0.3" max="8" step="0.1" value="2.2"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Shake intensity</span><span id="valShake">4.5</span></label>
+    <input type="range" id="shakeSlider" min="0" max="12" step="0.1" value="4.5"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Pre-trigger shake %</span><span id="valPreShake">100</span></label>
+    <input type="range" id="preShakeSlider" min="0" max="100" step="1" value="100"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Hit onset sharpness %</span><span id="valOnsetSharp">70</span></label>
+    <input type="range" id="onsetSharpSlider" min="0" max="100" step="1" value="70"/>
+  </div>
+  <div class="slider-row">
+    <label><span>Particle coherence %</span><span id="valCoherence">65</span></label>
+    <input type="range" id="coherenceSlider" min="0" max="100" step="1" value="65"/>
+  </div>
+
+
+  <button id="restartBtn">RESTART PULSE</button>
+</div>
+<div id="info">DRAG · SCROLL TO ZOOM<br/>SINGLE-PLANET FORMATION LOOP — sun pulse repeatedly forms Jupiter from the belt</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+window.onerror = function(msg,src,line){
+  document.body.innerHTML += `<div style="position:fixed;bottom:20px;left:20px;right:20px;background:#1a0000;color:#ff8080;font-family:monospace;font-size:12px;padding:16px;z-index:9999;border:1px solid #660000;">JS Error (line ${line}): ${msg}</div>`;
+};
+
+const canvas   = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000, 1);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(44, window.innerWidth/window.innerHeight, 0.1, 3000);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+const smoothstep = t => { t = clamp(t,0,1); return t*t*(3-2*t); };
+const lerp = (a,b,t) => a+(b-a)*t;
+// Quadratic ease-OUT only — nonzero velocity right at t=0 (derivative 2 vs
+// smoothstep's 0), still settling smoothly into t=1. Blended against
+// smoothstep via HIT_ONSET_SHARPNESS so the very first instant of the
+// gather/collapse motion can read as an immediate snap at the moment of
+// contact, rather than easing in from a standstill, while still settling
+// softly into the formed sphere rather than ending on a hard stop.
+const easeSnap = t => { t = clamp(t,0,1); return 1 - (1-t)*(1-t); };
+
+// JS mirror of the GPU turbulence() function (same value-noise field) so the
+// Jupiter precursor cluster shakes in the same organic style as the disc.
+function hashN3(x,y,z){ const v=Math.sin(x*127.1+y*311.7+z*74.7)*43758.5453; return v-Math.floor(v); }
+function noiseN3(x,y,z){
+  const xi=Math.floor(x), yi=Math.floor(y), zi=Math.floor(z);
+  const xf=x-xi, yf=y-yi, zf=z-zi;
+  const u=xf*xf*(3-2*xf), v=yf*yf*(3-2*yf), w=zf*zf*(3-2*zf);
+  const x00=lerp(hashN3(xi,yi,zi),hashN3(xi+1,yi,zi),u);
+  const x10=lerp(hashN3(xi,yi+1,zi),hashN3(xi+1,yi+1,zi),u);
+  const x01=lerp(hashN3(xi,yi,zi+1),hashN3(xi+1,yi,zi+1),u);
+  const x11=lerp(hashN3(xi,yi+1,zi+1),hashN3(xi+1,yi+1,zi+1),u);
+  return lerp(lerp(x00,x10,v), lerp(x01,x11,v), w);
+}
+function turbulenceJS(px,py,pz,t,out){
+  const qx=px*0.05+t*0.55, qy=py*0.05+t*0.42, qz=pz*0.05+t*0.61;
+  const bx=noiseN3(qx,qy,qz)-0.5, by=noiseN3(qx+9.2,qy+1.3,qz+4.1)-0.5, bz=noiseN3(qx+2.7,qy+8.4,qz+5.5)-0.5;
+  const qx2=qx*2.3+11.0, qy2=qy*2.3+11.0, qz2=qz*2.3+11.0;
+  const fx=noiseN3(qx2,qy2,qz2)-0.5, fy=noiseN3(qx2+5.1,qy2+7.7,qz2+2.2)-0.5, fz=noiseN3(qx2+6.6,qy2+3.3,qz2+9.9)-0.5;
+  out[0]=bx*0.75+fx*0.45; out[1]=by*0.75+fy*0.45; out[2]=bz*0.75+fz*0.45;
+}
+const _turbScratch = [0,0,0];
+
+// ── Spherical camera (same rig as the other nebula prototypes) ───────────────
+// Matches index.html's own resting solar-system establishing shot (same FOV,
+// same sph values) so the sun reads at the same size/prominence it does there.
+const sph       = { r:145, theta:0.22, phi:0.40 };
+const sphTarget = { r:145, theta:0.22, phi:0.40 };
+
+function applyCamera(){
+  camera.position.set(
+    sph.r*Math.sin(sph.phi)*Math.sin(sph.theta),
+    sph.r*Math.cos(sph.phi),
+    sph.r*Math.sin(sph.phi)*Math.cos(sph.theta)
+  );
+  camera.lookAt(0,0,0);
+}
+
+let drag=false, prev={x:0,y:0};
+canvas.addEventListener('mousedown', e=>{ drag=true; prev={x:e.clientX,y:e.clientY}; });
+window.addEventListener('mouseup', ()=>drag=false);
+window.addEventListener('mousemove', e=>{
+  if(!drag) return;
+  sphTarget.theta -= (e.clientX-prev.x)*0.004;
+  sphTarget.phi    = clamp(sphTarget.phi+(e.clientY-prev.y)*0.004, 0.05, Math.PI*0.88);
+  prev={x:e.clientX,y:e.clientY};
+  sph.theta=sphTarget.theta; sph.phi=sphTarget.phi;
+});
+window.addEventListener('wheel', e=>{
+  sphTarget.r = clamp(sphTarget.r+e.deltaY*0.20, 40, 900);
+  sph.r=sphTarget.r;
+},{passive:true});
+
+// ── Mouse interaction — belt + beam react to the cursor ──────────────────────
+// Same approach as index.html's asteroid belt: cast the cursor into a
+// world-space point on the y=0 orbital plane every frame, then let the disc
+// and pulse shaders push nearby particles radially away from that point and
+// brighten them. mouseInScene gates it off (uMouse parked far outside any
+// particle's radius) once the cursor leaves the canvas, so nothing sticks to
+// a stale position.
+const raycaster = new THREE.Raycaster();
+const mouseNDC  = new THREE.Vector2(9999, 9999);
+const interactionPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const interactionPoint = new THREE.Vector3(9999, 0, 9999);
+let mouseInScene = false;
+window.addEventListener('mousemove', e=>{
+  mouseNDC.x =  (e.clientX / window.innerWidth)  * 2 - 1;
+  mouseNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  mouseInScene = true;
+});
+canvas.addEventListener('mouseleave', ()=>{ mouseInScene = false; });
+
+// ── Star field backdrop ───────────────────────────────────────────────────────
+function makeDiscTexture(){
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 32;
+  const ctx = cv.getContext('2d');
+  const g = ctx.createRadialGradient(16,16,0,16,16,16);
+  g.addColorStop(0,   'rgba(255,255,255,1)');
+  g.addColorStop(0.4, 'rgba(255,255,255,0.9)');
+  g.addColorStop(1,   'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,32,32);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.needsUpdate = true;
+  return tex;
+}
+{
+  const N=2500,geo=new THREE.BufferGeometry();
+  const p=new Float32Array(N*3),c=new Float32Array(N*3);
+  const pal=[[0.88,0.94,1],[1,1,0.88],[0.68,0.80,1],[1,0.82,0.62]];
+  for(let i=0;i<N;i++){
+    const a=Math.random()*Math.PI*2,b=Math.acos(2*Math.random()-1),r=400+Math.random()*700;
+    p[i*3]=r*Math.sin(b)*Math.cos(a); p[i*3+1]=r*Math.sin(b)*Math.sin(a); p[i*3+2]=r*Math.cos(b);
+    const sc=pal[Math.floor(Math.random()*pal.length)];
+    c[i*3]=sc[0]; c[i*3+1]=sc[1]; c[i*3+2]=sc[2];
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+  geo.setAttribute('color',new THREE.BufferAttribute(c,3));
+  scene.add(new THREE.Points(geo,new THREE.PointsMaterial({
+    size:2.0,sizeAttenuation:true,vertexColors:true,
+    map:makeDiscTexture(), alphaTest:0.01,
+    transparent:true,opacity:0.5,depthWrite:false,blending:THREE.AdditiveBlending
+  })));
+}
+
+const HSL_GLSL = `
+  vec3 hsl2rgb(float h,float s,float l){
+    vec3 rgb=clamp(abs(mod(h*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
+    return l+s*(rgb-0.5)*(1.0-abs(2.0*l-1.0));
+  }
+`;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PLANET ORBITAL RADII — artistic/compressed spacing, not to real scale.
+// Jupiter is the only "live" ring in this test; the rest are drawn faint as
+// context, matching the reference image's multi-ring look.
+// ═══════════════════════════════════════════════════════════════════════════
+const RINGS = [
+  { name:'Mercury', r:18  },
+  { name:'Venus',   r:26  },
+  { name:'Earth',   r:34  },
+  { name:'Mars',    r:44  },
+  { name:'Jupiter', r:78  },
+  { name:'Saturn',  r:118 },
+  { name:'Uranus',  r:150 },
+  { name:'Neptune', r:180 },
+];
+const JUPITER_R     = RINGS.find(r=>r.name==='Jupiter').r;
+const JUPITER_ANGLE = 0.62;   // fixed angular position on its ring where it forms
+let JUPITER_SIZE  = 2.0;
+let JUP_GRID_OVERSCALE = 1.07;
+let JUP_FORM_DURATION = 4.9; // seconds for formT 0 -> 1 (was a hardcoded const; now tunable)
+let GATHER_END      = 0.45;  // formT fraction where angular gather finishes
+// COLLAPSE_START used to be 0.19, i.e. a real gap where particles ONLY slid
+// angularly along the ring before radial collapse even began — which reads
+// as two separate motions (contract along the ring, THEN condense) instead
+// of one fluid contraction. Starting collapse at 0 makes angular gather and
+// radial collapse run together from the very first hit.
+let COLLAPSE_START  = 0.00;  // formT fraction where radial collapse begins
+// Collapse used to ramp all the way out to formT=1.0 (the full 4.9s), so the
+// visible "snap into a sphere" moment landed well past one pulse cycle
+// (~2.35s) and read as happening on the SECOND beam that hit the ring rather
+// than the first. COLLAPSE_END bounds the radial collapse to finish within
+// the first cycle instead, so it condenses right on the first hit.
+let COLLAPSE_END    = 0.45;  // formT fraction where radial collapse fully finishes
+let REVEAL_START    = 0.79;  // fraction *of the collapse window* (COLLAPSE_START..COLLAPSE_END) where the solid mesh starts materializing
+let REVEAL_DURATION = 2.2;   // seconds the materialize dissolve takes once it starts — independent of formT/FORM_DURATION so it can be slowed down without affecting the particle motion
+let SHAKE_INTENSITY = 4.5;
+// The turbulence shake on the ring dust is driven by how close the
+// TRAVELING PULSE currently is to Jupiter's ring (shakeEnv, computed from
+// pr regardless of trigger state) — not by whether formation has actually
+// triggered. That meant the belt visibly jostled as the incoming beam swept
+// through it on approach, BEFORE jupFormTriggerTime was ever set and BEFORE
+// any coordinated gather/collapse motion began — a real, separate "contract"
+// event distinct from (and immediately followed by) the actual formation
+// collapse. Read as "it contracts, then contracts again and forms."
+// PRE_TRIGGER_SHAKE gates that pre-formation jostle. Defaulted to 0 in an
+// earlier pass so the belt sat still while the beam approached, only
+// gathering+collapsing+shaking as one event at the instant of trigger — but
+// that's also what made it read as inert/static compared to every other
+// ring in the disc, which always jostles continuously as the passing
+// wavefront nears and crosses their radius. Full strength (1.0) makes
+// Jupiter's ring do the same: react to the beam sweeping toward and through
+// it exactly like the rest of the disc, with the coordinated gather/collapse
+// motion still layering on top once formation actually triggers.
+let PRE_TRIGGER_SHAKE = 1.0;
+// Formation used to trigger only once pr reached JUPITER_R exactly — the
+// dead center of the shake's gaussian falloff — so by the time gather/
+// collapse actually started moving particles, the shake had already been
+// climbing for a while as the wave approached from ~20+ units out, reading
+// as two back-to-back phases (jostle in place, THEN converge) rather than
+// one blended motion. Triggering this many units early — while the shake is
+// still on its way up, not yet near full strength — means the coordinated
+// convergence and the shake's own climb start from the same moment and
+// build together, so the reaction visibly flows straight into the planet
+// forming instead of preceding it as a separate beat.
+let JUP_REACT_LEAD = 14.0;
+// Blends gatherT/collapseT's easing curve from pure smoothstep (0 — soft,
+// symmetric ease-in/ease-out, the original flat-start feel) toward pure
+// easeSnap (1 — immediate velocity right at the hit, still easing softly
+// into the settled sphere). Defaults high since "no delay at the moment of
+// contact" was the actual ask; dial it back toward 0 for a gentler onset.
+let HIT_ONSET_SHARPNESS = 0.7;
+// Each particle samples the turbulence field at its own position offset by
+// s*COHERENCE_OFFSET (s = that particle's random seed, 0..1) — this offset
+// exists so exactly-overlapping particles don't sample identical noise, but
+// at its original scale (40 units) it scatters neighboring particles roughly
+// two full noise-field wavelengths apart (the field's own spatial frequency
+// is 0.05, i.e. ~20-unit features), so physically close particles end up
+// sampling totally unrelated parts of an otherwise spatially coherent field.
+// The result: each particle jitters on its own, independent of its
+// neighbors, instead of picking up the same local swirl/current they're
+// sitting in — reading as independent fading rather than particles visibly
+// pushing/pulling on each other. PARTICLE_COHERENCE blends that offset down
+// (lerp(40, 2, coherence)) so nearby particles share nearly the same sample
+// point and move together in connected streams/eddies instead.
+let PARTICLE_COHERENCE = 0.65;
+
+
+// ── Ring guides — ported verbatim from index.html's real orbit rings (same
+// per-planet colors, same dual-torus flicker+halo shimmer shader) instead of
+// a plain static line, so a formed planet's orbit reads exactly like it does
+// in the real scene. Invisible until that planet has actually formed — the
+// grid reveals itself planet by planet rather than being drawn in up front.
+// index.html's tube thicknesses (0.042/0.16) were tuned for its compact
+// ~6-57 unit orbital scale; scaled by the same ratio to this scene's much
+// larger ring radii (18-180) so they read proportionally the same.
+const orbitCols = [0x997755,0xddaa44,0x4488cc,0xdd5522,0xddaa66,0xccaa55,0x66aacc,0x4455ee]; // Mercury..Neptune, same as index.html
+const orbitOps  = [0.50,    0.62,   0.72,   0.65,   0.55,   0.52,   0.48,   0.50];
+const ringMeshes = {};
+RINGS.forEach((ring,i)=>{
+  const flickerTube = ring.r * 0.0016;
+  const haloTube    = ring.r * 0.0062;
+  const flickerMat = new THREE.ShaderMaterial({
+    uniforms: {
+      time:    { value: 0 },
+      opacity: { value: 0 }, // starts hidden; ramped up once that planet has formed
+      col:     { value: new THREE.Color(orbitCols[i]) },
+      speed:   { value: 0.08 + ring.r * 0.0026 },
+    },
+    transparent: true, depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `
+      varying vec2 vUv;
+      uniform float time, opacity, speed;
+      uniform vec3 col;
+      void main(){
+        float a = vUv.x;
+        float w1 = sin((a - time * speed) * 6.28318) * 0.5 + 0.5;
+        float w2 = sin((a - time * speed * 0.6) * 18.84954 + 1.7) * 0.5 + 0.5;
+        float shimmer = w1 * 0.65 + w2 * 0.40;
+        float alpha = opacity * shimmer * 1.35;
+        if(alpha < 0.004) discard;
+        gl_FragColor = vec4(col * alpha, alpha);
+      }
+    `,
+  });
+  const flickerMesh = new THREE.Mesh(new THREE.TorusGeometry(ring.r, flickerTube, 8, 300), flickerMat);
+  flickerMesh.rotation.x = Math.PI/2;
+  scene.add(flickerMesh);
+
+  const haloMat = new THREE.MeshBasicMaterial({
+    color: orbitCols[i], transparent:true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite:false,
+  });
+  const haloMesh = new THREE.Mesh(new THREE.TorusGeometry(ring.r, haloTube, 8, 300), haloMat);
+  haloMesh.rotation.x = Math.PI/2;
+  scene.add(haloMesh);
+
+  ringMeshes[ring.name] = { flickerMesh, haloMesh, baseOpacity: orbitOps[i] };
+});
+
+// ── Protoplanetary dust disc ──────────────────────────────────────────────────
+// Matches the "vinyl groove" reference — many tightly-packed thin concentric
+// rings close to the sun, diffusing into a sparse unstructured haze further
+// out, rather than a smooth spiral-arm spread.
+// Three-tier radial distribution instead of one tight band + one thin sparse
+// tail: the tight "vinyl groove" bands stay close to the sun as before, but
+// a dedicated mid-density tier now fills the gap between Saturn's ring (118)
+// and Uranus's (150) — which used to fall in the sparse tail's weakest
+// region — plus a looser far tier for context beyond Uranus.
+const DISC_N = 42000;
+const RING_BAND_COUNT = 20;
+const RING_BAND_SPACING = 4.6;
+const RING_BAND_START = 14;
+function bandRadius(k){ return RING_BAND_START + k*RING_BAND_SPACING; }
+const discGeo = new THREE.BufferGeometry();
+{
+  const pos   = new Float32Array(DISC_N * 3);
+  const seeds = new Float32Array(DISC_N);
+  for(let i = 0; i < DISC_N; i++){
+    const s = Math.random(); seeds[i] = s;
+    let gR;
+    const tier = Math.random();
+    if(tier < 0.55){
+      const bandR = bandRadius(Math.floor(Math.random()*RING_BAND_COUNT));
+      gR = bandR + (Math.random()-0.5) * (1.1 + bandR*0.01);
+    } else if(tier < 0.85){
+      gR = 90 + Math.random()*90; // fills the Jupiter/Saturn -> Uranus gap densely
+    } else {
+      gR = 150 + Math.pow(Math.random(), 0.7) * 160; // sparser context beyond Uranus
+    }
+    const gTheta = Math.random() * Math.PI * 2;
+    pos[i*3]   = gR * Math.cos(gTheta);
+    pos[i*3+1] = (Math.random() - 0.5) * (1.5 + gR*0.02);
+    pos[i*3+2] = gR * Math.sin(gTheta);
+  }
+  discGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  discGeo.setAttribute('nSeed',    new THREE.BufferAttribute(seeds, 1));
+}
+const discMat = new THREE.ShaderMaterial({
+  uniforms:{ time:{value:0}, gAlpha:{value:1}, uPulseR:{value:-1000}, uEnvelope:{value:1}, uMouse:{value:new THREE.Vector3(9999,0,9999)} },
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  vertexShader: HSL_GLSL + `
+    attribute float nSeed;
+    uniform float time, gAlpha, uPulseR, uEnvelope;
+    uniform vec3 uMouse;
+    varying vec3  vColor;
+    varying float vAlpha;
+    float hashN(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
+    float noiseN(vec3 p){
+      vec3 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+      return mix(mix(mix(hashN(i),hashN(i+vec3(1,0,0)),u.x),mix(hashN(i+vec3(0,1,0)),hashN(i+vec3(1,1,0)),u.x),u.y),
+                 mix(mix(hashN(i+vec3(0,0,1)),hashN(i+vec3(1,0,1)),u.x),mix(hashN(i+vec3(0,1,1)),hashN(i+vec3(1,1,1)),u.x),u.y),u.z);
+    }
+    // Flow-field turbulence — displacement drawn from a smooth, spatially
+    // coherent 3D noise field (2 octaves) rather than fixed per-particle sine
+    // waves, so neighbouring particles jostle together in drifting eddies
+    // instead of each vibrating on its own independent rigid schedule.
+    vec3 turbulence(vec3 p, float t){
+      vec3 q = p*0.05 + vec3(t*0.55, t*0.42, t*0.61);
+      vec3 base = vec3(
+        noiseN(q)               - 0.5,
+        noiseN(q+vec3(9.2,1.3,4.1))  - 0.5,
+        noiseN(q+vec3(2.7,8.4,5.5))  - 0.5
+      );
+      vec3 q2 = q*2.3 + vec3(11.0);
+      vec3 fine = vec3(
+        noiseN(q2)              - 0.5,
+        noiseN(q2+vec3(5.1,7.7,2.2)) - 0.5,
+        noiseN(q2+vec3(6.6,3.3,9.9)) - 0.5
+      );
+      return base*0.75 + fine*0.45;
+    }
+    void main(){
+      float s = nSeed;
+      float radius = length(position.xz);
+      float rotT = time * max(0.003, 0.014 - radius * 0.000042);
+      float cr = cos(rotT), sr = sin(rotT);
+      vec3 rotPos = vec3(
+        position.x*cr - position.z*sr,
+        position.y,
+        position.x*sr + position.z*cr
+      );
+
+      // The passing pulse wavefront rattles particles near its current radius —
+      // organic flow-field turbulence localized to a shock band, fading once
+      // the front has moved on (a stateless function of |radius-uPulseR|).
+      // Gated by uEnvelope (same fade the pulse ring itself uses) so this
+      // doesn't slam dust right next to the sun with max shake the instant
+      // uPulseR resets to ~0 each repeat, while the pulse is still invisibly
+      // inside the sun's own radius — that was a real, physical glitch, not
+      // just a visual one.
+      float distToFront = abs(radius - uPulseR);
+      float shakeEnv = exp(-(distToFront*distToFront) / (2.0*10.0*10.0)) * uEnvelope;
+      float shakeAmp = shakeEnv * 7.0;
+      rotPos += turbulence(rotPos + s*40.0, time) * shakeAmp;
+
+      // Interactive disturbance — dust within range of the cursor's projected
+      // position gets pushed radially outward from it and brightens, the same
+      // "belt parts around your pointer" cue as index.html's asteroid belt,
+      // scaled up for this scene's larger orbital radii (14-310 vs. 21-25).
+      float distToMouse = distance(rotPos.xz, uMouse.xz);
+      float influenceRadius = 16.0;
+      float push = smoothstep(influenceRadius, 0.0, distToMouse);
+      vec3 pushDir = vec3(rotPos.x - uMouse.x, 0.0, rotPos.z - uMouse.z);
+      float pushLen = length(pushDir);
+      rotPos += (pushLen > 0.0001 ? pushDir / pushLen : vec3(0.0)) * push * 9.0;
+
+      float cool = step(0.78, fract(s*8.11));
+      float hue = mix(mix(0.06,0.11,fract(s*4.3)), mix(0.57,0.65,fract(s*6.1)), cool);
+      float lum = 0.62 + fract(s*7.9)*0.36;
+      float sat = 0.42 + fract(s*3.1)*0.35;
+      vColor = hsl2rgb(hue, sat, lum) * (1.1 + fract(s*2.3)*0.9 + shakeEnv*0.8 + push*1.8);
+      vAlpha = 0.65 + fract(s*5.7)*0.35;
+      vec4 mvPos = modelViewMatrix * vec4(rotPos, 1.0);
+      gl_PointSize = clamp((0.7+fract(s*4.2)*1.5)*640.0/-mvPos.z, 0.8, 7.0) * (1.0 + push*0.9);
+      gl_Position  = projectionMatrix * mvPos;
+    }
+  `,
+  fragmentShader:`
+    uniform float gAlpha;
+    varying vec3  vColor;
+    varying float vAlpha;
+    void main(){
+      if(gAlpha < 0.004) discard;
+      vec2  c = gl_PointCoord - 0.5;
+      float d = length(c) * 2.0;
+      if(d > 1.0) discard;
+      float crisp = smoothstep(0.55, 0.0, d);
+      float core  = max(0.0, 1.0 - d*8.0) * 0.72;
+      float alpha = (crisp*0.42 + core) * vAlpha * gAlpha;
+      if(alpha < 0.003) discard;
+      gl_FragColor = vec4(vColor, alpha);
+    }
+  `
+});
+scene.add(new THREE.Points(discGeo, discMat));
+
+// ── Sun (verbatim procedural mottled-plasma shader from cosmogenesis, now
+// with that same file's rippleWave/crestGlow surface-ripple effect ported in
+// too — 5 fixed crests travel across the sphere on a staggered repeating
+// cycle, actually displacing the surface (vertex) and glowing brighter along
+// the wavefront (fragment), rather than a flat texture animation.
+const SUN_R = 5.5;
+const sunMat = new THREE.ShaderMaterial({
+  uniforms:{ time:{value:0}, rippleStr:{value:1.4} },
+  vertexShader:`
+    varying vec3 vPos; varying vec3 vNormal;
+    uniform float time, rippleStr;
+    float rippleWave(vec3 pn, vec3 c, float t, float off){
+      float p    = fract(t + off);
+      float cosA = clamp(dot(pn, normalize(c)), -1.0, 1.0);
+      float ang  = acos(cosA);
+      float env  = exp(-ang*1.5) * pow(max(0.0,1.0-p), 0.55);
+      return sin(ang*20.0 - p*26.0) * env;
+    }
+    void main(){
+      vec3 pn = normalize(position);
+      float rt = time * 0.17;
+      float rd = 0.0;
+      rd += rippleWave(pn, vec3( 0.82, 0.40, 0.41), rt, 0.00);
+      rd += rippleWave(pn, vec3(-0.65, 0.72, 0.25), rt, 0.20);
+      rd += rippleWave(pn, vec3( 0.15,-0.88, 0.45), rt, 0.40);
+      rd += rippleWave(pn, vec3(-0.50,-0.30, 0.81), rt, 0.60);
+      rd += rippleWave(pn, vec3( 0.30, 0.85,-0.43), rt, 0.80);
+      vec3 displaced = position + pn * rd * rippleStr * 0.38;
+      vPos = displaced;
+      vNormal = normalize(normalMatrix * normal);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
+    }
+  `,
+  fragmentShader:`
+    varying vec3 vPos; varying vec3 vNormal;
+    uniform float time, rippleStr;
+    float crestGlow(vec3 pn, vec3 c, float t, float off){
+      float p    = fract(t + off);
+      float cosA = clamp(dot(pn, normalize(c)), -1.0, 1.0);
+      float ang  = acos(cosA);
+      float env  = exp(-ang*1.5) * pow(max(0.0,1.0-p), 0.50);
+      return max(0.0, sin(ang*20.0 - p*26.0)) * env;
+    }
+    float hash(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
+    float noise(vec3 p){
+      vec3 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+      return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),u.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),u.x),u.y),
+                 mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),u.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),u.x),u.y),u.z);
+    }
+    float fbm(vec3 p){float v=0.,a=0.5;for(int i=0;i<7;i++){v+=a*noise(p);p*=2.1;a*=0.48;}return v;}
+    void main(){
+      vec3 p = vPos*4.5 + vec3(time*0.10, time*0.07, time*0.13);
+      vec3 q = vec3(fbm(p), fbm(p+vec3(5.2,1.3,2.8)), fbm(p+vec3(1.7,9.2,3.1)));
+      float n = fbm(p+0.5*q); n = pow(n,1.5); n = clamp(n*1.8+0.2,0.0,1.0);
+      float spot = fbm(vPos*2.8+vec3(time*0.018)); spot = smoothstep(0.62,0.45,spot); n *= 0.70+spot*0.30;
+      float limb = abs(dot(normalize(vNormal),vec3(0.0,0.0,1.0))); n *= 0.55+0.45*limb;
+      vec3 deep = vec3(0.22,0.04,0.0);
+      vec3 hot  = mix(vec3(1.0,0.88,0.08),vec3(1.0,0.15,0.03), n);
+      vec3 col  = mix(deep, hot, n);
+      col += smoothstep(0.68,1.0,n)*1.5*vec3(1.6,0.90,0.28);
+      if(rippleStr > 0.01){
+        vec3 rpn = normalize(vPos);
+        float rt = time * 0.17;
+        float rg = 0.0;
+        rg += crestGlow(rpn, vec3( 0.82, 0.40, 0.41), rt, 0.00);
+        rg += crestGlow(rpn, vec3(-0.65, 0.72, 0.25), rt, 0.20);
+        rg += crestGlow(rpn, vec3( 0.15,-0.88, 0.45), rt, 0.40);
+        rg += crestGlow(rpn, vec3(-0.50,-0.30, 0.81), rt, 0.60);
+        rg += crestGlow(rpn, vec3( 0.30, 0.85,-0.43), rt, 0.80);
+        col += rg * vec3(1.6,0.90,0.28) * 5.0 * rippleStr;
+      }
+      gl_FragColor = vec4(col,1.0);
+    }
+  `,
+});
+const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(SUN_R,64,64), sunMat);
+scene.add(sunMesh);
+
+// ── Sun ripple — a bright ring flash that expands out from the sun's surface
+// the instant each burst launches (reuses pulseLegStartT directly, so it
+// fires for Jupiter's launch, Saturn's, Uranus's, and the loop-back restart —
+// no separate tracking needed), reading as "the sun pinging out this pulse."
+// A flat disc lying in the orbital plane with the ring drawn procedurally in
+// the fragment shader by distance-from-center, so its radius can animate
+// every frame without touching geometry.
+const sunRippleMat = new THREE.ShaderMaterial({
+  uniforms:{ rippleR:{value:0}, rippleAlpha:{value:0} },
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, side:THREE.DoubleSide,
+  vertexShader:`
+    varying vec3 vPos;
+    void main(){ vPos = position; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }
+  `,
+  fragmentShader:`
+    uniform float rippleR, rippleAlpha;
+    varying vec3 vPos;
+    void main(){
+      // CircleGeometry's own local vertices lie in the XY plane (not XZ) —
+      // the mesh's rotation.x=-90° only rotates it into the world's flat
+      // orbital plane, it doesn't change what's authored in local space.
+      float r = length(vPos.xy);
+      float d = abs(r - rippleR);
+      // Bright cool white-hot, not the dust's own warm gold — the ripple
+      // needs to visually pop against the disc's tightly-packed bands
+      // (whose radii it will often coincide with), not blend into them.
+      float ring = 1.0 - smoothstep(0.0, 7.0, d);
+      float alpha = ring * rippleAlpha;
+      if(alpha < 0.01) discard;
+      gl_FragColor = vec4(vec3(0.95,0.98,1.0)*2.4, alpha);
+    }
+  `
+});
+const sunRippleMesh = new THREE.Mesh(new THREE.CircleGeometry(240, 96), sunRippleMat);
+sunRippleMesh.rotation.x = -Math.PI/2;
+sunRippleMesh.frustumCulled = false;
+scene.add(sunRippleMesh);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PULSE — a traveling wavefront, expanding outward from the sun as a ring of
+// flickering/sparking particles (not a smooth solid band), all the way out
+// to whichever planet is currently forming. The FIRST time it crosses that
+// planet's ring, formation triggers — but unlike a one-shot, it then keeps
+// repeating on a steady beat for as long as that planet is still forming, so
+// every single pulse (not just the first) is a full-strength wave that
+// actually shakes the accreting particles — there's no separate "lesser"
+// pulse anymore.
+// ═══════════════════════════════════════════════════════════════════════════
+// The pulse MUST repeat on an exact integer multiple of the sun's own ripple
+// period (stagger/rate, matching the rt=time*0.17 / off=i*0.2 constants in
+// sunMat above), or each launch drifts to a different phase of the sun's
+// ripple cycle — some land on a crest and read as synced, others land
+// mid-ripple and read as a skipped/late beat. This was the actual root cause
+// of the recurring "it still happens" skip — not a rendering pop. 2x the
+// ripple period (~2.35s) keeps these as full-strength waves (slower than the
+// light-twinkle ripple itself) while staying phase-locked to it.
+const SUN_RIPPLE_RATE = 0.17, SUN_RIPPLE_STAGGER = 0.2;
+const PULSE_REPEAT_PERIOD = 2 * (SUN_RIPPLE_STAGGER / SUN_RIPPLE_RATE); // ≈2.353s
+const PULSE_N = 700;
+const pulseGeo = new THREE.BufferGeometry();
+{
+  const dummyPos = new Float32Array(PULSE_N*3); // required 'position' attribute; real position is computed in the vertex shader from the attributes below
+  const ang  = new Float32Array(PULSE_N);
+  const rJit = new Float32Array(PULSE_N);
+  const yJit = new Float32Array(PULSE_N);
+  const seed = new Float32Array(PULSE_N);
+  for(let i=0;i<PULSE_N;i++){
+    ang[i]  = Math.random()*Math.PI*2;
+    rJit[i] = (Math.random()-0.5)*6.0;
+    yJit[i] = (Math.random()-0.5)*2.2;
+    seed[i] = Math.random();
+  }
+  pulseGeo.setAttribute('position', new THREE.BufferAttribute(dummyPos,3));
+  pulseGeo.setAttribute('aAngle', new THREE.BufferAttribute(ang,1));
+  pulseGeo.setAttribute('aRJit',  new THREE.BufferAttribute(rJit,1));
+  pulseGeo.setAttribute('aYJit',  new THREE.BufferAttribute(yJit,1));
+  pulseGeo.setAttribute('aSeed',  new THREE.BufferAttribute(seed,1));
+}
+const pulseMat = new THREE.ShaderMaterial({
+  uniforms:{ uPulseR:{value:0}, time:{value:0}, uEnvelope:{value:0}, uMouse:{value:new THREE.Vector3(9999,0,9999)} },
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  vertexShader:`
+    attribute float aAngle, aRJit, aYJit, aSeed;
+    uniform float uPulseR, time;
+    uniform vec3 uMouse;
+    varying float vFlicker;
+    varying float vPush;
+    float hash1(float n){ return fract(sin(n)*43758.5453); }
+    void main(){
+      float r = uPulseR + aRJit;
+      vec3 pos = vec3(r*cos(aAngle), aYJit, r*sin(aAngle));
+
+      // Same cursor-push cue as the dust disc — these are the particles
+      // visibly protruding outward from the sun as the wavefront travels, so
+      // they need to read as reacting to the cursor too, not just the belt.
+      float distToMouse = distance(pos.xz, uMouse.xz);
+      float influenceRadius = 16.0;
+      float push = smoothstep(influenceRadius, 0.0, distToMouse);
+      vec3 pushDir = vec3(pos.x - uMouse.x, 0.0, pos.z - uMouse.z);
+      float pushLen = length(pushDir);
+      pos += (pushLen > 0.0001 ? pushDir / pushLen : vec3(0.0)) * push * 9.0;
+      vPush = push;
+
+      // Quantized random flashes per particle, a few times a second — reads
+      // as sparking/crackling rather than a smooth pulsing glow.
+      float flashA = hash1(floor(time*6.0  + aSeed*97.0));
+      float flashB = hash1(floor(time*13.0 + aSeed*53.0) + 31.7);
+      vFlicker = max(pow(flashA,3.0), pow(flashB,4.0)*0.7);
+      vec4 mvPos = modelViewMatrix*vec4(pos,1.0);
+      gl_PointSize = clamp((2.5+aSeed*3.5)*640.0/-mvPos.z, 1.0, 9.0) * (1.0 + push*0.8);
+      gl_Position = projectionMatrix*mvPos;
+    }
+  `,
+  fragmentShader:`
+    uniform float uEnvelope;
+    varying float vFlicker;
+    varying float vPush;
+    void main(){
+      vec2 c = gl_PointCoord-0.5;
+      float d = length(c)*2.0;
+      if(d>1.0) discard;
+      float core  = smoothstep(0.6,0.0,d);
+      float alpha = core * vFlicker * uEnvelope * (1.0 + vPush*0.6);
+      if(alpha<0.01) discard;
+      vec3 col = mix(vec3(1.0,0.75,0.4), vec3(1.0,0.95,0.85), vFlicker);
+      gl_FragColor = vec4(col*1.4*(1.0+vPush*1.6), alpha);
+    }
+  `
+});
+const pulseMesh = new THREE.Points(pulseGeo, pulseMat);
+scene.add(pulseMesh);
+
+
+let pulseCycle = 0; // increments each time the pulse restarts
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SEQUENCER — planets form strictly in the order they were actually measured
+// to have formed (Jupiter, then Saturn, then Uranus — the giants formed
+// earliest, in roughly that order, well before the rocky inner planets).
+// Each planet gets its own dedicated pulse burst: the wavefront only travels
+// toward the CURRENT target's ring, and the next planet's burst only launches
+// once the current one has fully formed (plus a short hold beat) — a true
+// one-at-a-time chain rather than one continuous wave racing past every ring
+// at once (which let formation windows overlap and blurred the ordering).
+// ═══════════════════════════════════════════════════════════════════════════
+let pulseLegStartT = 0;       // T at which the current formation cycle's pulse started traveling from the sun
+let seqAdvanceAt = null;      // T at which to begin the hold-then-reset — set once Jupiter finishes forming
+// The actual reset (pulseLegStartT jump + re-scattering the dust) must NOT
+// happen at the arbitrary instant seqAdvanceAt is reached — that instant
+// lands in the middle of whatever pulse is currently mid-flight, snapping it
+// back to r=0 and immediately relaunching a new one (and resetting the
+// sun-flash the same way), which reads as "it repeats right after it just
+// pulsed." Instead we wait for the CURRENT pulse cycle to actually finish its
+// natural lap first — pendingLegBoundary is that next natural cycle-restart
+// timestamp, computed once seqAdvanceAt is reached, and the reset only
+// happens once T reaches it.
+let pendingLegBoundary = null;
+const HOLD_DURATION = 2.0;    // pause after Jupiter finishes forming, fully formed, before it dissolves back to dust and the loop restarts
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JUPITER — accretes from a full ring of dust at its orbital radius, not a
+// localized clump. Formation has two stages: particles first gather angularly
+// along the ring toward the formation point (from whichever direction is
+// shorter), then collapse radially inward into the planet.
+// ═══════════════════════════════════════════════════════════════════════════
+const JUP_N = 2200;
+const jupTargetPos = new THREE.Vector3(
+  JUPITER_R*Math.cos(JUPITER_ANGLE), 0, JUPITER_R*Math.sin(JUPITER_ANGLE)
+);
+const jupGeo = new THREE.BufferGeometry();
+const jupStartAngle = new Float32Array(JUP_N);
+const jupStartR     = new Float32Array(JUP_N);
+const jupStartY     = new Float32Array(JUP_N);
+const jupTarget     = new Float32Array(JUP_N*3);
+const jupUnit       = new Float32Array(JUP_N*3); // fibonacci-sphere unit vectors, reused by applyJupiterSize()
+const jupSeed       = new Float32Array(JUP_N);
+// Per-particle cursor-push amount, recomputed every frame in tick() alongside
+// the shake/clump displacement (this cluster's position is CPU-driven, not
+// shader-driven, so the interaction has to be computed here too instead of
+// in jupMat's vertex shader) and re-uploaded as a dynamic attribute purely to
+// drive the color/size brightening below.
+const jupPush = new Float32Array(JUP_N);
+// Particles are grouped into small clumps that each get ONE shared, strongly
+// visible drifting offset (computed once per clump per frame, not per
+// particle) — so groups of particles visibly swirl/stream/merge together as
+// distinct little swarms instead of each moving on its own. This is a much
+// bigger, more legible "particles affecting each other" cue than a subtle
+// per-particle noise-field tweak: you can actually see clumps of dust
+// pulling together and drifting as one instead of a uniform haze.
+const JUP_CLUMP_COUNT = 34;
+const jupClump = new Int32Array(JUP_N);
+const jupClumpOffsets = new Float32Array(JUP_CLUMP_COUNT*3); // refilled once per frame in tick()
+let JUP_CLUMP_AMP = 9.0; // world units — deliberately large relative to the ring's own ~7-unit scatter, so clumps visibly swirl and merge as groups, not a subtle nudge
+{
+  const pos = new Float32Array(JUP_N*3);
+  for(let i=0;i<JUP_N;i++){
+    jupClump[i] = i % JUP_CLUMP_COUNT;
+    // Scattered start: the FULL ring at Jupiter's radius, all the way around.
+    jupStartAngle[i] = Math.random()*Math.PI*2;
+    jupStartR[i]     = JUPITER_R + (Math.random()-0.5)*7;
+    jupStartY[i]     = (Math.random()-0.5)*2.2;
+
+    // Formation target: fibonacci sphere surface around the fixed ring point.
+    // Overscaled slightly vs. the solid mesh's true radius (JUP_GRID_OVERSCALE)
+    // because a point-cloud sphere reads visually smaller than a solid one —
+    // sprite density thins out toward the silhouette edge — so without this
+    // the solid mesh appears to "pop out beyond" the grid once it fades in.
+    // Unit vectors are stored so applyJupiterSize() can recompute jupTarget
+    // live when the size/overscale sliders move.
+    const gi = i + 0.5;
+    const phi = Math.acos(1 - 2*gi/JUP_N);
+    const theta = Math.PI * (1+Math.sqrt(5)) * gi;
+    const tx = Math.sin(phi)*Math.cos(theta), ty = Math.cos(phi), tz = Math.sin(phi)*Math.sin(theta);
+    jupUnit[i*3] = tx; jupUnit[i*3+1] = ty; jupUnit[i*3+2] = tz;
+
+    jupSeed[i] = Math.random();
+    pos[i*3]   = jupStartR[i]*Math.cos(jupStartAngle[i]);
+    pos[i*3+1] = jupStartY[i];
+    pos[i*3+2] = jupStartR[i]*Math.sin(jupStartAngle[i]);
+  }
+  jupGeo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  jupGeo.setAttribute('nSeed',    new THREE.BufferAttribute(jupSeed,1));
+  jupGeo.setAttribute('aPush',    new THREE.BufferAttribute(jupPush,1));
+}
+function lerpAngleShortest(a,b,t){
+  let d = (b-a) % (Math.PI*2);
+  if(d > Math.PI) d -= Math.PI*2;
+  if(d < -Math.PI) d += Math.PI*2;
+  return a + d*t;
+}
+const jupMat = new THREE.ShaderMaterial({
+  uniforms:{ formT:{value:0}, revealT:{value:0} },
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  vertexShader: HSL_GLSL + `
+    attribute float nSeed;
+    attribute float aPush;
+    uniform float formT, revealT;
+    varying vec3  vColor;
+    varying float vAlpha;
+    void main(){
+      float s = nSeed;
+      vec3 dustCol   = hsl2rgb(mix(0.09,0.13,fract(s*4.3)), 0.4, 0.65);
+      vec3 jupColBand= hsl2rgb(mix(0.09,0.11,fract(s*8.1)), 0.32, mix(0.55,0.85,step(0.5,fract(s*6.7))));
+      vColor = mix(dustCol, jupColBand, smoothstep(0.5,1.0,formT)) * (1.0 + aPush*1.8);
+      // Fades out against the solid's own materialize progress (revealT), not
+      // raw formT — so the particle swarm stays visible, converging and
+      // settling, for as long as the surface is still solidifying.
+      vAlpha = mix(0.7, 0.0, smoothstep(0.35,1.0,revealT));
+      vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = clamp((1.4+fract(s*3.0)*1.8)*640.0/-mvPos.z, 0.8, 8.0) * (1.0 + aPush*0.9);
+      gl_Position  = projectionMatrix * mvPos;
+    }
+  `,
+  fragmentShader:`
+    varying vec3  vColor;
+    varying float vAlpha;
+    void main(){
+      if(vAlpha < 0.004) discard;
+      vec2  c = gl_PointCoord - 0.5;
+      float d = length(c) * 2.0;
+      if(d > 1.0) discard;
+      float alpha = smoothstep(0.55,0.0,d) * vAlpha;
+      if(alpha < 0.003) discard;
+      gl_FragColor = vec4(vColor, alpha);
+    }
+  `
+});
+const jupPoints = new THREE.Points(jupGeo, jupMat);
+scene.add(jupPoints);
+
+// Solid planet mesh — index.html's ACTUAL in-scene Jupiter material
+// (pData[4] there: r:1.10, ei:0.04, rgh:0.50, met:0.02, em:0x201008,
+// bumpScale:0.8 — the wide-shot orbiting-body tuning, not planet.html's
+// close-up-detail-page tuning, since this scene matches index's own
+// establishing-shot framing). Same texture, same emissive/roughness/bump.
+// Lighting ported verbatim from index.html's own solar-system scene — the
+// tuned values that made its planets actually look right, not a guess.
+const sunLight = new THREE.PointLight(0xfff4e0, 14.0, 600);
+scene.add(sunLight); // positioned at the sun's origin, matching index.html exactly
+// Ambient + rimB raised well above index.html's original values — at this
+// close-up formation-test scale, index.html's barely-there fill left the far
+// hemisphere almost pure black once the solid planet revealed, reading as a
+// hard binary "divided" sphere instead of a softly shaded one. Not meant to
+// be physically accurate, just to keep the night side visibly textured.
+scene.add(new THREE.AmbientLight(0x151022, 1.1));
+const rimA = new THREE.DirectionalLight(0x112244, 0.35);
+rimA.position.set(-100, 50, -80);
+scene.add(rimA);
+const rimB = new THREE.DirectionalLight(0x4a2c1c, 0.65);
+rimB.position.set(80, -40, 100);
+scene.add(rimB);
+
+function setAniso(tex){ tex.anisotropy = 16; return tex; }
+
+const jupSolidGroup = new THREE.Group();
+jupSolidGroup.position.copy(jupTargetPos);
+scene.add(jupSolidGroup);
+
+// Recomputes everything that depends on JUPITER_SIZE / JUP_GRID_OVERSCALE —
+// called once at startup and again whenever the size/overscale sliders move.
+function applyJupiterSize(){
+  jupSolidGroup.scale.setScalar(JUPITER_SIZE); // base sphere radius 1 -> JUPITER_SIZE
+  const gridR = JUPITER_SIZE * JUP_GRID_OVERSCALE;
+  for(let i=0;i<JUP_N;i++){
+    jupTarget[i*3]   = jupTargetPos.x + jupUnit[i*3]  *gridR;
+    jupTarget[i*3+1] = jupTargetPos.y + jupUnit[i*3+1]*gridR;
+    jupTarget[i*3+2] = jupTargetPos.z + jupUnit[i*3+2]*gridR;
+  }
+}
+applyJupiterSize();
+
+// A 1x1 placeholder map is set from the start (not just once the real texture
+// loads) so USE_MAP is defined on the very first shader compile — otherwise
+// three.js never declares the `vUv` varying the dissolve/living-texture code
+// below reads, and the fragment shader fails to compile (mesh silently
+// renders nothing) until the async texture load triggers a recompile.
+const jupPlaceholderTex = new THREE.DataTexture(new Uint8Array([255,255,255,255]), 1, 1, THREE.RGBAFormat);
+jupPlaceholderTex.needsUpdate = true;
+const jupSolidMat = new THREE.MeshStandardMaterial({
+  color: 0xffffff,
+  map: jupPlaceholderTex,
+  emissive: new THREE.Color(0x201008), emissiveIntensity: 0.04,
+  roughness: 0.50, metalness: 0.02, bumpScale: 0.8,
+  transparent:true, opacity:1,
+});
+// Materialize dissolve: the texture solidifies across the sphere in an
+// organic, flowing blob pattern (fbm noise field animated over time) with a
+// warm molten edge glow riding the growing boundary, instead of a flat
+// opacity fade. uReveal/uTime are pushed in from tick() each frame.
+//
+// Living surface: the UV used for both the color map and bump map is drifted
+// in the vertex shader by a zonal-jet flow field — different latitude bands
+// scroll horizontally at different speeds, plus a slow turbulent swirl — so
+// the texture itself is never static, before or after formation.
+let jupiterShaderRef = null;
+jupSolidMat.onBeforeCompile = (shader) => {
+  shader.uniforms.uReveal = { value: 0 };
+  shader.uniforms.uTime   = { value: 0 };
+  jupiterShaderRef = shader;
+  shader.vertexShader = `
+    uniform float uTime;
+    float vjhash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+    float vjnoise(vec2 p){
+      vec2 i=floor(p), f=fract(p);
+      float a=vjhash(i), b=vjhash(i+vec2(1.0,0.0)), c=vjhash(i+vec2(0.0,1.0)), d=vjhash(i+vec2(1.0,1.0));
+      vec2 u=f*f*(3.0-2.0*f);
+      return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);
+    }
+  ` + shader.vertexShader;
+  shader.vertexShader = shader.vertexShader.replace(
+    '#include <uv_vertex>',
+    `#include <uv_vertex>
+    {
+      float lat = uv.y - 0.5;
+      // Damps the drift to zero at the poles — without this, any horizontal
+      // UV drift spins infinitely fast right at the pole singularity (u wraps
+      // a full turn over zero physical distance), reading as a spiral pinch.
+      float poleDamp = cos(lat*3.14159265);
+      float jet = sin(lat*22.0)*0.5 + 0.5;
+      // Oscillates back and forth instead of drifting forever in one
+      // direction — an unbounded drift eventually wraps the texture across
+      // its own non-seamless edge (the real photo doesn't tile), showing up
+      // as a hard seam. Staying within a small bounded range never reaches it.
+      float driftX = sin(uTime*mix(0.35,0.55,jet) + lat*30.0) * mix(0.014,0.022,jet) * poleDamp;
+      float swirl = (vjnoise(vec2(uv.x*5.0 + uTime*0.06, uv.y*9.0 - uTime*0.04)) - 0.5) * poleDamp;
+      vUv += vec2(driftX, swirl*0.004);
+    }`
+  );
+  shader.fragmentShader = `
+    uniform float uReveal;
+    uniform float uTime;
+    float jhash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+    float jnoise(vec2 p){
+      vec2 i=floor(p), f=fract(p);
+      float a=jhash(i), b=jhash(i+vec2(1.0,0.0)), c=jhash(i+vec2(0.0,1.0)), d=jhash(i+vec2(1.0,1.0));
+      vec2 u=f*f*(3.0-2.0*f);
+      return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);
+    }
+    float jfbm(vec2 p){
+      float v=0.0, amp=0.55;
+      for(int i=0;i<4;i++){ v+=amp*jnoise(p); p*=2.05; amp*=0.55; }
+      return v;
+    }
+  ` + shader.fragmentShader;
+  shader.fragmentShader = shader.fragmentShader.replace(
+    '#include <map_fragment>',
+    `#include <map_fragment>
+    {
+      float dn = min(jfbm(vUv*7.0 + vec2(uTime*0.05, -uTime*0.035)), 0.9); // clamped: jfbm can theoretically sum past 1.0, and the uReveal band (max 1.0+0.06) can never reach values above ~0.94 -- those fragments would otherwise never fully solidify even at full reveal
+      float edge = smoothstep(uReveal-0.07, uReveal, dn) - smoothstep(uReveal, uReveal+0.07, dn);
+      diffuseColor.rgb += edge * vec3(1.6,1.0,0.5) * 1.5;
+      float solidMask = 1.0 - smoothstep(uReveal-0.06, uReveal+0.06, dn);
+      diffuseColor.a *= solidMask;
+
+      // Sparkle field over the not-yet-solid region — a sparse scatter of
+      // bright, flickering points instead of flat transparency, so the gaps
+      // read as glinting particles about to settle rather than a dark "hole"
+      // or shadow sweeping across the surface.
+      float notYetSolid = 1.0 - solidMask;
+      float sparkleField   = jnoise(vUv*260.0 + vec2(37.0,91.0));
+      float sparkleFlicker = jnoise(vUv*41.0 + vec2(uTime*2.6, -uTime*1.9));
+      float sparkle = step(0.986, sparkleField) * step(0.55, sparkleFlicker) * notYetSolid;
+      diffuseColor.rgb += sparkle * vec3(1.7,1.3,0.8) * 2.2;
+      diffuseColor.a = max(diffuseColor.a, sparkle * 0.85);
+    }`
+  );
+};
+const jupSolidMesh = new THREE.Mesh(new THREE.SphereGeometry(1,64,64), jupSolidMat);
+jupSolidMesh.frustumCulled = false; // group scale + async texture swap was letting this get culled out before ever compiling — cheap to always draw at this scale
+jupSolidGroup.add(jupSolidMesh);
+{
+  const loader = new THREE.TextureLoader();
+  loader.load(
+    'textures/tex_jupiter.jpg',
+    tex => {
+      setAniso(tex);
+      tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+      jupSolidMat.map = tex; jupSolidMat.bumpMap = tex; jupSolidMat.needsUpdate = true;
+    },
+    undefined,
+    err => {
+      document.body.innerHTML += `<div style="position:fixed;bottom:60px;left:20px;right:20px;background:#1a0000;color:#ff8080;font-family:monospace;font-size:12px;padding:16px;z-index:9999;border:1px solid #660000;">Jupiter texture FAILED to load: ${err}</div>`;
+    }
+  );
+}
+const jupAtmoMat = new THREE.ShaderMaterial({
+  uniforms:{ reveal:{value:0} },
+  vertexShader:`varying vec3 vN; void main(){ vN=normalize(normalMatrix*normal); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader:`varying vec3 vN; uniform float reveal;
+    void main(){ float i=pow(0.65-dot(vN,vec3(0,0,1.0)),3.0); gl_FragColor=vec4(1.0,0.82,0.55,clamp(i,0.0,1.0)*0.45*reveal); }`,
+  blending:THREE.AdditiveBlending, side:THREE.BackSide, transparent:true,
+});
+const jupAtmoMesh = new THREE.Mesh(new THREE.SphereGeometry(1.03,48,48), jupAtmoMat);
+jupAtmoMesh.frustumCulled = false;
+jupSolidGroup.add(jupAtmoMesh);
+
+let jupFormTriggerTime = null;
+const JUP_ORBIT_SPEED = 0.10; // rad/sec, applied only once formed
+
+
+// ── Render loop ────────────────────────────────────────────────────────────
+const startTime = performance.now();
+let paused = false;
+const phaseLabel = document.getElementById('phaseLabel');
+const valT = document.getElementById('valT');
+const valPulseR = document.getElementById('valPulseR');
+
+const jupSizeSlider = document.getElementById('jupSizeSlider');
+const valJupSize = document.getElementById('valJupSize');
+jupSizeSlider.addEventListener('input', ()=>{
+  JUPITER_SIZE = parseFloat(jupSizeSlider.value);
+  valJupSize.textContent = JUPITER_SIZE.toFixed(1);
+  applyJupiterSize();
+});
+const gridOverscaleSlider = document.getElementById('gridOverscaleSlider');
+const valGridOverscale = document.getElementById('valGridOverscale');
+gridOverscaleSlider.addEventListener('input', ()=>{
+  JUP_GRID_OVERSCALE = parseFloat(gridOverscaleSlider.value);
+  valGridOverscale.textContent = JUP_GRID_OVERSCALE.toFixed(2);
+  applyJupiterSize();
+});
+
+function wireSlider(id, valId, onChange, fmt){
+  const el = document.getElementById(id);
+  const out = document.getElementById(valId);
+  el.addEventListener('input', ()=>{
+    const v = parseFloat(el.value);
+    onChange(v);
+    out.textContent = fmt ? fmt(v) : v;
+  });
+}
+wireSlider('formDurSlider','valFormDur', v=>{ JUP_FORM_DURATION=v; }, v=>v.toFixed(1)+'s');
+wireSlider('gatherEndSlider','valGatherEnd', v=>{ GATHER_END=v/100; }, v=>v.toFixed(0));
+wireSlider('collapseStartSlider','valCollapseStart', v=>{ COLLAPSE_START=v/100; }, v=>v.toFixed(0));
+wireSlider('collapseEndSlider','valCollapseEnd', v=>{ COLLAPSE_END=v/100; }, v=>v.toFixed(0));
+wireSlider('revealStartSlider','valRevealStart', v=>{ REVEAL_START=v/100; }, v=>v.toFixed(0));
+wireSlider('revealDurSlider','valRevealDur', v=>{ REVEAL_DURATION=v; }, v=>v.toFixed(1)+'s');
+wireSlider('shakeSlider','valShake', v=>{ SHAKE_INTENSITY=v; }, v=>v.toFixed(1));
+wireSlider('preShakeSlider','valPreShake', v=>{ PRE_TRIGGER_SHAKE=v/100; }, v=>v.toFixed(0));
+wireSlider('onsetSharpSlider','valOnsetSharp', v=>{ HIT_ONSET_SHARPNESS=v/100; }, v=>v.toFixed(0));
+wireSlider('coherenceSlider','valCoherence', v=>{ PARTICLE_COHERENCE=v/100; }, v=>v.toFixed(0));
+
+
+// Resets Jupiter back to scattered ring dust — shared by the manual restart
+// button and the loop's own automatic reset once the post-formation hold
+// finishes (see HOLD_DURATION in tick()). Does NOT touch pulseLegStartT or
+// cycleStartTime — callers decide those since the button and the auto-loop
+// want slightly different behavior around them.
+//
+// Also resets jupSolidGroup's position back to the fixed formation point —
+// the group drifts along its orbit for as long as the planet stays formed
+// (see the orbit-motion block in tick()), and without this reset the solid
+// mesh would reappear wherever it last drifted to instead of back at the
+// point the dust is actually converging on, a real mismatch that's easy to
+// miss in the 3-planet sequence (Jupiter's mesh has a full Saturn+Uranus
+// lap's worth of near-invisible fade-out to cover the jump) but reads as an
+// obvious pop/snap here, where every single repeat is that same loop-back.
+function resetJupiter(){
+  jupFormTriggerTime = null;
+  if(jupiterShaderRef) jupiterShaderRef.uniforms.uReveal.value = 0;
+  jupAtmoMat.uniforms.reveal.value = 0;
+  jupMat.uniforms.formT.value = 0;
+  jupMat.uniforms.revealT.value = 0;
+  jupSolidGroup.position.copy(jupTargetPos);
+  const pos = jupGeo.attributes.position;
+  for(let i=0;i<JUP_N;i++){
+    pos.array[i*3]   = jupStartR[i]*Math.cos(jupStartAngle[i]);
+    pos.array[i*3+1] = jupStartY[i];
+    pos.array[i*3+2] = jupStartR[i]*Math.sin(jupStartAngle[i]);
+  }
+  pos.needsUpdate = true;
+}
+
+document.getElementById('restartBtn').addEventListener('click', ()=>{
+  pulseCycle++;
+  resetJupiter();
+  seqAdvanceAt = null;
+  pendingLegBoundary = null;
+  cycleStartTime = performance.now();
+  pulseLegStartT = 0; // T resets to ~0 alongside cycleStartTime, so the leg start is also ~0
+});
+let cycleStartTime = startTime;
+
+function tick(){
+  requestAnimationFrame(tick);
+  const now = performance.now();
+  const T = (now - cycleStartTime) / 1000;
+  const globalT = (now - startTime) / 1000;
+
+  applyCamera();
+  discMat.uniforms.time.value = globalT;
+  sunMat.uniforms.time.value  = globalT;
+  RINGS.forEach(ring => { ringMeshes[ring.name].flickerMesh.material.uniforms.time.value = globalT; });
+
+  // Reproject the cursor onto the orbital plane every frame (not just on
+  // mousemove) so the interaction point stays correct as the camera orbits
+  // even without new mouse movement — same approach as index.html's belt.
+  if(mouseInScene){
+    raycaster.setFromCamera(mouseNDC, camera);
+    const hit = new THREE.Vector3();
+    if(raycaster.ray.intersectPlane(interactionPlane, hit)) interactionPoint.copy(hit);
+  } else {
+    interactionPoint.set(9999, 0, 9999);
+  }
+  discMat.uniforms.uMouse.value.copy(interactionPoint);
+  pulseMat.uniforms.uMouse.value.copy(interactionPoint);
+
+  // pr is relative to the CURRENT leg only — it resets to 0 each time a new
+  // planet's burst launches (pulseLegStartT) — but within a leg it now
+  // REPEATS every PULSE_REPEAT_PERIOD seconds (phase 0->1 maps to 0->legTarget)
+  // instead of growing once and stopping, so every single wave is a full
+  // trip out to the target, not just the first one that triggers formation.
+  // Snaps to full brightness the instant each cycle starts (no fade-in ramp)
+  // so it can't read as lagging — only fades on the way out, right before
+  // the next cycle begins.
+  const legTarget = JUPITER_R;
+  const prPhase = ((T - pulseLegStartT) % PULSE_REPEAT_PERIOD) / PULSE_REPEAT_PERIOD;
+  const pr = prPhase * legTarget;
+  // fadeIn ramps in over distance PAST the sun's own radius (not a fixed
+  // time), so the ring only ever becomes visible once it's genuinely cleared
+  // the sun's surface — otherwise it starts at r=0, INSIDE the sun's own
+  // sphere, and "pops" into view a moment later right as it exits the sun's
+  // silhouette, which reads as a visible skip/glitch every single cycle.
+  const fadeIn  = smoothstep((pr - SUN_R) / 8.0);
+  const fadeOut = 1 - smoothstep((prPhase-0.75)/0.25);
+  pulseMat.uniforms.uPulseR.value   = pr;
+  pulseMat.uniforms.time.value      = globalT;
+  pulseMat.uniforms.uEnvelope.value = fadeIn * fadeOut;
+  discMat.uniforms.uPulseR.value = pr;
+  discMat.uniforms.uEnvelope.value = fadeIn * fadeOut;
+
+  // Sun ripple flash — fires at the start of every repeat, right as pr
+  // resets to ~0, so the sun visibly "sends" each and every wave, not just
+  // the first one per leg. Fade duration kept shorter than the repeat period
+  // so each flash fully clears before the next one begins. Same fadeIn fix
+  // as the pulse ring: it starts at r=0 (inside the sun), so without a
+  // radius-based fade-in it's at FULL brightness the instant it resets,
+  // which is its own separate "pop" glitch right at the sun's surface.
+  const RIPPLE_FADE_DURATION = 1.9;
+  const rippleAge = (T - pulseLegStartT) % PULSE_REPEAT_PERIOD;
+  const rippleR = rippleAge * (legTarget/PULSE_REPEAT_PERIOD);
+  const rippleFadeIn = smoothstep((rippleR - SUN_R) / 8.0);
+  sunRippleMat.uniforms.rippleR.value     = rippleR;
+  sunRippleMat.uniforms.rippleAlpha.value = rippleFadeIn * Math.max(0, 1 - smoothstep(rippleAge/RIPPLE_FADE_DURATION));
+
+  // Triggers once the traveling wave is JUP_REACT_LEAD units short of the
+  // ring — not once it fully arrives — so the shake (already audibly/
+  // visibly climbing at this distance, see JUP_REACT_LEAD above) and the
+  // start of gather/collapse land on the same moment instead of the shake
+  // getting a head start. Checked directly against pr (which climbs
+  // monotonically from 0 within each leg before wrapping via modulo) rather
+  // than elapsed time, so it fires exactly once per leg at that distance.
+  if(jupFormTriggerTime === null && pr >= legTarget - JUP_REACT_LEAD){
+    jupFormTriggerTime = T;
+  }
+
+  let phase = 'disc forming';
+  if(pr > 2 && pr < JUPITER_R) phase = 'pulse traveling outward';
+
+  // Same shockwave-shake as the main disc shader, computed here in JS since
+  // this cluster's position is already CPU-driven for the accretion lerp —
+  // fades out as formT commits so the shake hands off into the converge
+  // instead of fighting it.
+  // Raw linear elapsed-fraction, NOT smoothstepped — formT used to be
+  // smoothstep()'d here, which on its own has zero velocity at t=0 (that's
+  // what makes it an "ease-in"). gatherT/collapseT below then applied a
+  // SECOND smoothstep on top of that already-flat-started value, compounding
+  // the flatness (closer to quartic than quadratic near zero) — the belt's
+  // reaction technically began the instant it triggered, but its velocity
+  // was near-zero for the first several frames, reading as "a slight delay
+  // right at the moment it's hit." formT is now the single raw source of
+  // truth for elapsed progress; downstream consumers apply their own easing
+  // exactly once instead of compounding on an already-eased curve. This
+  // doesn't shift WHEN formation completes (smoothstep(0)=0/smoothstep(1)=1
+  // either way) — only how fast the motion starts.
+  const formT = jupFormTriggerTime !== null
+    ? clamp((T - jupFormTriggerTime) / JUP_FORM_DURATION, 0, 1) : 0;
+  if(jupFormTriggerTime !== null) phase = formT < 1 ? 'Jupiter accreting' : 'Jupiter settled into orbit';
+  if(formT>=1 && seqAdvanceAt===null) seqAdvanceAt = T + HOLD_DURATION;
+  if(seqAdvanceAt!==null && pendingLegBoundary===null && T>=seqAdvanceAt){
+    const cyclesElapsed = Math.ceil((T - pulseLegStartT) / PULSE_REPEAT_PERIOD);
+    pendingLegBoundary = pulseLegStartT + cyclesElapsed * PULSE_REPEAT_PERIOD;
+  }
+  if(pendingLegBoundary!==null && T>=pendingLegBoundary){
+    resetJupiter();
+    pulseLegStartT = pendingLegBoundary; // pulse timing stays continuous across the loop-back, no jump/skip
+    seqAdvanceAt = null;
+    pendingLegBoundary = null;
+  }
+  // pr now repeats every PULSE_REPEAT_PERIOD, so this same shockwave-shake
+  // naturally recurs on every pulse — no separate weaker "heartbeat" needed.
+  const distToFront = Math.abs(JUPITER_R - pr);
+  const shakeEnv = Math.exp(-(distToFront*distToFront) / (2*10*10));
+  // Taper against the COLLAPSE window, not raw formT — otherwise once the
+  // shape finishes condensing early (by COLLAPSE_END) it keeps getting
+  // jostled at near-full strength for the rest of the long formation
+  // duration, since formT itself is still far from 1 at that point. That
+  // read as "triggers but doesn't condense fluidly" — the shape snaps into
+  // place but then visibly jitters instead of settling.
+  // preTriggerGate scales the pre-formation jostle. PRE_TRIGGER_SHAKE
+  // defaults to 1.0 (full) so the belt reacts to the passing wavefront the
+  // same way every other ring in the disc does — continuously, before,
+  // during, and after the exact trigger instant — rather than sitting dead
+  // calm until formation starts. Turn it down toward 0 to go back to the
+  // "sits still through the approach, then gathers/collapses/shakes as one
+  // event" feel from an earlier pass.
+  const preTriggerGate = jupFormTriggerTime !== null ? 1.0 : PRE_TRIGGER_SHAKE;
+  const shakeAmp = shakeEnv * SHAKE_INTENSITY * preTriggerGate * (1 - smoothstep(formT / Math.max(0.001, COLLAPSE_END)));
+
+  // Two-stage accretion: gather angularly along the ring toward the formation
+  // point (from whichever direction is shorter), then collapse radially
+  // inward into the sphere. The stages overlap slightly for a smooth handoff.
+  // Eased via a smoothstep/easeSnap blend (HIT_ONSET_SHARPNESS) rather than
+  // raw smoothstep alone, so the reaction can have real velocity right at
+  // the hit instead of easing in from a standstill.
+  const ease = x => lerp(smoothstep(x), easeSnap(x), HIT_ONSET_SHARPNESS);
+  const gatherT   = ease(formT / Math.max(0.001, GATHER_END));
+  const collapseT = ease((formT - COLLAPSE_START) / Math.max(0.001, (COLLAPSE_END - COLLAPSE_START)));
+  // Clump motion — the actual "particles visibly affect each other" driver.
+  // One shared offset per clump (computed once per clump here, not per
+  // particle), so every particle in that clump gets pulled the same
+  // direction at the same time: whole little swarms of dust visibly drift,
+  // swirl and merge together rather than each particle moving on its own.
+  // Active across the WHOLE gather/collapse journey (envelope keyed to
+  // collapseT, not to the narrow passing-wavefront shake window), so it's
+  // visible for the full ~2s convergence, not a brief flash near the end —
+  // and fades to exactly 0 right as each particle reaches its real target,
+  // so the settled sphere doesn't keep wobbling.
+  const clumpEnv = jupFormTriggerTime !== null ? (1 - collapseT) : 0;
+  for(let c=0;c<JUP_CLUMP_COUNT;c++){
+    turbulenceJS(c*23.7, c*31.1, c*17.3, globalT*0.4, _turbScratch);
+    jupClumpOffsets[c*3]   = _turbScratch[0]*JUP_CLUMP_AMP*clumpEnv;
+    jupClumpOffsets[c*3+1] = _turbScratch[1]*JUP_CLUMP_AMP*clumpEnv;
+    jupClumpOffsets[c*3+2] = _turbScratch[2]*JUP_CLUMP_AMP*clumpEnv;
+  }
+
+  const posAttr = jupGeo.attributes.position;
+  const pushAttr = jupGeo.attributes.aPush;
+  const cohOffset = lerp(40.0, 2.0, PARTICLE_COHERENCE);
+  const INTERACT_RADIUS = 16.0, INTERACT_PUSH = 9.0;
+  for(let i=0;i<JUP_N;i++){
+    const s = jupSeed[i];
+    const angle = lerpAngleShortest(jupStartAngle[i], JUPITER_ANGLE, gatherT);
+    const ringR = lerp(jupStartR[i], JUPITER_R, gatherT);
+    const ringX = ringR*Math.cos(angle);
+    const ringY = lerp(jupStartY[i], 0, gatherT);
+    const ringZ = ringR*Math.sin(angle);
+    const bx = lerp(ringX, jupTarget[i*3],   collapseT);
+    const by = lerp(ringY, jupTarget[i*3+1], collapseT);
+    const bz = lerp(ringZ, jupTarget[i*3+2], collapseT);
+    turbulenceJS(bx+s*cohOffset, by+s*cohOffset, bz+s*cohOffset, globalT, _turbScratch);
+    const cid = jupClump[i]*3;
+    const px = bx + _turbScratch[0]*shakeAmp + jupClumpOffsets[cid];
+    const py = by + _turbScratch[1]*shakeAmp + jupClumpOffsets[cid+1];
+    const pz = bz + _turbScratch[2]*shakeAmp + jupClumpOffsets[cid+2];
+
+    // Same cursor-push cue as the belt/beam — this precursor cluster IS the
+    // asteroid belt for the purposes of this test, so it needs to visibly
+    // deflect around the pointer too, not just settle/shake on its own.
+    const pdx = px - interactionPoint.x, pdz = pz - interactionPoint.z;
+    const distToMouse = Math.hypot(pdx, pdz);
+    const push = smoothstep(1 - distToMouse / INTERACT_RADIUS);
+    const invLen = distToMouse > 0.0001 ? 1/distToMouse : 0;
+    posAttr.array[i*3]   = px + pdx*invLen*push*INTERACT_PUSH;
+    posAttr.array[i*3+1] = py;
+    posAttr.array[i*3+2] = pz + pdz*invLen*push*INTERACT_PUSH;
+    pushAttr.array[i] = push;
+  }
+  posAttr.needsUpdate = true;
+  pushAttr.needsUpdate = true;
+  jupMat.uniforms.formT.value = formT;
+
+  // The reveal STARTS once collapse is nearly done (anchored to the collapse
+  // window, not raw formT, so the solid can never appear before the particle
+  // cloud has actually finished converging) — but how long it then takes to
+  // fully materialize is its own real-seconds duration (REVEAL_DURATION),
+  // independent of JUP_FORM_DURATION, so it can be slowed down on its own.
+  const revealStartFormT = COLLAPSE_START + REVEAL_START*(COLLAPSE_END-COLLAPSE_START);
+  const revealStartLoopT = revealStartFormT * JUP_FORM_DURATION;
+  const tSinceForm = jupFormTriggerTime !== null ? (T - jupFormTriggerTime) : 0;
+  const revealT = smoothstep((tSinceForm - revealStartLoopT) / Math.max(0.001, REVEAL_DURATION));
+  if(jupiterShaderRef){
+    jupiterShaderRef.uniforms.uReveal.value = revealT;
+    jupiterShaderRef.uniforms.uTime.value   = globalT;
+  }
+  jupAtmoMat.uniforms.reveal.value = revealT;
+  jupMat.uniforms.revealT.value = revealT;
+
+  // The ring only reveals itself once its planet has actually formed.
+  {
+    const rm = ringMeshes['Jupiter'];
+    const reveal = smoothstep((formT-0.7)/0.3);
+    rm.flickerMesh.material.uniforms.opacity.value = rm.baseOpacity * reveal;
+    rm.haloMesh.material.opacity = 0.065 * reveal;
+  }
+
+  if(formT >= 1){
+    const orbitT = T - jupFormTriggerTime - JUP_FORM_DURATION;
+    const a = JUPITER_ANGLE + orbitT * JUP_ORBIT_SPEED;
+    jupSolidGroup.position.set(JUPITER_R*Math.cos(a), 0, JUPITER_R*Math.sin(a));
+    jupSolidMesh.rotation.y += 0.004;
+  }
+
+  phaseLabel.textContent = phase;
+  valT.textContent = T.toFixed(1)+'s';
+  valPulseR.textContent = pr.toFixed(0);
+
+  sph.r     += (sphTarget.r-sph.r)*0.08;
+  sph.theta += (sphTarget.theta-sph.theta)*0.08;
+  sph.phi   += (sphTarget.phi-sph.phi)*0.08;
+
+  renderer.render(scene, camera);
+}
+tick();
+</script>
+</body>
+</html>

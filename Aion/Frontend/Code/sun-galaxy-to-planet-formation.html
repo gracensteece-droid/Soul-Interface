@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Soul Interface — The Origin (with Nebula Intro)</title>
+<title>Soul Interface — Sun/Galaxy to Planet Formation</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;background:#000;overflow:hidden}
@@ -195,7 +195,7 @@ document.body.appendChild(transportEl);
 // Each row's 🔁 loops playback within that group's own window — same loopGroupName
 // state as the Controls popout, so toggling it here or there stays in sync.
 const STATUS_ROWS = [
-  { name:'Playback',      flag:'true',           text:()=>`0–90s      — always on` },
+  { name:'Playback',      flag:'true',           text:()=>`0–${RING_FORM_END}s     — always on` },
   { name:'Nebula',        flag:'fine',           text:f=>`~14–74s    — fine-spiral particles${f.fine?'':'  (inert now)'}` },
   { name:'Collapse',      flag:'cloud',          text:f=>`~12–74s    — cloud-puff warmBias only${f.cloud?'':'  (inert now)'}; brightMult ⚠ unwired` },
   { name:'CollapseCloud', flag:'collapseShape',  text:f=>`56–74s     — shape/color during collapse${f.collapseShape?'':'  (inert now)'}` },
@@ -203,6 +203,8 @@ const STATUS_ROWS = [
   { name:'ExplosionBall', flag:'ignite',         text:f=>`74–${(74+tVals.igniteDuration).toFixed(1)}s  — flash/sun ripple shape${f.ignite?'':'  (inert now)'}` },
   { name:'Sun',           flag:'sun',            text:f=>`74–90s     — hueMode + corona${f.sun?'':'  (inert now)'}` },
   { name:'Galaxy disc',   flag:'galaxy',         text:f=>`${(74+tVals.igniteDuration).toFixed(1)}–90s — disc formation${f.galaxy?'':'  (inert now)'}`, noLoop:true },
+  { name:'Ring form',     flag:'ringForm',       text:f=>`${T_GALAXY_END}–${RING_FORM_END}s   — spiral → rings, camera drift, sun freeze${f.ringForm?'':'  (inert now)'}`, noLoop:true },
+  { name:'Accretion',     flag:'accretion',      text:f=>`${RING_FORM_END}s+   — beam forms Jupiter${f.accretion?`; ${accretionPhaseLabel}`:'  (inert now)'}`, noLoop:true },
 ];
 
 const statusEl = document.createElement('div');
@@ -1005,9 +1007,11 @@ function updateClock(T, paused, igniteDur){
     T < 12              ? 'Void' :
     T < 56              ? 'Nebula' :
     T < 74              ? 'Collapse' :
-    T < 74 + igniteDur  ? 'Ignition' : 'Galaxy';
-  const pct = Math.min(100, (T / 90) * 100).toFixed(0);
-  clockEl.textContent = `${T.toFixed(1)}s  /  90s   [${phase}]   ${pct}%   ${paused ? '⏸' : '▶'}`;
+    T < 74 + igniteDur  ? 'Ignition' :
+    T < T_GALAXY_END    ? 'Galaxy' :
+    T < RING_FORM_END   ? 'Ring form' : accretionPhaseLabel;
+  const pct = Math.min(100, (T / RING_FORM_END) * 100).toFixed(0);
+  clockEl.textContent = `${T.toFixed(1)}s  /  ${RING_FORM_END}s   [${phase}]   ${pct}%   ${paused ? '⏸' : '▶'}`;
 }
 
 // ── Play / Pause ──────────────────────────────────────────────────────────────
@@ -1065,11 +1069,18 @@ window.addEventListener('keydown', e => {
   }
   if (e.code === 'KeyR') resetScene();
   if (e.code === 'ArrowLeft')  { paused = true; T = Math.max(0,  T - 1); }
-  if (e.code === 'ArrowRight') { paused = true; T = Math.min(90, T + 1); }
+  if (e.code === 'ArrowRight') { paused = true; T = T + 1; }
 });
 
 let drag=false, prev={x:0,y:0};
-canvas.addEventListener('mousedown', e=>{ drag=true; prev={x:e.clientX,y:e.clientY}; });
+// Once the user manually orbits or zooms, the scripted camera drift (the
+// post-ignition gtCurve-based r/phi creep, and the ring-formation r/phi/fov
+// lerp) needs to stop fighting them — it was overriding sphTarget.r/phi
+// unconditionally every frame, so any manual adjustment got silently undone
+// on the very next frame. Once this flips true, all of that scripted drift
+// is skipped for the rest of the session — manual control just sticks.
+let userCameraControl = false;
+canvas.addEventListener('mousedown', e=>{ drag=true; userCameraControl=true; prev={x:e.clientX,y:e.clientY}; });
 window.addEventListener('mouseup', ()=>drag=false);
 window.addEventListener('mousemove', e=>{
   if(!drag) return;
@@ -1079,7 +1090,8 @@ window.addEventListener('mousemove', e=>{
   sph.theta=sphTarget.theta; sph.phi=sphTarget.phi;
 });
 window.addEventListener('wheel', e=>{
-  sphTarget.r = clamp(sphTarget.r+e.deltaY*0.20, 50, 700);
+  userCameraControl = true;
+  sphTarget.r = clamp(sphTarget.r+e.deltaY*0.20, 18, 700);
 },{passive:true});
 
 // ── Click a big-nebula piece to select it, then drag X/Y/Z sliders to move
@@ -2019,6 +2031,12 @@ function updateFpsCounter(now){
 }
 
 function updateIntroNebula(camera){
+  // Starting past the intro's own window (see introSkippedEarly above) means
+  // the group was already snapped straight to its settled end state — don't
+  // let this function's real-elapsed-time-based crossfadeT (which starts
+  // near 0 on every fresh page load, regardless of T) drag it back toward
+  // REAL_START_POS/SCALE on the very next frame.
+  if (introSkippedEarly) return;
   const elapsed = (performance.now() - introSceneStartTime) / 1000;
   const crossfadeT = smoothstep(clamp((elapsed - INTRO_CROSSFADE_START) / (INTRO_CROSSFADE_END - INTRO_CROSSFADE_START), 0, 1));
   // Separate, prompt fade-OUT for the big nebula specifically — linear, not
@@ -2417,31 +2435,118 @@ const galaxyDiscGeo = new THREE.BufferGeometry();
   galaxyDiscGeo.setAttribute('nSeed',    new THREE.BufferAttribute(seeds, 1));
 }
 const galaxyDiscMat = new THREE.ShaderMaterial({
-  uniforms:{ time:{value:0}, gAlpha:{value:0} },
+  uniforms:{ time:{value:0}, gAlpha:{value:0}, ringMorph:{value:0}, innerFloor:{value:0},
+    // Jupiter-accretion additions — inert (uEnvelope:0, uPulseR way outside
+    // any real radius) until the beam actually launches, so the disc looks
+    // and behaves exactly as before for the entire ring-formation window.
+    uPulseR:{value:-1000}, uEnvelope:{value:0}, uMouse:{value:new THREE.Vector3(9999,0,9999)} },
   transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
   vertexShader: HSL_GLSL + `
     attribute float nSeed;
-    uniform float time, gAlpha;
+    uniform float time, gAlpha, ringMorph, innerFloor;
+    uniform float uPulseR, uEnvelope;
+    uniform vec3 uMouse;
     varying vec3  vColor;
     varying float vAlpha;
+    float hashNJ(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
+    float noiseNJ(vec3 p){
+      vec3 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+      return mix(mix(mix(hashNJ(i),hashNJ(i+vec3(1,0,0)),u.x),mix(hashNJ(i+vec3(0,1,0)),hashNJ(i+vec3(1,1,0)),u.x),u.y),
+                 mix(mix(hashNJ(i+vec3(0,0,1)),hashNJ(i+vec3(1,0,1)),u.x),mix(hashNJ(i+vec3(0,1,1)),hashNJ(i+vec3(1,1,1)),u.x),u.y),u.z);
+    }
+    vec3 turbulenceJ(vec3 p, float t){
+      vec3 q = p*0.05 + vec3(t*0.55, t*0.42, t*0.61);
+      vec3 base = vec3(noiseNJ(q)-0.5, noiseNJ(q+vec3(9.2,1.3,4.1))-0.5, noiseNJ(q+vec3(2.7,8.4,5.5))-0.5);
+      vec3 q2 = q*2.3 + vec3(11.0);
+      vec3 fine = vec3(noiseNJ(q2)-0.5, noiseNJ(q2+vec3(5.1,7.7,2.2))-0.5, noiseNJ(q2+vec3(6.6,3.3,9.9))-0.5);
+      return base*0.75 + fine*0.45;
+    }
     void main(){
       float s = nSeed;
-      float radius = length(position.xz);
-      float rotT = time * max(0.003, 0.014 - radius * 0.000042);
+      float bakedRadius = length(position.xz);
+      float bakedAngle  = atan(position.z, position.x);
+
+      // Ring-formation morph: snap the baked spiral radius/angle toward the
+      // nearest of a fixed set of ring bands (9 real orbit radii from
+      // planet-formation-prototype.html's RINGS array, plus intermediate/
+      // outer dust bands out to 103.3). A more "authentic" version of this
+      // replicated that file's actual continuous 3-tier distribution
+      // formula instead of discrete bands, but that read as much thinner/
+      // more granular/smaller than this discrete-snap version — reverted
+      // back to discrete bands per explicit feedback: bigger, denser rings
+      // over strict accuracy to the source file's real particle spread.
+      // Scattering the angle uniformly (losing the spiral's 2-arm
+      // structure) as ringMorph -> 1. Same particle system compacting/
+      // reorganizing in place — no geometry swap, no second disc.
+      float ringR = bakedRadius;
+      float bestD = 1e9;
+      float bands[19];
+      bands[0]=5.8; bands[1]=9.5; bands[2]=13.5; bands[3]=18.0; bands[4]=22.0;
+      bands[5]=26.0; bands[6]=30.25; bands[7]=34.5; bands[8]=38.25; bands[9]=42.0;
+      bands[10]=45.75; bands[11]=49.5; bands[12]=53.25; bands[13]=57.0;
+      bands[14]=66.0; bands[15]=76.0; bands[16]=86.0; bands[17]=96.0; bands[18]=103.3;
+      for(int i=0;i<19;i++){
+        float d = abs(bakedRadius - bands[i]);
+        if(d < bestD){ bestD = d; ringR = bands[i]; }
+      }
+      float ringAngle = fract(sin(s*78.233 + 12.9898) * 43758.5453) * 6.283185307;
+      // Shortest angular path so the blend never wraps the "long way" around
+      // and pops.
+      float angleDiff = mod((ringAngle - bakedAngle) + 3.14159265, 6.283185307) - 3.14159265;
+
+      float morphRadius = mix(bakedRadius, ringR, ringMorph);
+      float morphAngle  = bakedAngle + angleDiff * ringMorph;
+      float morphY      = position.y * mix(1.0, 0.3, ringMorph); // reads as a flatter belt, not a puffy cloud
+      vec3 morphedPos = vec3(morphRadius * cos(morphAngle), morphY, morphRadius * sin(morphAngle));
+
+      float rotT = time * max(0.003, 0.014 - morphRadius * 0.000042);
       float cr = cos(rotT), sr = sin(rotT);
       vec3 rotPos = vec3(
-        position.x*cr - position.z*sr,
-        position.y,
-        position.x*sr + position.z*cr
+        morphedPos.x*cr - morphedPos.z*sr,
+        morphedPos.y,
+        morphedPos.x*sr + morphedPos.z*cr
       );
+
+      // Jupiter-accretion beam reaction, ported from planet-formation-
+      // prototype.html's discMat — the passing pulse wavefront rattles
+      // particles near its current radius, and nearby dust reacts to the
+      // cursor. Both no-ops until the beam actually launches (uEnvelope=0,
+      // uMouse parked far outside any real radius).
+      float distToFront = abs(morphRadius - uPulseR);
+      float shakeEnv = exp(-(distToFront*distToFront) / (2.0*3.33*3.33)) * uEnvelope;
+      float shakeAmp = shakeEnv * 2.33;
+      rotPos += turbulenceJ(rotPos + s*40.0, time) * shakeAmp;
+      float distToMouseJ = distance(rotPos.xz, uMouse.xz);
+      float pushJ = smoothstep(5.33, 0.0, distToMouseJ);
+      vec3 pushDirJ = vec3(rotPos.x - uMouse.x, 0.0, rotPos.z - uMouse.z);
+      float pushLenJ = length(pushDirJ);
+      rotPos += (pushLenJ > 0.0001 ? pushDirJ / pushLenJ : vec3(0.0)) * pushJ * 3.0;
+
       float cool = step(0.78, fract(s*8.11));
       float hue = mix(mix(0.06,0.11,fract(s*4.3)), mix(0.57,0.65,fract(s*6.1)), cool);
       float lum = 0.62 + fract(s*7.9)*0.36;
       float sat = 0.42 + fract(s*3.1)*0.35;
-      vColor = hsl2rgb(hue, sat, lum) * (1.1 + fract(s*2.3)*0.9);
-      vAlpha = 0.65 + fract(s*5.7)*0.35;
+      vColor = hsl2rgb(hue, sat, lum) * (1.1 + fract(s*2.3)*0.9 + shakeEnv*0.8 + pushJ*1.8);
+      // Inner clearing around the sun, eased in alongside the ring morph so
+      // dust doesn't pile up on top of it once the disc compacts inward.
+      // innerFloor is 0 pre-ring-formation — smoothstep(0,0,x) would divide
+      // by zero, so floor the edge just above 0 to keep it well-defined and
+      // a no-op (innerFade=1 for any real particle radius) until ring
+      // formation actually starts easing innerFloor upward.
+      float innerEdge = max(innerFloor, 0.0001);
+      float innerFade = smoothstep(innerEdge * 0.5, innerEdge, morphRadius);
+      // Particles whose baked spiral radius sits far from any ring band
+      // (bestD, computed above) used to just slide the full physical
+      // distance to their target, visible the whole way — reading as a
+      // lingering diffuse "leftover spiral" smear coexisting with the
+      // already-clean inner rings during the transition. Fade those far-gap
+      // particles out instead, so distant dust dissolves away as the rings
+      // condense rather than dragging visibly across the frame. Particles
+      // that started close to a ring band (bestD small) are unaffected.
+      float distantFade = 1.0 - smoothstep(20.0, 90.0, bestD) * ringMorph;
+      vAlpha = (0.65 + fract(s*5.7)*0.35) * innerFade * distantFade;
       vec4 mvPos = modelViewMatrix * vec4(rotPos, 1.0);
-      gl_PointSize = clamp((0.7+fract(s*4.2)*1.5)*640.0/-mvPos.z, 0.8, 7.0);
+      gl_PointSize = clamp((0.7+fract(s*4.2)*1.5)*640.0/-mvPos.z, 0.8, 7.0) * (1.0 + pushJ*0.9);
       gl_Position  = projectionMatrix * mvPos;
     }
   `,
@@ -2856,6 +2961,403 @@ const T_FULL       = 56;
 const T_COLL_START = 56;
 const T_COLL_END   = 74;
 
+
+
+// ── Ring formation: spiral -> rings, camera drift, sun freeze ──────────────────
+// Continues cosmogenesis's own native T=0-90s sequence as one continuous shot —
+// no cut, no camera snap to a different framing. The galaxy disc's baked spiral
+// shape reorganizes into concentric rings landing at planet-formation-
+// prototype.html's own real, already-tuned orbit radii, while the camera drifts
+// gently inward toward that file's resting establishing shot, and the sun's
+// look gets captured and held fixed (no further hue-cycling/shrinking/swap).
+// Spiral->rings morph now starts at T=86 (was 90), per explicit request —
+// RING_FORM_DURATION extended from 13 to 17 to compensate, so the fully-
+// formed look still lands at the same RING_FORM_END=103 as before.
+const T_GALAXY_END      = 86;
+// Capture/freeze the sun's look a couple seconds before T_GALAXY_END so
+// camera/sun "from" values are settled before the morph actually starts
+// moving (same lead-in gap as before, just shifted earlier with it).
+const SUN_FREEZE_T      = 84.0;
+const RING_FORM_DURATION = 17;
+const RING_FORM_END      = T_GALAXY_END + RING_FORM_DURATION; // 103
+// Default entry point and loop-back target — skips the ~85s Void/Nebula/
+// Collapse/Ignition intro on every load and every loop cycle. Sun/disc are
+// already fully formed by this point, so looping back here (instead of to
+// T=0) doesn't need to replay any of that.
+const LOOP_START_T      = 85;
+// planet-formation-prototype.html's own resting camera (matches index.html's
+// establishing shot exactly) — see that file's sph/camera setup (r:76,
+// phi:0.65, PerspectiveCamera fov 44).
+const RING_FORM_CAM_TARGET = { r: 76, phi: 0.65, fov: 44 };
+let ringFormStarted = false;
+let ringFormFrom = { r: 0, phi: 0, fov: 50, hueMode: 0, sunScale: 1, coreLightI: 0, coronaGlow: [], coronaFlare: [], coronaColor: [], dustRadius: 0 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JUPITER ACCRETION — a single beam/planet, ported from planet-formation-
+// prototype.html, deliberately scoped to JUST Jupiter (the historically-first
+// planet to form). Fires once the galaxy has settled at RING_FORM_END. Does
+// NOT port that file's orbit-guide ring meshes (ringMeshes/TorusGeometry) —
+// the dust rings already on screen from the ring-formation morph above are
+// the only rings; a second ring system there read as duplicate/pre-existing
+// content, not something forming from the disc. Reuses the existing sunMesh
+// and galaxyDiscMat — no second sun, no second disc. Sun scale/color/corona
+// are untouched by any of this. Saturn/Uranus/etc. are intentionally not
+// part of this pass — after Jupiter settles into orbit, nothing further
+// happens; that's future work, not a bug.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// JS mirror of the GPU turbulence() function added to galaxyDiscMat below —
+// same value-noise field, so Jupiter's precursor cluster (CPU-driven, not
+// shader-driven) shakes in the same organic style as the disc.
+function hashN3(x,y,z){ const v=Math.sin(x*127.1+y*311.7+z*74.7)*43758.5453; return v-Math.floor(v); }
+function noiseN3(x,y,z){
+  const xi=Math.floor(x), yi=Math.floor(y), zi=Math.floor(z);
+  const xf=x-xi, yf=y-yi, zf=z-zi;
+  const u=xf*xf*(3-2*xf), v=yf*yf*(3-2*yf), w=zf*zf*(3-2*zf);
+  const x00=lerp(hashN3(xi,yi,zi),hashN3(xi+1,yi,zi),u);
+  const x10=lerp(hashN3(xi,yi+1,zi),hashN3(xi+1,yi+1,zi),u);
+  const x01=lerp(hashN3(xi,yi,zi+1),hashN3(xi+1,yi,zi+1),u);
+  const x11=lerp(hashN3(xi,yi+1,zi+1),hashN3(xi+1,yi+1,zi+1),u);
+  return lerp(lerp(x00,x10,v), lerp(x01,x11,v), w);
+}
+function turbulenceJS(px,py,pz,t,out){
+  const qx=px*0.05+t*0.55, qy=py*0.05+t*0.42, qz=pz*0.05+t*0.61;
+  const bx=noiseN3(qx,qy,qz)-0.5, by=noiseN3(qx+9.2,qy+1.3,qz+4.1)-0.5, bz=noiseN3(qx+2.7,qy+8.4,qz+5.5)-0.5;
+  const qx2=qx*2.3+11.0, qy2=qy*2.3+11.0, qz2=qz*2.3+11.0;
+  const fx=noiseN3(qx2,qy2,qz2)-0.5, fy=noiseN3(qx2+5.1,qy2+7.7,qz2+2.2)-0.5, fz=noiseN3(qx2+6.6,qy2+3.3,qz2+9.9)-0.5;
+  out[0]=bx*0.75+fx*0.45; out[1]=by*0.75+fy*0.45; out[2]=bz*0.75+fz*0.45;
+}
+const _turbScratch = [0,0,0];
+
+// ── Cursor interaction — belt/beam/precursor cluster react to the pointer ───
+const raycaster = new THREE.Raycaster();
+const mouseNDC  = new THREE.Vector2(9999, 9999);
+const interactionPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const interactionPoint = new THREE.Vector3(9999, 0, 9999);
+const _rayHitScratch = new THREE.Vector3();
+let mouseInScene = false;
+window.addEventListener('mousemove', e=>{
+  mouseNDC.x =  (e.clientX / window.innerWidth)  * 2 - 1;
+  mouseNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  mouseInScene = true;
+});
+canvas.addEventListener('mouseleave', ()=>{ mouseInScene = false; });
+
+// ── Jupiter's tuned constants (unchanged from planet-formation-prototype.html) ──
+const JUPITER_R     = 26.0;
+const JUPITER_ANGLE = 0.62;
+let JUPITER_SIZE       = 1.10;
+let JUP_GRID_OVERSCALE = 1.07;
+let JUP_FORM_DURATION  = 4.9;
+let GATHER_END      = 0.45;
+let COLLAPSE_START  = 0.00;
+let COLLAPSE_END    = 0.45;
+let REVEAL_START    = 0.79;
+let REVEAL_DURATION = 2.2;
+let SHAKE_INTENSITY = 4.5;
+let PRE_TRIGGER_SHAKE = 1.0;
+let REACT_LEAD = 4.67;
+const easeSnap = t => { t = clamp(t,0,1); return 1 - (1-t)*(1-t); };
+let HIT_ONSET_SHARPNESS = 0.7;
+const ease = x => lerp(smoothstep(x), easeSnap(x), HIT_ONSET_SHARPNESS);
+// Matches planet-formation-prototype.html exactly. The beam's real problem
+// was the T-clamp freezing its clock at 0 (AT never advanced past the
+// instant it started) — fixed separately. Trying to compensate for an
+// invisible-because-frozen beam by slowing it down was solving the wrong
+// problem; reference the real file's own tuning as-is now that it can
+// actually run.
+const PULSE_SPEED = 20; // units/sec — Jupiter's one-shot pulse travel speed
+
+const JUP_N = 2200;
+const jupTargetPos = new THREE.Vector3(
+  JUPITER_R*Math.cos(JUPITER_ANGLE), 0, JUPITER_R*Math.sin(JUPITER_ANGLE)
+);
+const jupGeo = new THREE.BufferGeometry();
+const jupStartAngle = new Float32Array(JUP_N);
+const jupStartR     = new Float32Array(JUP_N);
+const jupStartY     = new Float32Array(JUP_N);
+const jupTarget     = new Float32Array(JUP_N*3);
+const jupUnit       = new Float32Array(JUP_N*3);
+const jupSeed       = new Float32Array(JUP_N);
+const jupPush       = new Float32Array(JUP_N);
+{
+  const pos = new Float32Array(JUP_N*3);
+  for(let i=0;i<JUP_N;i++){
+    jupStartAngle[i] = Math.random()*Math.PI*2;
+    jupStartR[i]     = JUPITER_R + (Math.random()-0.5)*2.33;
+    jupStartY[i]     = (Math.random()-0.5)*0.733;
+    const gi = i + 0.5;
+    const phi = Math.acos(1 - 2*gi/JUP_N);
+    const theta = Math.PI * (1+Math.sqrt(5)) * gi;
+    jupUnit[i*3] = Math.sin(phi)*Math.cos(theta); jupUnit[i*3+1] = Math.cos(phi); jupUnit[i*3+2] = Math.sin(phi)*Math.sin(theta);
+    jupSeed[i] = Math.random();
+    pos[i*3]   = jupStartR[i]*Math.cos(jupStartAngle[i]);
+    pos[i*3+1] = jupStartY[i];
+    pos[i*3+2] = jupStartR[i]*Math.sin(jupStartAngle[i]);
+  }
+  jupGeo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  jupGeo.setAttribute('nSeed',    new THREE.BufferAttribute(jupSeed,1));
+  jupGeo.setAttribute('aPush',    new THREE.BufferAttribute(jupPush,1));
+}
+function lerpAngleShortest(a,b,t){
+  let d = (b-a) % (Math.PI*2);
+  if(d > Math.PI) d -= Math.PI*2;
+  if(d < -Math.PI) d += Math.PI*2;
+  return a + d*t;
+}
+const jupMat = new THREE.ShaderMaterial({
+  uniforms:{ formT:{value:0}, revealT:{value:0} },
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  vertexShader: HSL_GLSL + `
+    attribute float nSeed;
+    attribute float aPush;
+    uniform float formT, revealT;
+    varying vec3  vColor;
+    varying float vAlpha;
+    void main(){
+      float s = nSeed;
+      vec3 dustCol   = hsl2rgb(mix(0.09,0.13,fract(s*4.3)), 0.4, 0.65);
+      vec3 jupColBand= hsl2rgb(mix(0.09,0.11,fract(s*8.1)), 0.32, mix(0.55,0.85,step(0.5,fract(s*6.7))));
+      vColor = mix(dustCol, jupColBand, smoothstep(0.5,1.0,formT)) * (1.0 + aPush*1.8);
+      vAlpha = mix(0.7, 0.0, smoothstep(0.35,1.0,revealT));
+      vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = clamp((1.4+fract(s*3.0)*1.8)*213.3/-mvPos.z, 0.8, 8.0) * (1.0 + aPush*0.9);
+      gl_Position  = projectionMatrix * mvPos;
+    }
+  `,
+  fragmentShader:`
+    varying vec3  vColor;
+    varying float vAlpha;
+    void main(){
+      if(vAlpha < 0.004) discard;
+      vec2  c = gl_PointCoord - 0.5;
+      float d = length(c) * 2.0;
+      if(d > 1.0) discard;
+      float alpha = smoothstep(0.55,0.0,d) * vAlpha;
+      if(alpha < 0.003) discard;
+      gl_FragColor = vec4(vColor, alpha);
+    }
+  `
+});
+const jupPoints = new THREE.Points(jupGeo, jupMat);
+scene.add(jupPoints);
+// Same deferred-visibility fix as jupSolidGroup below — left visible=true
+// by default, this shader (and jupSolidGroup's) got force-compiled on the
+// very first render() call regardless of T, hanging the page on load.
+jupPoints.visible = false;
+
+// planet-formation-prototype.html's solid-mesh lighting — required for
+// MeshStandardMaterial to render anything but black; this file had no
+// general-purpose scene lighting before (everything else is additive/custom
+// shader materials). Ported verbatim.
+const sunLight = new THREE.PointLight(0xfff4e0, 14.0, 600);
+scene.add(sunLight);
+scene.add(new THREE.AmbientLight(0x04030e, 0.4));
+const rimA = new THREE.DirectionalLight(0x112244, 0.35);
+rimA.position.set(-100, 50, -80);
+scene.add(rimA);
+const rimB = new THREE.DirectionalLight(0x220811, 0.15);
+rimB.position.set(80, -40, 100);
+scene.add(rimB);
+
+function setAnisoJup(tex){ tex.anisotropy = 16; return tex; }
+
+const jupSolidGroup = new THREE.Group();
+jupSolidGroup.position.copy(jupTargetPos);
+scene.add(jupSolidGroup);
+// Hidden until the accretion phase actually starts (T >= RING_FORM_END) —
+// left at Three.js's visible=true default, this group's heavily custom
+// onBeforeCompile-patched material got force-compiled on the very first
+// render() call regardless of T, which hung the page indefinitely on
+// load (confirmed via instrumentation: execution reached the line right
+// before renderer.render() on frame 1, then never returned — no error,
+// no second frame). Same deferred-visibility pattern the sun mesh itself
+// already uses (sunMesh.visible=false until its own ignition trigger).
+jupSolidGroup.visible = false;
+
+function applyJupiterSize(){
+  jupSolidGroup.scale.setScalar(JUPITER_SIZE);
+  const gridR = JUPITER_SIZE * JUP_GRID_OVERSCALE;
+  for(let i=0;i<JUP_N;i++){
+    jupTarget[i*3]   = jupTargetPos.x + jupUnit[i*3]  *gridR;
+    jupTarget[i*3+1] = jupTargetPos.y + jupUnit[i*3+1]*gridR;
+    jupTarget[i*3+2] = jupTargetPos.z + jupUnit[i*3+2]*gridR;
+  }
+}
+applyJupiterSize();
+
+const jupPlaceholderTex = new THREE.DataTexture(new Uint8Array([255,255,255,255]), 1, 1, THREE.RGBAFormat);
+jupPlaceholderTex.needsUpdate = true;
+const jupSolidMat = new THREE.MeshStandardMaterial({
+  color: 0xffffff,
+  map: jupPlaceholderTex,
+  emissive: new THREE.Color(0x201008), emissiveIntensity: 0.04,
+  roughness: 0.50, metalness: 0.02, bumpScale: 0.8,
+  transparent:true, opacity:1,
+});
+let jupiterShaderRef = null;
+jupSolidMat.onBeforeCompile = (shader) => {
+  shader.uniforms.uReveal = { value: 0 };
+  shader.uniforms.uTime   = { value: 0 };
+  jupiterShaderRef = shader;
+  shader.vertexShader = `
+    uniform float uTime;
+    float vjhash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+    float vjnoise(vec2 p){
+      vec2 i=floor(p), f=fract(p);
+      float a=vjhash(i), b=vjhash(i+vec2(1.0,0.0)), c=vjhash(i+vec2(0.0,1.0)), d=vjhash(i+vec2(1.0,1.0));
+      vec2 u=f*f*(3.0-2.0*f);
+      return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);
+    }
+  ` + shader.vertexShader;
+  shader.vertexShader = shader.vertexShader.replace(
+    '#include <uv_vertex>',
+    `#include <uv_vertex>
+    {
+      float lat = uv.y - 0.5;
+      float poleDamp = cos(lat*3.14159265);
+      float jet = sin(lat*22.0)*0.5 + 0.5;
+      float driftX = sin(uTime*mix(0.35,0.55,jet) + lat*30.0) * mix(0.014,0.022,jet) * poleDamp;
+      float swirl = (vjnoise(vec2(uv.x*5.0 + uTime*0.06, uv.y*9.0 - uTime*0.04)) - 0.5) * poleDamp;
+      vUv += vec2(driftX, swirl*0.004);
+    }`
+  );
+  shader.fragmentShader = `
+    uniform float uReveal;
+    uniform float uTime;
+    float jhash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+    float jnoise(vec2 p){
+      vec2 i=floor(p), f=fract(p);
+      float a=jhash(i), b=jhash(i+vec2(1.0,0.0)), c=jhash(i+vec2(0.0,1.0)), d=jhash(i+vec2(1.0,1.0));
+      vec2 u=f*f*(3.0-2.0*f);
+      return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);
+    }
+    float jfbm(vec2 p){
+      float v=0.0, amp=0.55;
+      for(int i=0;i<4;i++){ v+=amp*jnoise(p); p*=2.05; amp*=0.55; }
+      return v;
+    }
+  ` + shader.fragmentShader;
+  shader.fragmentShader = shader.fragmentShader.replace(
+    '#include <map_fragment>',
+    `#include <map_fragment>
+    {
+      if(uReveal < 1.0){
+      float dn = min(jfbm(vUv*7.0 + vec2(uTime*0.05, -uTime*0.035)), 0.9);
+      float edge = smoothstep(uReveal-0.07, uReveal, dn) - smoothstep(uReveal, uReveal+0.07, dn);
+      diffuseColor.rgb += edge * vec3(1.6,1.0,0.5) * 1.5;
+      float solidMask = 1.0 - smoothstep(uReveal-0.06, uReveal+0.06, dn);
+      diffuseColor.a *= solidMask;
+      float notYetSolid = 1.0 - solidMask;
+      float sparkleField   = jnoise(vUv*260.0 + vec2(37.0,91.0));
+      float sparkleFlicker = jnoise(vUv*41.0 + vec2(uTime*2.6, -uTime*1.9));
+      float sparkle = step(0.986, sparkleField) * step(0.55, sparkleFlicker) * notYetSolid;
+      diffuseColor.rgb += sparkle * vec3(1.7,1.3,0.8) * 2.2;
+      diffuseColor.a = max(diffuseColor.a, sparkle * 0.85);
+      }
+    }`
+  );
+};
+const jupSolidMesh = new THREE.Mesh(new THREE.SphereGeometry(1,64,64), jupSolidMat);
+jupSolidMesh.frustumCulled = false;
+jupSolidGroup.add(jupSolidMesh);
+{
+  const loader = new THREE.TextureLoader();
+  loader.load(
+    'textures/tex_jupiter.jpg',
+    tex => {
+      setAnisoJup(tex);
+      tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+      jupSolidMat.map = tex; jupSolidMat.bumpMap = tex; jupSolidMat.needsUpdate = true;
+    },
+    undefined,
+    err => { console.warn('Jupiter texture failed to load:', err); }
+  );
+}
+const jupAtmoMat = new THREE.ShaderMaterial({
+  uniforms:{ reveal:{value:0} },
+  vertexShader:`varying vec3 vN; void main(){ vN=normalize(normalMatrix*normal); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader:`varying vec3 vN; uniform float reveal;
+    void main(){ float i=pow(0.65-dot(vN,vec3(0,0,1.0)),3.0); gl_FragColor=vec4(1.0,0.82,0.55,clamp(i,0.0,1.0)*0.45*reveal); }`,
+  blending:THREE.AdditiveBlending, side:THREE.BackSide, transparent:true,
+});
+const jupAtmoMesh = new THREE.Mesh(new THREE.SphereGeometry(1.03,48,48), jupAtmoMat);
+jupAtmoMesh.frustumCulled = false;
+jupSolidGroup.add(jupAtmoMesh);
+
+let jupFormTriggerTime = null;
+const JUP_ORBIT_SPEED = 0.10;
+let accretionPhaseLabel = 'disc forming';
+
+// ── Pulse — traveling wavefront from the sun out to Jupiter's ring ──────────
+const PULSE_N = 700; // matches planet-formation-prototype.html exactly — the beam's real problem was the T-clamp freezing its clock at 0 (fixed separately), not this value
+const pulseGeo = new THREE.BufferGeometry();
+{
+  const dummyPos = new Float32Array(PULSE_N*3);
+  const ang  = new Float32Array(PULSE_N);
+  const rJit = new Float32Array(PULSE_N);
+  const yJit = new Float32Array(PULSE_N);
+  const seed = new Float32Array(PULSE_N);
+  for(let i=0;i<PULSE_N;i++){
+    ang[i]  = Math.random()*Math.PI*2;
+    rJit[i] = (Math.random()-0.5)*2.0;
+    yJit[i] = (Math.random()-0.5)*0.733;
+    seed[i] = Math.random();
+  }
+  pulseGeo.setAttribute('position', new THREE.BufferAttribute(dummyPos,3));
+  pulseGeo.setAttribute('aAngle', new THREE.BufferAttribute(ang,1));
+  pulseGeo.setAttribute('aRJit',  new THREE.BufferAttribute(rJit,1));
+  pulseGeo.setAttribute('aYJit',  new THREE.BufferAttribute(yJit,1));
+  pulseGeo.setAttribute('aSeed',  new THREE.BufferAttribute(seed,1));
+}
+const pulseMat = new THREE.ShaderMaterial({
+  uniforms:{ uPulseR:{value:0}, time:{value:0}, uEnvelope:{value:0}, uMouse:{value:new THREE.Vector3(9999,0,9999)} },
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  vertexShader:`
+    attribute float aAngle, aRJit, aYJit, aSeed;
+    uniform float uPulseR, time;
+    uniform vec3 uMouse;
+    varying float vFlicker;
+    varying float vPush;
+    float hash1(float n){ return fract(sin(n)*43758.5453); }
+    void main(){
+      float r = uPulseR + aRJit;
+      vec3 pos = vec3(r*cos(aAngle), aYJit, r*sin(aAngle));
+      float distToMouse = distance(pos.xz, uMouse.xz);
+      float influenceRadius = 5.33;
+      float push = smoothstep(influenceRadius, 0.0, distToMouse);
+      vec3 pushDir = vec3(pos.x - uMouse.x, 0.0, pos.z - uMouse.z);
+      float pushLen = length(pushDir);
+      pos += (pushLen > 0.0001 ? pushDir / pushLen : vec3(0.0)) * push * 3.0;
+      vPush = push;
+      float flashA = hash1(floor(time*6.0  + aSeed*97.0));
+      float flashB = hash1(floor(time*13.0 + aSeed*53.0) + 31.7);
+      vFlicker = max(pow(flashA,3.0), pow(flashB,4.0)*0.7);
+      vec4 mvPos = modelViewMatrix*vec4(pos,1.0);
+      gl_PointSize = clamp((2.5+aSeed*3.5)*213.3/-mvPos.z, 1.0, 9.0) * (1.0 + push*0.8);
+      gl_Position = projectionMatrix*mvPos;
+    }
+  `,
+  fragmentShader:`
+    uniform float uEnvelope;
+    varying float vFlicker;
+    varying float vPush;
+    void main(){
+      vec2 c = gl_PointCoord-0.5;
+      float d = length(c)*2.0;
+      if(d>1.0) discard;
+      float core  = smoothstep(0.6,0.0,d);
+      float alpha = core * vFlicker * uEnvelope * (1.0 + vPush*0.6);
+      if(alpha<0.01) discard;
+      vec3 col = mix(vec3(1.0,0.75,0.4), vec3(1.0,0.95,0.85), vFlicker);
+      gl_FragColor = vec4(col*1.4*(1.0+vPush*1.6), alpha);
+    }
+  `
+});
+const pulseMesh = new THREE.Points(pulseGeo, pulseMat);
+scene.add(pulseMesh);
+pulseMesh.visible = false; // same deferred-visibility fix, see jupSolidGroup
+
 // This merged file starts T at 36 by default. T drives cosmogenesis's own
 // formT (structural reveal — how much of the nebula's actual shape has
 // swept outward from the core) AND its natural gAlpha (brightness), tied
@@ -2867,7 +3369,33 @@ const T_COLL_END   = 74;
 // sets it) — starting genuinely invisible and fading in faintly, independent
 // of how formed the shape already is. ?startT= still overrides for testing.
 const _startTParam = parseFloat(new URLSearchParams(location.search).get('startT'));
-let T = (isFinite(_startTParam) ? clamp(_startTParam, 0, 90) : 36); // advanced by the auto-clock in tick()
+// Default lands just before the sun/ring reveal so reloading doesn't require
+// sitting through the full ~90s intro every time.
+let T = (isFinite(_startTParam) ? clamp(_startTParam, 0, RING_FORM_END) : LOOP_START_T); // advanced by the auto-clock in tick()
+
+// The intro-nebula overlay (introNebulaVolumes) and the realNebulaGroup
+// "grow into place" scaffolding both run on real wall-clock elapsed time
+// (introSceneStartTime = performance.now()), completely independent of T.
+// Starting cold past the intro (the new default, and every loop-back to
+// LOOP_START_T) has no effect on that real-time clock — it still plays out
+// its own up-to-30-real-second reveal/fade from scratch on every page load,
+// which can show vivid intro clouds regardless of T. Since T starts well
+// past the intro's own window, skip all of it immediately and permanently:
+// dispose the intro volumes outright and snap the group straight to its
+// settled end state instead of waiting for crossfadeT to get there via
+// elapsed time.
+let introSkippedEarly = false;
+if (T > INTRO_CROSSFADE_END) {
+  for (const mat of introNebulaVolumes){
+    scene.remove(mat.userData.mesh);
+    mat.userData.mesh.geometry.dispose();
+    mat.dispose();
+  }
+  introNebulaDisposed = true;
+  realNebulaGroup.position.copy(REAL_END_POS);
+  realNebulaGroup.scale.setScalar(REAL_END_SCALE);
+  introSkippedEarly = true;
+}
 let autoWarmBias = 0; // recomputed fresh each frame in timeline() — never self-referential, so the
                        // warmBias sliders can never get stuck ratcheted at a stale high value
 let rotAngleFine = 0, rotAngleCloud = 0, rotAngleSpark = 0; // properly integrated rotation angles
@@ -2956,14 +3484,20 @@ function tick(){
 
   // Auto-clock drives T
   if (!paused) T += dt * tVals.speed;
-  // The scene's own defined range ends at 90 — nothing past that changes
-  // anything visually, but T was never actually clamped here (only in the
-  // manual arrow-key stepping), so it grew unbounded forever once playback
-  // reached the end and was left running. Confirmed via instrumentation:
-  // idle long-task duration climbed over time (120ms -> 213ms) the longer
-  // this sat past 90s, and a longer-idle run hit a WebGL context loss.
-  // Clamping here stops T's magnitude from growing without bound.
-  if (T > 90 && !loopGroupName && !customLoopRange) T = 90;
+  // A much earlier version of this file clamped T at a fixed hold point
+  // (back when NOTHING happened past that point — the old WebGL-context-
+  // loss issue was specifically about T growing while completely idle).
+  // That clamp is WRONG now: the Jupiter beam/accretion sequence starts at
+  // RING_FORM_END and needs T to keep advancing past it — AT = T -
+  // RING_FORM_END is the beam/formation/orbit clock, and clamping T back
+  // to RING_FORM_END every frame froze AT at permanently 0, which is why
+  // the beam never traveled, Jupiter never visibly formed, and it never
+  // orbited (all four were the same one bug). Past RING_FORM_END, T is
+  // left to run free so Jupiter's beam plays out once and then it keeps
+  // orbiting indefinitely, same as planet-formation-prototype.html's own
+  // design (which has no such clamp either).
+  // A manually-activated loopGroupName/customLoopRange (debug UI) still
+  // overrides this, same as before.
   if (loopGroupName) {
     const loopGroup = CONTROL_GROUPS.find(g => g.name === loopGroupName);
     if (loopGroup) {
@@ -2982,25 +3516,57 @@ function tick(){
 
   // Reset one-shot state when scrubbing/jumping back
   if (T < prevT - 0.1) {
-    ignitionTriggered = false;
-    sunMesh.visible   = false;
-    sunMat.uniforms.dissolve.value = 0;
-    sunDustMat.uniforms.dissolve.value = 0;
-    flashMesh.visible = false;
-    flashMesh.material.uniforms.opacity.value = 0;
-    coronaGroup.visible = false;
-    coreVisibility = 0;
-    coreWhite.material.opacity = 0; coreAmber.material.opacity  = 0;
-    coreOrange.material.opacity= 0; coreDark.material.opacity   = 0;
-    coreLight.intensity = 0;
-    galaxyDiscMat.uniforms.gAlpha.value = 0;
-    fineMat.uniforms.galaxyT.value = 0;
-    fineMat.uniforms.collapseT.value  = 0;
-    cloudMat.uniforms.collapseT.value = 0;
-    loopAlp.fill(0);
-    loopPos.fill(0);
-    loopGeo.attributes.alpha.needsUpdate    = true;
-    loopGeo.attributes.position.needsUpdate = true;
+    // The default loop wraps T backward to LOOP_START_T every cycle (via the
+    // T>RING_FORM_END clamp below) — that's a jump back to a POST-ignition
+    // point (sun already lit, disc already formed), not a scrub to the
+    // beginning. Only run the full void/ignition/disc reset when landing
+    // meaningfully earlier than that, i.e. an actual manual scrub toward the
+    // start of the scene.
+    if (T < LOOP_START_T - 1) {
+      ignitionTriggered = false;
+      sunMesh.visible   = false;
+      sunMat.uniforms.dissolve.value = 0;
+      sunDustMat.uniforms.dissolve.value = 0;
+      flashMesh.visible = false;
+      flashMesh.material.uniforms.opacity.value = 0;
+      coronaGroup.visible = false;
+      coreVisibility = 0;
+      coreWhite.material.opacity = 0; coreAmber.material.opacity  = 0;
+      coreOrange.material.opacity= 0; coreDark.material.opacity   = 0;
+      coreLight.intensity = 0;
+      galaxyDiscMat.uniforms.gAlpha.value = 0;
+      fineMat.uniforms.galaxyT.value = 0;
+      fineMat.uniforms.collapseT.value  = 0;
+      cloudMat.uniforms.collapseT.value = 0;
+      loopAlp.fill(0);
+      loopPos.fill(0);
+      loopGeo.attributes.alpha.needsUpdate    = true;
+      loopGeo.attributes.position.needsUpdate = true;
+    }
+    // Ring-formation state — re-scrubbing/looping back past SUN_FREEZE_T
+    // needs to recapture the sun/camera/disc "from" snapshot fresh, not
+    // reuse a stale one from the previous pass. Runs on every backward
+    // jump, including the loop wrap, not just a full scrub-to-start.
+    ringFormStarted = false;
+    galaxyDiscMat.uniforms.ringMorph.value  = 0;
+    galaxyDiscMat.uniforms.innerFloor.value = 0;
+    galaxyDiscMat.uniforms.uPulseR.value    = -1000;
+    galaxyDiscMat.uniforms.uEnvelope.value  = 0;
+    camera.fov = 50;
+    camera.updateProjectionMatrix();
+    // Jupiter-accretion state — same reasoning, re-triggered fresh on any
+    // backward jump past RING_FORM_END rather than resuming mid-formation.
+    jupFormTriggerTime = null;
+    accretionPhaseLabel = 'disc forming';
+    jupMat.uniforms.formT.value = 0;
+    jupMat.uniforms.revealT.value = 0;
+    jupAtmoMat.uniforms.reveal.value = 0;
+    if (jupiterShaderRef) jupiterShaderRef.uniforms.uReveal.value = 0;
+    jupSolidGroup.position.copy(jupTargetPos);
+    jupSolidGroup.visible = false;
+    jupPoints.visible = false;
+    pulseMesh.visible = false;
+    pulseMat.uniforms.uEnvelope.value = 0;
   }
   prevT = T;
 
@@ -3047,7 +3613,6 @@ function tick(){
   cloudMat.uniforms.rotAngle.value = rotAngleCloud;
   sparkMat.uniforms.rotAngle.value = rotAngleSpark;
   sunMesh.rotation.y = sunSpinAngle;
-
   // ── Ignition trigger ──────────────────────────────────────────────────────
   if(!ignitionTriggered && fineMat.uniforms.collapseT.value >= 1.0) {
     ignitionTriggered = true;
@@ -3116,6 +3681,14 @@ function tick(){
       // Post-ignition: color cycles, loops run, galaxy forms
       flashMesh.visible = false;
       flashMat.uniforms.opacity.value = 0;
+      // emergence only ever gets ramped 0->1 inside the `if(!ignitionDone)`
+      // branch above (the live 74-78s window). Any cold-start or jump that
+      // lands with ignitionDone already true (e.g. the default ?startT=85,
+      // or this scene's own loop-back) skips that ramp entirely, leaving
+      // emergence stuck at 0 from the ignition-trigger one-shot — which
+      // renders the sun as solid mix(whiteHot,col,0) = whiteHot forever.
+      // Once ignition is done, it should just always read as fully emerged.
+      sunMat.uniforms.emergence.value = 1;
       colorCycleT = postIgnitionT;
       sunMat.uniforms.hueMode.value = (colorCycleT / COLOR_PERIOD) * 5.0;
       const mode = sunMat.uniforms.hueMode.value % 5;
@@ -3140,7 +3713,14 @@ function tick(){
       const gt = Math.min(1.0, galaxyTimeElapsed / GALAXY_DUR);
       const gtCurve = gt * gt;
       fineMat.uniforms.galaxyT.value = gtCurve;
-      galaxyDiscMat.uniforms.gAlpha.value = Math.min(1.0, gtCurve * 1.5);
+      // Was tied to gtCurve (gt*gt) — the same quadratic, slow-to-start curve
+      // driving the sun's scale growth below, so the disc stayed barely
+      // visible for the first several seconds while the sun was busy visibly
+      // expanding, only catching up to full visibility later. Decoupled onto
+      // its own fast/front-loaded curve (sqrt(gt), not gt*gt) so the disc
+      // starts forming immediately, in parallel with the sun's expansion,
+      // rather than appearing to wait for it.
+      galaxyDiscMat.uniforms.gAlpha.value = Math.min(1.0, Math.sqrt(gt) * 1.3);
       galaxyDiscMat.uniforms.time.value = postIgnitionT;
       cloudMat.uniforms.gAlpha.value = Math.max(0, 1.0 - gtCurve * 2.5);
       const sunNaturalScale = (1.0 + gtCurve * 3.5) * tVals.sunSizeMult;
@@ -3150,7 +3730,7 @@ function tick(){
       sunDustMat.uniforms.dissolve.value  = tVals.sunDissolve;
       sunDustMat.uniforms.hueMode.value   = sunMat.uniforms.hueMode.value;
       sunDustMat.uniforms.baseRadius.value= SUN_R * sunNaturalScale;
-      if(gt < 0.96) {
+      if(gt < 0.96 && !userCameraControl) {
         sphTarget.r = 95 + gtCurve * 210;
         sphTarget.phi += (1.10 - sphTarget.phi) * 0.006;
       }
@@ -3159,11 +3739,197 @@ function tick(){
     if(coronaGroup.visible) coronaGroup.quaternion.copy(camera.quaternion);
   }
 
+  // ── Ring formation: spiral -> rings, camera drift, sun freeze ──────────────
+  // Continues the same shot past cosmogenesis's native T=90 end — no cut, no
+  // camera snap. Only starts once ignition has actually completed (sun and
+  // galaxy disc both exist by then). Sun-freeze gate opens a bit before
+  // T_GALAXY_END (see SUN_FREEZE_T comment above); camera/disc-morph easing
+  // progress is still keyed to T_GALAXY_END and stays clamped at 0 until then.
+  if (ignitionDone && T >= SUN_FREEZE_T) {
+    if (!ringFormStarted) {
+      ringFormStarted = true;
+      ringFormFrom.r       = sph.r;
+      ringFormFrom.phi     = sph.phi;
+      ringFormFrom.fov     = camera.fov;
+      // Hardcoded to 0 (not whatever hueMode naturally landed on) — at m=0,
+      // this shader's getDeep/getHot/getBright color functions evaluate to
+      // the exact same RGB values as planet-formation-prototype.html's own
+      // fixed sun palette (same shader family, that file is effectively a
+      // frozen hueMode=0 special case). Matches "exactly like the sun in
+      // the planets formation scene" per explicit request, rather than
+      // whatever arbitrary color the cycle happened to be on.
+      ringFormFrom.hueMode = 0;
+      // The corona/dust/scale/light are all recomputed every frame by the
+      // post-ignition block above from postIgnitionT, which keeps growing
+      // forever now that T isn't clamped at 90 — freezing hueMode alone
+      // would leave the corona still cycling independently underneath a
+      // now-static sun disc, which is what washed out to solid white the
+      // first time this was tried. Capture everything visual about the sun
+      // here and hold all of it, every frame, from here on.
+      // Frozen at whatever it had naturally grown to — NOT eased down to
+      // planet-formation-prototype.html's fixed SUN_R scale. An earlier pass
+      // tried that and it was explicitly rejected ("you made the sun
+      // smaller... do the opposite of what I wanted"). Sun size stays as-is.
+      ringFormFrom.sunScale    = sunMesh.scale.x;
+      ringFormFrom.coreLightI  = coreLight.intensity;
+      ringFormFrom.coronaGlow  = coronaMats.map(m => m.uniforms.baseGlowStrength.value);
+      ringFormFrom.coronaFlare = coronaMats.map(m => m.uniforms.flareStrength.value);
+      ringFormFrom.coronaColor = coronaMats.map(m => m.uniforms.glowColor.value.clone());
+      ringFormFrom.dustRadius  = sunDustMat.uniforms.baseRadius.value;
+      // The sun's fragment shader adds an HDR "hot spot" bonus
+      // (getBright() returns values up to ~2.0) wherever its fbm noise
+      // field crosses a threshold. That noise field is driven by `time`,
+      // which was NOT being frozen above — so even with color/scale/glow
+      // frozen, the noise kept drifting and would occasionally align such
+      // that nearly the whole sphere crossed the hot-spot threshold at
+      // once, whiting out the whole disc for a moment. Freeze `time` too
+      // so the noise pattern (and the ripple/corona time-driven effects)
+      // stops evolving entirely, same as everything else about the sun.
+      ringFormFrom.sunTime = sunMat.uniforms.time.value;
+    }
+    const ringT = clamp((T - T_GALAXY_END) / RING_FORM_DURATION, 0, 1);
+    const ringE = ringT * ringT * (3 - 2 * ringT); // smoothstep ease
+    if (!userCameraControl) {
+      sphTarget.r   = lerp(ringFormFrom.r,   RING_FORM_CAM_TARGET.r,   ringE);
+      sphTarget.phi = lerp(ringFormFrom.phi, RING_FORM_CAM_TARGET.phi, ringE);
+      camera.fov = lerp(ringFormFrom.fov, RING_FORM_CAM_TARGET.fov, ringE);
+      camera.updateProjectionMatrix();
+    }
+
+    galaxyDiscMat.uniforms.ringMorph.value  = ringE;
+    galaxyDiscMat.uniforms.innerFloor.value = lerp(0, 4.0, ringE);
+
+    // Freeze the sun's look right where it naturally is at this moment — no
+    // further hue-cycling, no shrink, no swap to a different sun. Same sun
+    // object continuing to exist, just stable from here on. Applied every
+    // frame, after the post-ignition block above, so it always wins over
+    // that block's live recomputation from the still-growing postIgnitionT.
+    sunMat.uniforms.hueMode.value     = ringFormFrom.hueMode;
+    sunDustMat.uniforms.hueMode.value = ringFormFrom.hueMode;
+    sunMesh.scale.setScalar(ringFormFrom.sunScale);
+    coreLight.intensity = ringFormFrom.coreLightI;
+    sunDustMat.uniforms.baseRadius.value = ringFormFrom.dustRadius;
+    // planet-formation-prototype.html's sun has no corona system at all —
+    // hide it entirely to match that look exactly, per explicit request,
+    // rather than trying to freeze it into something resembling "off."
+    coronaGroup.visible = false;
+    // time is intentionally left running (not frozen) here — the noise/
+    // ripple animation is safe to keep live; the actual whiteout bug was
+    // `emergence` getting stuck at 0 on a cold start past ignition (fixed
+    // above), not the noise field itself. planet-formation-prototype.html
+    // runs this same noise-driven shader continuously with no issue.
+  }
+
+  // ── Jupiter accretion — fires once the galaxy has settled ──────────────────
+  // AT is this phase's own local clock (0 the instant it starts), substituting
+  // for planet-formation-prototype.html's own per-cycle `T`. This file's real
+  // `T` substitutes for that file's `globalT` (always-advancing, visual-only
+  // time — noise/shimmer/ripple). Never cross the two: AT drives trigger/
+  // formT/orbit timing, T drives turbulence/shimmer time arguments only.
+  if (T >= RING_FORM_END) {
+    const AT = T - RING_FORM_END;
+    jupSolidGroup.visible = true; // deferred until actually needed — see creation site
+    jupPoints.visible = true;
+    pulseMesh.visible = true;
+
+    if (mouseInScene) {
+      raycaster.setFromCamera(mouseNDC, camera);
+      if (raycaster.ray.intersectPlane(interactionPlane, _rayHitScratch)) interactionPoint.copy(_rayHitScratch);
+    } else {
+      interactionPoint.set(9999, 0, 9999);
+    }
+    galaxyDiscMat.uniforms.uMouse.value.copy(interactionPoint);
+    pulseMat.uniforms.uMouse.value.copy(interactionPoint);
+
+    // Single one-shot pulse leg (no seqStep/multi-planet sequencer — this
+    // pass is deliberately Jupiter-only): pr climbs 0 -> JUPITER_R once over
+    // legPeriod seconds, then stays parked (clamp, not modulo).
+    const legPeriod = JUPITER_R / PULSE_SPEED;
+    const prPhase = clamp(AT / legPeriod, 0, 1);
+    const pr = prPhase * JUPITER_R;
+    const fadeIn  = smoothstep((pr - SUN_R) / 2.67);
+    const fadeOut = 1 - smoothstep((prPhase - 0.75) / 0.25);
+    pulseMat.uniforms.uPulseR.value   = pr;
+    pulseMat.uniforms.time.value      = T;
+    pulseMat.uniforms.uEnvelope.value = fadeIn * fadeOut;
+    galaxyDiscMat.uniforms.uPulseR.value   = pr;
+    galaxyDiscMat.uniforms.uEnvelope.value = fadeIn * fadeOut;
+
+    if (jupFormTriggerTime === null && pr >= JUPITER_R - REACT_LEAD) {
+      jupFormTriggerTime = AT;
+    }
+
+    let phase = 'disc forming';
+    if (pr > 2 && pr < JUPITER_R) phase = 'pulse traveling outward (to Jupiter)';
+
+    const formT = jupFormTriggerTime !== null
+      ? clamp((AT - jupFormTriggerTime) / JUP_FORM_DURATION, 0, 1) : 0;
+    if (jupFormTriggerTime !== null) phase = formT < 1 ? 'Jupiter accreting' : 'Jupiter settled into orbit';
+    accretionPhaseLabel = phase;
+
+    const distToFrontJ = Math.abs(JUPITER_R - pr);
+    const shakeEnvJ = Math.exp(-(distToFrontJ*distToFrontJ) / (2*3.33*3.33));
+    const preTriggerGate = jupFormTriggerTime !== null ? 1.0 : PRE_TRIGGER_SHAKE;
+    const shakeAmp = shakeEnvJ * SHAKE_INTENSITY * preTriggerGate * (1 - smoothstep(formT / Math.max(0.001, COLLAPSE_END)));
+
+    const revealStartFormT = COLLAPSE_START + REVEAL_START*(COLLAPSE_END-COLLAPSE_START);
+    const revealStartLoopT = revealStartFormT * JUP_FORM_DURATION;
+    const tSinceForm = jupFormTriggerTime !== null ? (AT - jupFormTriggerTime) : 0;
+    const revealT = smoothstep((tSinceForm - revealStartLoopT) / Math.max(0.001, REVEAL_DURATION));
+
+    if (revealT < 1) {
+      const gatherT   = ease(formT / Math.max(0.001, GATHER_END));
+      const collapseT = ease((formT - COLLAPSE_START) / Math.max(0.001, (COLLAPSE_END - COLLAPSE_START)));
+      const posAttr = jupGeo.attributes.position;
+      const jupPushAttr = jupGeo.attributes.aPush;
+      for (let i=0;i<JUP_N;i++){
+        const s = jupSeed[i];
+        const angle = lerpAngleShortest(jupStartAngle[i], JUPITER_ANGLE, gatherT);
+        const ringR = lerp(jupStartR[i], JUPITER_R, gatherT);
+        const ringX = ringR*Math.cos(angle);
+        const ringY = lerp(jupStartY[i], 0, gatherT);
+        const ringZ = ringR*Math.sin(angle);
+        const bx = lerp(ringX, jupTarget[i*3],   collapseT);
+        const by = lerp(ringY, jupTarget[i*3+1], collapseT);
+        const bz = lerp(ringZ, jupTarget[i*3+2], collapseT);
+        turbulenceJS(bx+s*40.0, by+s*40.0, bz+s*40.0, T, _turbScratch);
+        const px = bx + _turbScratch[0]*shakeAmp;
+        const py = by + _turbScratch[1]*shakeAmp;
+        const pz = bz + _turbScratch[2]*shakeAmp;
+        const pdx = px - interactionPoint.x, pdz = pz - interactionPoint.z;
+        const distToMouse = Math.hypot(pdx, pdz);
+        const push = smoothstep(1 - distToMouse / 5.33);
+        const invLen = distToMouse > 0.0001 ? 1/distToMouse : 0;
+        posAttr.array[i*3]   = px + pdx*invLen*push*3.0;
+        posAttr.array[i*3+1] = py;
+        posAttr.array[i*3+2] = pz + pdz*invLen*push*3.0;
+        jupPushAttr.array[i] = push;
+      }
+      posAttr.needsUpdate = true;
+      jupPushAttr.needsUpdate = true;
+    }
+    jupMat.uniforms.formT.value = formT;
+
+    if (jupiterShaderRef) {
+      jupiterShaderRef.uniforms.uReveal.value = revealT;
+      jupiterShaderRef.uniforms.uTime.value   = T;
+    }
+    jupAtmoMat.uniforms.reveal.value = revealT;
+    jupMat.uniforms.revealT.value = revealT;
+
+    if (formT >= 1) {
+      const orbitT = AT - jupFormTriggerTime - JUP_FORM_DURATION;
+      const a = JUPITER_ANGLE + orbitT * JUP_ORBIT_SPEED;
+      jupSolidGroup.position.set(JUPITER_R*Math.cos(a), 0, JUPITER_R*Math.sin(a));
+      jupSolidMesh.rotation.y += 0.004;
+    }
+  }
+
   lerpBg(0.022);
 
   const rotNorm = clamp((fineMat.uniforms.rotSpeed.value - 0.058) / (0.32 - 0.058), 0, 1);
   const autoRotate = ignitionDone ? 0 : (0.00038 + rotNorm * (0.00055 - 0.00038));
-  if(!drag) sphTarget.theta += autoRotate;
+  if(!drag && !userCameraControl) sphTarget.theta += autoRotate;
   sph.r     += (sphTarget.r-sph.r)*0.040;
   sph.theta += (sphTarget.theta-sph.theta)*0.08;
   sph.phi   += (sphTarget.phi-sph.phi)*0.08;
@@ -3189,6 +3955,36 @@ function tick(){
   cloudMat.uniforms.brightMult.value = ignitionDone ? tVals.galaxyCloudBright : tVals.nebulaBright;
   drainMat.uniforms.gAlpha.value    *= tVals.collapseBright;
   cvortMat.uniforms.gAlpha.value    *= tVals.collapseBright;
+  // drainMat/cvortMat are collapse-phase-only debris layers (T=56-74) with
+  // point sizes tuned for the old, much more distant camera (up to 350px). A
+  // previous attempt at this feature left residual alpha on these, which blew
+  // up into giant blurry blobs once the camera moved closer during ring
+  // formation — point size scales with proximity. Hard-set (not multiply) to
+  // 0 here, last, so nothing above this line can leave them visible past the
+  // galaxy phase, regardless of what collapseBright evaluates to.
+  if (T >= T_GALAXY_END) {
+    drainMat.uniforms.gAlpha.value = 0;
+    cvortMat.uniforms.gAlpha.value = 0;
+  }
+  // Nebula clouds (fineMat/cloudMat) were still visibly vivid well past
+  // T=88 in practice — the gtCurve-based fade formula above doesn't fully
+  // zero them out in time. Hard-cut them from SUN_FREEZE_T onward so the
+  // background is clean once the sun/rings take over, per explicit request.
+  //
+  // Also found the actual cause of a huge stray bright ring appearing well
+  // outside the real rings: fineMat's own vertex shader has a SEPARATE,
+  // internal "fake galaxy" shape generator (reaching radius ~255) blended
+  // in via its own `galaxyT` uniform — `pos = mix(pos, galaxyPos, galaxyT)`
+  // and `vAlpha = mix(vAlpha, 0.92, galaxyT)` — completely independent of
+  // gAlpha. galaxyT is driven by the same gtCurve as the sun's scale growth
+  // and never resets, so it sits near 1.0 (full strength) for this entire
+  // post-ignition phase, regardless of gAlpha being zeroed. Force it to 0
+  // too so that internal shape never blends in.
+  if (T >= SUN_FREEZE_T) {
+    fineMat.uniforms.gAlpha.value  = 0;
+    cloudMat.uniforms.gAlpha.value = 0;
+    fineMat.uniforms.galaxyT.value = 0;
+  }
   fineMat.uniforms.warmBias.value    = ignitionDone ? tVals.galaxyCloudWarm : Math.max(autoWarmBias, tVals.nebulaWarm);
   cloudMat.uniforms.warmBias.value   = ignitionDone ? tVals.galaxyCloudWarm : Math.max(autoWarmBias, tVals.collapseWarm);
   fineMat.uniforms.turbMult.value    = tVals.cloudTurb;
@@ -3232,6 +4028,8 @@ function tick(){
       ignite:        ignitionTriggered && !ignitionDone,
       sun:           ignitionTriggered,
       galaxy:        fineMat.uniforms.galaxyT.value > 0.01,
+      ringForm:      T >= T_GALAXY_END,
+      accretion:     T >= RING_FORM_END,
     };
     updateStatusPanel(liveFlags);
     updateControlsPanel(liveFlags);
